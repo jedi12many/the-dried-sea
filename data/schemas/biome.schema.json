@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "biome.schema.json",
+  "$comment": "v1 — a depth band of the dried sea; progression = descent",
+  "type": "object",
+  "required": ["id", "name", "band", "text"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^biome-[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "workingName": { "type": "boolean" },
+    "band": { "type": "integer", "minimum": 1, "description": "1 = shallowest/safest" },
+    "palette": { "type": "string", "description": "style-bible palette key" },
+    "lightLevel": { "type": "string", "description": "e.g. blinding / twilight-canopy / biolume-only" },
+    "resourceItemIds": { "type": "array", "items": { "type": "string" } },
+    "creatureIds": { "type": "array", "items": { "type": "string" } },
+    "bossCreatureId": { "type": "string" },
+    "peopleIds": { "type": "array", "items": { "type": "string" } },
+    "signatureLegendItemId": { "type": "string" },
+    "text": { "type": "string" }
+  }
+}

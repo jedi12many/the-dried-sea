@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "work.schema.json",
+  "$comment": "v1 — a buildable. Every work belongs to a god (or 'neutral'). Spells drain; works feed.",
+  "type": "object",
+  "required": ["id", "name", "godId", "category", "buildCost", "text"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^work-[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "workingName": { "type": "boolean" },
+    "godId": { "type": "string", "description": "god-* id, or 'neutral' for the tier-0 set" },
+    "category": { "enum": ["structure", "station", "storage", "comfort", "defense", "worship", "grim", "infrastructure"] },
+    "favorTierRequired": { "type": "integer", "minimum": 0, "maximum": 3, "default": 0 },
+    "buildCost": { "$ref": "common.schema.json#/$defs/cost" },
+    "stationRecipes": { "type": "array", "items": { "type": "string" }, "description": "recipe ids craftable here" },
+    "useDetection": { "type": "string", "description": "sim condition that counts as 'in use' (favor trickles only then)" },
+    "favorTrickle": { "type": "number", "minimum": 0, "description": "favor/sim-hour while in use; 0 for pure structure" },
+    "effects": { "$ref": "common.schema.json#/$defs/effectList" },
+    "grim": { "type": "boolean", "default": false },
+    "grimRules": {
+      "type": "object",
+      "description": "required when grim=true",
+      "required": ["kinderAlternative", "recipeSource", "testimony"],
+      "properties": {
+        "kinderAlternative": { "type": "string", "description": "the slower, kind path this work shortcuts (design law: must exist)" },
+        "recipeSource": { "type": "string", "description": "the corrupt origin of the recipe" },
+        "testimony": { "type": "string", "description": "how NPCs react to its presence" }
+      }
+    },
+    "footprint": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 },
+    "text": { "type": "string" }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "id": "people-reefkin",
+  "name": "the Reefkin",
+  "workingName": true,
+  "biomeId": "biome-reef-forest",
+  "brink": {
+    "start": 55,
+    "passiveDecayPerDay": 0.4,
+    "saveActions": [
+      { "id": "restore-reef-pool", "text": "Rebuild a living reef-pool from brine and pearl — a garden for a people who ARE the garden.", "brinkDelta": 12, "cost": [{ "itemId": "item-pearl", "qty": 4 }, { "itemId": "item-salt", "qty": 20 }], "ongoing": false },
+      { "id": "ward-the-groves", "text": "Stand watches over the elder-groves through the raid season.", "brinkDelta": 6, "ongoing": true },
+      { "id": "carry-their-dead", "text": "Bear a petrified elder to the high grove, the way the currents once would have.", "brinkDelta": 4, "ongoing": false }
+    ],
+    "exploitActions": [
+      { "id": "strip-the-groves", "text": "The elder-groves are standing lodes of pearl and reef-iron. They are also their grandparents.", "brinkDelta": -20, "yield": [{ "itemId": "item-reef-iron", "qty": 40 }, { "itemId": "item-pearl", "qty": 12 }], "attribution": "violent", "ledger": [{ "ledger": "peoples", "amount": -20, "note": "grove-stripping" }] },
+      { "id": "protection-tithe", "text": "They can't fight. You can. Name your price.", "brinkDelta": -6, "yield": [{ "itemId": "item-pearl", "qty": 4 }], "attribution": "extortive", "ledger": [{ "ledger": "peoples", "amount": -8, "note": "extortion" }] },
+      { "id": "salvage-rights-squeeze", "text": "Claim the reef's salvage lanes on paper and let hunger do the quiet work.", "brinkDelta": -10, "yield": [{ "itemId": "item-coralwood", "qty": 30 }], "attribution": "engineered", "ledger": [{ "ledger": "peoples", "amount": -18, "note": "engineered decline — the priests are not fooled" }] }
+    ]
+  },
+  "wealth": {
+    "fairTrade": ["item-coralwood", "item-pearl", "item-reef-iron"],
+    "uniqueRecruitClassIds": ["class-reefkin-crafter"]
+  },
+  "reactions": {
+    "saved": "Reefkin hands at the Ark; Reefkin song in every epilogue that has singing.",
+    "extinguished": "Silent groves. Vengeance callings from the scattered young. Halor dims toward you; Ur-Noth warms.",
+    "grimWorksInSight": "Will not trade within sight of the Salt-Wheel. They know what grinding is."
+  },
+  "lore": "They grew with the living reef and are petrifying as it dies — gentle, slow, their elders already statues in the groves. Their bodies are the resource. That is the razor the world hands you."
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "common.schema.json",
+  "$comment": "v1 — shared definitions",
+  "$defs": {
+    "effect": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "description": "effect key resolved by the sim (e.g. stat-mod, aoe-knockdown, weather-sense, spoilage-stop)" },
+        "magnitude": { "type": "number" },
+        "duration": { "type": "number", "description": "sim-seconds; omit for permanent/passive" },
+        "radius": { "type": "number" },
+        "target": { "enum": ["self", "ally", "enemy", "area", "structure", "village", "world"] },
+        "params": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "effectList": { "type": "array", "items": { "$ref": "#/$defs/effect" } },
+    "cost": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["itemId", "qty"],
+        "properties": { "itemId": { "type": "string" }, "qty": { "type": "integer", "minimum": 1 } },
+        "additionalProperties": false
+      }
+    },
+    "ledgerDelta": {
+      "type": "object",
+      "required": ["ledger", "amount"],
+      "properties": {
+        "ledger": { "enum": ["gods", "remnants", "shepherd", "peoples"] },
+        "amount": { "type": "number", "description": "negative = dark-leaning" },
+        "note": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

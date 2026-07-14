@@ -1,0 +1,28 @@
+{
+  "id": "people-brinefolk",
+  "name": "the Brinefolk",
+  "workingName": true,
+  "biomeId": "biome-salt-shallows",
+  "brink": {
+    "start": 60,
+    "passiveDecayPerDay": 0.3,
+    "saveActions": [
+      { "id": "build-pool-cistern", "text": "Engineer a covered cistern so their pools stop losing the last water to the sky.", "brinkDelta": 14, "cost": [{ "itemId": "item-wreck-timber", "qty": 20 }, { "itemId": "item-ship-cloth", "qty": 8 }], "ongoing": false },
+      { "id": "guard-the-pools", "text": "Raiders know what the pools are worth. Stand between.", "brinkDelta": 6, "ongoing": true }
+    ],
+    "exploitActions": [
+      { "id": "drain-the-pools", "text": "Pump the pools and take a season of god-water in a week. The pumps are Ur-Noth's design, incidentally.", "brinkDelta": -25, "yield": [{ "itemId": "item-god-water", "qty": 20 }], "attribution": "violent", "ledger": [{ "ledger": "peoples", "amount": -22, "note": "pool-draining" }] },
+      { "id": "water-debt", "text": "Lend them grain against next year's water. There will be less water every year. You both know it.", "brinkDelta": -8, "yield": [{ "itemId": "item-god-water", "qty": 6 }], "attribution": "engineered", "ledger": [{ "ledger": "peoples", "amount": -14, "note": "debt-trap — outcomes and causes both" }] }
+    ]
+  },
+  "wealth": {
+    "fairTrade": ["item-god-water", "item-salt"],
+    "uniqueRecruitClassIds": ["class-brinefolk-stillmaster"]
+  },
+  "reactions": {
+    "saved": "Your gods drink well forever — a standing fair-price god-water line, and Brinefolk lamps on the rim at the end.",
+    "extinguished": "Dry pools. The best offerings in the game, gone from the world. Every priest you ever host will eventually ask what happened here.",
+    "grimWorksInSight": "Seeing the drain-pumps in your village ends fair trade permanently — they recognize the design."
+  },
+  "lore": "Salt-veined descendants who survived by drinking god-charged brine. They keep the last pools, and the Vigor economy runs through how you treat them."
+}

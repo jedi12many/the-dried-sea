@@ -1,0 +1,28 @@
+{
+  "$comment": "v0 tuning — tribesman inner lives. Axes 0-100. Design laws: punish paranoia never vigilance; fear accelerates drift; bloom beats Broken over any long run.",
+  "axes": { "faith": 50, "grievance": 10, "susceptibility": 30 },
+  "startProfiles": {
+    "rescued": { "faith": 70, "grievance": 5, "susceptibility": 25 },
+    "taken": { "faith": 20, "grievance": 75, "susceptibility": 90 },
+    "pilgrim": { "faith": 90, "grievance": 0, "susceptibility": 15 },
+    "broken": { "faith": 0, "grievance": 40, "susceptibility": 100, "$comment": "post-Salt-Wheel: obedient, no faith growth, forever susceptible" }
+  },
+  "driftPerDay": {
+    "neglect": { "overworked": 3, "noShrineAccess": 2, "poorFood": 2, "expeditionDeathWitnessed": 8, "sleptRough": 2 },
+    "attention": { "rested": -2, "riteAttended": -3, "grievanceHeard": -10, "promoted": -8, "keyMet": -4 },
+    "environment": { "unlitPriestHosted": 2, "remnantStoredInsecurely": 1, "nearDropAssignment": 2, "grimWorkInSight": 1, "villagerExecutedWithoutEvidence": 12, "villagerBanished": 3 }
+  },
+  "expressionThresholds": {
+    "$comment": "grievance+susceptibility composite; EA ships this small set, grows post-EA",
+    "slacking": 40, "pettyTheft": 55, "spreadingDoubt": 65, "desertion": 75, "darkWorship": 85, "sabotage": 92, "quietAscensionArc": 97
+  },
+  "bloom": { "outputMult": 1.6, "driftResistMult": 0.5, "unlocksPersonalCalling": true },
+  "brokenOutputMult": 1.15,
+  "moraleContagion": { "storytellerRadius": 1.15, "doubtRadius": 0.9 },
+  "wardenCoverage": { "takenPerWarden": 3, "uncoveredTakenDriftMult": 2.0 },
+  "justice": {
+    "evidenceSources": ["rite-of-revelation", "witnessed-act"],
+    "withEvidence": { "ledgerDelta": 0 },
+    "withoutEvidence": { "ledgerDelta": -15, "fearDriftDays": 10 }
+  }
+}

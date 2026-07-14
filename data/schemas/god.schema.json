@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "god.schema.json",
+  "$comment": "v1 — a member of the Pantheon of the Drowned",
+  "type": "object",
+  "required": ["id", "name", "title", "domain", "voice", "blessing", "invocations", "priest"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^god-[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "workingName": { "type": "boolean" },
+    "title": { "type": "string" },
+    "domain": { "type": "string", "description": "one-line domain summary" },
+    "voice": {
+      "type": "object",
+      "description": "prompt-kit for generating this god's dreams/whispers/rite lines",
+      "required": ["tone", "imagery", "sampleLine"],
+      "properties": {
+        "tone": { "type": "string" },
+        "imagery": { "type": "array", "items": { "type": "string" } },
+        "sampleLine": { "type": "string" }
+      }
+    },
+    "blessing": {
+      "type": "object",
+      "required": ["name", "text", "effectsByRank"],
+      "properties": {
+        "name": { "type": "string" },
+        "text": { "type": "string" },
+        "effectsByRank": {
+          "type": "array", "minItems": 3, "maxItems": 3,
+          "items": { "$ref": "common.schema.json#/$defs/effectList" }
+        }
+      }
+    },
+    "invocations": {
+      "type": "array", "minItems": 2, "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "rankRequired", "vigorCost", "text", "effects"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^inv-[a-z0-9-]+$" },
+          "name": { "type": "string" },
+          "rankRequired": { "type": "integer", "minimum": 1, "maximum": 3 },
+          "vigorCost": { "type": "number", "exclusiveMinimum": 0, "description": "fraction of this god's max Vigor, 0-1" },
+          "selfCost": { "$ref": "common.schema.json#/$defs/effectList", "description": "Ur-Noth pattern: permanent costs to the caster" },
+          "text": { "type": "string" },
+          "effects": { "$ref": "common.schema.json#/$defs/effectList" }
+        }
+      }
+    },
+    "priest": {
+      "type": "object",
+      "required": ["title", "arrival"],
+      "properties": {
+        "title": { "type": "string" },
+        "arrival": { "type": "string", "description": "diegetic arrival condition beyond the chapel requirement" },
+        "notes": { "type": "string" }
+      }
+    },
+    "vigor": {
+      "type": "object",
+      "description": "overrides of tuning/economy.json defaults",
+      "properties": {
+        "maxVigor": { "type": "number" },
+        "riteRecoveryMult": { "type": "number" }
+      }
+    },
+    "flags": {
+      "type": "array",
+      "items": { "enum": ["drains-caster", "strengthened-by-withdrawal", "expensive-to-leave", "missing"] }
+    },
+    "affinityLegendIds": { "type": "array", "items": { "type": "string" } },
+    "lore": { "type": "string" }
+  }
+}

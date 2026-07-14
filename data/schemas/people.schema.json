@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "people.schema.json",
+  "$comment": "v1 — a Last People: peaceful, on the Brink, save/trade/exploit",
+  "type": "object",
+  "required": ["id", "name", "biomeId", "brink", "wealth", "reactions", "lore"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^people-[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "workingName": { "type": "boolean" },
+    "biomeId": { "type": "string" },
+    "brink": {
+      "type": "object",
+      "required": ["start", "passiveDecayPerDay", "saveActions", "exploitActions"],
+      "properties": {
+        "start": { "type": "number", "minimum": 0, "maximum": 100, "description": "100=thriving, 0=gone" },
+        "passiveDecayPerDay": { "type": "number", "description": "the dying world's pressure; applies once met+understood" },
+        "saveActions": {
+          "type": "array",
+          "items": { "type": "object", "required": ["id", "text", "brinkDelta"], "properties": {
+            "id": { "type": "string" }, "text": { "type": "string" },
+            "brinkDelta": { "type": "number" }, "cost": { "$ref": "common.schema.json#/$defs/cost" },
+            "ongoing": { "type": "boolean" } }, "additionalProperties": false }
+        },
+        "exploitActions": {
+          "type": "array",
+          "items": { "type": "object", "required": ["id", "text", "brinkDelta", "yield", "attribution"], "properties": {
+            "id": { "type": "string" }, "text": { "type": "string" },
+            "brinkDelta": { "type": "number" }, "yield": { "$ref": "common.schema.json#/$defs/cost" },
+            "attribution": { "enum": ["violent", "extortive", "engineered"], "$comment": "ledgers read outcomes AND causes; engineered decline weighs the same" },
+            "ledger": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/ledgerDelta" } } }, "additionalProperties": false }
+        }
+      },
+      "additionalProperties": false
+    },
+    "wealth": {
+      "type": "object",
+      "required": ["fairTrade", "uniqueRecruitClassIds"],
+      "properties": {
+        "fairTrade": { "type": "array", "items": { "type": "string" }, "description": "item ids offered at fair prices when healthy" },
+        "uniqueRecruitClassIds": { "type": "array", "items": { "type": "string" }, "description": "npc-class ids only a SAVED people provides" }
+      },
+      "additionalProperties": false
+    },
+    "reactions": {
+      "type": "object",
+      "required": ["saved", "extinguished"],
+      "properties": {
+        "saved": { "type": "string", "description": "their presence at the endings" },
+        "extinguished": { "type": "string", "description": "the permanent hole: scars, vengeance callings, god response" },
+        "grimWorksInSight": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "lore": { "type": "string" }
+  }
+}

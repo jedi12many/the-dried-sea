@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trait.schema.json",
+  "$comment": "v1 — a tribesman trait. Discovered by attention, never displayed on arrival.",
+  "type": "object",
+  "required": ["id", "name", "axis", "text", "discovery"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^trait-[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "axis": { "enum": ["faith", "work", "social", "quirk", "talent"] },
+    "text": { "type": "string", "description": "one line, in-world voice" },
+    "effects": { "$ref": "common.schema.json#/$defs/effectList" },
+    "dispositionMods": {
+      "type": "object",
+      "properties": {
+        "faithBase": { "type": "number" },
+        "grievanceGainMult": { "type": "number" },
+        "susceptibilityMult": { "type": "number" },
+        "vigorTrickle": { "type": "number", "description": "faith-axis only: passive worship contribution" },
+        "whisperResist": { "type": "number", "description": "faith-axis only: resistance to dark recruitment" }
+      },
+      "additionalProperties": false
+    },
+    "keyHints": {
+      "type": "array",
+      "description": "Keys this trait can generate (village_system picks one per NPC)",
+      "items": {
+        "type": "object",
+        "required": ["key", "bloomText"],
+        "properties": {
+          "key": { "type": "string", "description": "condition id, e.g. schedule-night, shrine-access:<godId>, companion, grievance-heard, unbinding-kept, leave-day" },
+          "bloomText": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "conflictsWith": { "type": "array", "items": { "type": "string" } },
+    "discovery": { "type": "string", "description": "how a paying-attention player learns it (observed context)" }
+  }
+}

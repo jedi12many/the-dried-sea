@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "calling.schema.json",
+  "$comment": "v1 — a quest. The five anti-shallow laws are machine-linted where possible (validate.mjs) and human-gated always (status).",
+  "type": "object",
+  "required": ["id", "title", "tier", "source", "giver", "steps", "echo", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^calling-[a-z0-9-]+$" },
+    "title": { "type": "string" },
+    "tier": { "enum": ["vignette", "chain", "deep"] },
+    "source": { "enum": ["god-dream", "dead-letter", "tribesman", "rumor", "chart", "peoples"] },
+    "sourceGodId": { "type": "string", "description": "required when source=god-dream" },
+    "giver": {
+      "type": "object",
+      "$comment": "law 1: a name and a wound",
+      "required": ["name", "wound"],
+      "properties": {
+        "name": { "type": "string" },
+        "wound": { "type": "string", "description": "their history, rooted in the Withdrawal" }
+      },
+      "additionalProperties": false
+    },
+    "drawWeights": {
+      "type": "object",
+      "description": "personalization: multipliers applied to this calling's draw chance",
+      "properties": {
+        "devotion": { "type": "object", "additionalProperties": { "type": "number" }, "description": "godId -> mult" },
+        "biome": { "type": "object", "additionalProperties": { "type": "number" } },
+        "playstyle": { "type": "object", "additionalProperties": { "type": "number" }, "description": "tag (fighter/builder/tamer/night-walker/...) -> mult" },
+        "village": { "type": "object", "additionalProperties": { "type": "number" }, "description": "condition (hosts-unlit-priest/...) -> mult" }
+      },
+      "additionalProperties": false
+    },
+    "steps": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "text"],
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "enum": ["goto", "collect", "talk", "kill", "build", "escort", "wait", "choice", "turn"] },
+          "text": { "type": "string", "$comment": "law 4: the story clothing on the verb — required, and lint rejects bare counters" },
+          "params": { "type": "object" },
+          "next": { "type": "string", "description": "next step id; omit on terminal steps" },
+          "options": {
+            "type": "array",
+            "description": "choice/turn steps only",
+            "items": {
+              "type": "object",
+              "required": ["text", "next"],
+              "properties": {
+                "text": { "type": "string" },
+                "next": { "type": "string" },
+                "ledger": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/ledgerDelta" } },
+                "effects": { "$ref": "common.schema.json#/$defs/effectList" }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "echo": {
+      "type": "object",
+      "$comment": "law 3: something observable changes",
+      "required": ["text"],
+      "properties": {
+        "text": { "type": "string", "description": "what the world shows afterward" },
+        "worldFlags": { "type": "array", "items": { "type": "string" } },
+        "dialogueKeys": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "deep": {
+      "type": "object",
+      "description": "tier=deep only — permanent world consequences, per-server-once, never labeled in advance",
+      "required": ["worldEffects"],
+      "properties": {
+        "worldEffects": { "$ref": "common.schema.json#/$defs/effectList" },
+        "revealText": { "type": "string", "description": "the later moment the player realizes what they did" }
+      },
+      "additionalProperties": false
+    },
+    "rewards": {
+      "type": "object",
+      "properties": {
+        "items": { "$ref": "common.schema.json#/$defs/cost" },
+        "recipeIds": { "type": "array", "items": { "type": "string" } },
+        "favor": { "type": "object", "additionalProperties": { "type": "number" } }
+      },
+      "additionalProperties": false
+    },
+    "status": { "enum": ["draft", "curated", "live"], "$comment": "law 5: 'curated' is set by Jeff only" },
+    "curatorNote": { "type": "string" }
+  }
+}

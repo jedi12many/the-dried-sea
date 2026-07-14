@@ -1,0 +1,47 @@
+{
+  "id": "god-ghal",
+  "name": "Old Ghal",
+  "workingName": true,
+  "title": "the Leviathan-Shepherd",
+  "domain": "Beasts and the hunt — everything that survived the drying answers to something; much of it answers to him.",
+  "voice": {
+    "tone": "ancient, unhurried, smells like kelp and patience; talks to you the way he talks to animals, which is a compliment",
+    "imagery": ["a carcass the size of a hill, mourned by things with too many eyes", "a hand held out and held still", "the herd that walked out of the sea and kept walking"],
+    "sampleLine": "Everything hungry is honest. Start there."
+  },
+  "blessing": {
+    "name": "The Shepherd's Shadow",
+    "text": "The wild hesitates around you — and, in time, listens.",
+    "effectsByRank": [
+      [{ "type": "beast-hesitation", "magnitude": 1, "target": "self" }],
+      [{ "type": "beast-hesitation", "magnitude": 2, "target": "self" }, { "type": "taming-affinity", "magnitude": 1.5, "target": "self" }],
+      [{ "type": "beast-hesitation", "magnitude": 3, "target": "self" }, { "type": "taming-affinity", "magnitude": 2, "target": "self" }, { "type": "beast-sense", "target": "self" }]
+    ]
+  },
+  "invocations": [
+    {
+      "id": "inv-shepherds-voice",
+      "name": "The Shepherd's Voice",
+      "rankRequired": 1,
+      "vigorCost": 0.4,
+      "text": "One word in the old tongue of the deep pastures. The beast remembers being kept.",
+      "effects": [{ "type": "pacify-beast", "duration": 20, "target": "enemy", "params": { "worksOnBossAdds": true } }]
+    },
+    {
+      "id": "inv-blood-scent",
+      "name": "Blood-Scent",
+      "rankRequired": 2,
+      "vigorCost": 0.25,
+      "text": "The dried sea keeps no secrets from a nose it made.",
+      "effects": [{ "type": "track-target", "duration": 300, "target": "self" }]
+    }
+  ],
+  "priest": {
+    "title": "Herd-Speaker",
+    "arrival": "Arrives leading three animals you cannot name and one you can. Asks where the pens are. You don't have pens. You will.",
+    "notes": "Storm-beached leviathan carcasses are Ghal content: harvest respectfully (favor) or strip them (he notices)."
+  },
+  "flags": [],
+  "affinityLegendIds": [],
+  "lore": "The wild one. His sanctum is wherever the largest living thing on the seabed happens to be standing."
+}

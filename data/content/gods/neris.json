@@ -1,0 +1,47 @@
+{
+  "id": "god-neris",
+  "name": "Neris",
+  "workingName": true,
+  "title": "the Tide-Keeper",
+  "domain": "Tides, time, return — everything that goes out comes back, if you can wait.",
+  "voice": {
+    "tone": "patient, cyclical, speaks in returns and repetitions; grief worn smooth as sea-glass",
+    "imagery": ["a mark on a pier no water reaches", "moon-pull on dry sand", "a clock filled with brine"],
+    "sampleLine": "The sea has been gone one breath. You count in days; I count in tides. It is one breath."
+  },
+  "blessing": {
+    "name": "Tide-Rhythm",
+    "text": "Your strength swells and slackens on a rhythm you learn to ride.",
+    "effectsByRank": [
+      [{ "type": "tide-rhythm-buffs", "magnitude": 1, "target": "self" }],
+      [{ "type": "tide-rhythm-buffs", "magnitude": 2, "target": "self" }],
+      [{ "type": "tide-rhythm-buffs", "magnitude": 3, "target": "self" }, { "type": "stat-mod", "params": { "stat": "heal-received" }, "magnitude": 1.2, "target": "self" }]
+    ]
+  },
+  "invocations": [
+    {
+      "id": "inv-slack-tide",
+      "name": "Slack Tide",
+      "rankRequired": 1,
+      "vigorCost": 0.4,
+      "text": "For a held breath, the world forgets to move. You do not.",
+      "effects": [{ "type": "time-slip", "duration": 3, "target": "self" }]
+    },
+    {
+      "id": "inv-returning-wave",
+      "name": "The Returning Wave",
+      "rankRequired": 2,
+      "vigorCost": 0.5,
+      "text": "What was taken from you comes back — slowly, the way tides do.",
+      "effects": [{ "type": "heal-over-time", "magnitude": 60, "duration": 30, "target": "ally" }]
+    }
+  ],
+  "priest": {
+    "title": "Tide-Reckoner",
+    "arrival": "Walks in at dawn on the day your chapel's tide-bell would have rung, had there been a tide. It rings as they cross the threshold.",
+    "notes": "Consuming Neris's remnant breaks tide-rhythm buffs for everyone, forever (worldStrength)."
+  },
+  "flags": [],
+  "affinityLegendIds": ["item-neriss-hourglass"],
+  "lore": "The patient one. Her sanctum is a drowned town's chapel where the water-clock still runs on nothing."
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "npc-class.schema.json",
+  "$comment": "v1 — a tribesman class (job archetype)",
+  "type": "object",
+  "required": ["id", "name", "text"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^class-[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "workingName": { "type": "boolean" },
+    "stationWorkIds": { "type": "array", "items": { "type": "string" }, "description": "works this class operates" },
+    "expeditionRoles": { "type": "array", "items": { "type": "string" } },
+    "priestGodId": { "type": "string", "description": "priest classes only" },
+    "uniqueToPeopleId": { "type": "string", "description": "saved-Peoples recruits only" },
+    "baseOutputPerHour": { "type": "number", "description": "at steady disposition; bloom/Broken multipliers in tuning/disposition.json" },
+    "text": { "type": "string" }
+  }
+}

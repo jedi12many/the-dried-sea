@@ -1,0 +1,42 @@
+{
+  "id": "calling-the-letter-still-walking",
+  "title": "The Letter, Still Walking",
+  "tier": "vignette",
+  "source": "dead-letter",
+  "giver": {
+    "name": "Tomas Grell, second son of the lighthouse keeper",
+    "wound": "Drowned the night of the Withdrawal, twenty steps from shore, carrying a letter of apology to his mother. He has been trying to deliver it for three generations. He does not know he is dead, and he does not know she is."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 2.0 },
+    "playstyle": { "night-walker": 1.5 },
+    "devotion": { "god-neris": 1.5 }
+  },
+  "steps": [
+    { "id": "s1", "type": "collect", "text": "A sodden letter, found on the flats where the Drowned walk — addressed in a boy's careful hand to 'Mother, at the light.' The paper is three generations old. The ink is wet.", "next": "s2" },
+    { "id": "s2", "type": "goto", "text": "Follow the walker's route at night: from the old shore-road toward the dead lighthouse, the same twenty steps, again and again.", "next": "s3" },
+    {
+      "id": "s3", "type": "turn",
+      "text": "The Drowned man on the road is Tomas himself — the letter you carry is HIS, slipped from his coat a hundred years of walking ago. He reaches for it. What do you do with a boy who only wants to finish his errand?",
+      "options": [
+        { "text": "Lay him to rest, and carry the letter the last mile yourself — his mother's line survives among the Brinefolk.", "next": "s4-rest", "ledger": [{ "ledger": "shepherd", "amount": 8, "note": "a kindness with no witness" }] },
+        { "text": "Return the letter and let him walk. Some errands are what a soul has instead of rest.", "next": "s4-walk", "ledger": [{ "ledger": "shepherd", "amount": 2, "note": "mercy, of a lonelier kind" }] },
+        { "text": "Take the keeper's oil-ring off his coat and leave him grasping. He won't remember. You will.", "next": "s4-take", "ledger": [{ "ledger": "shepherd", "amount": -10, "note": "robbing the dead is still robbing" }, { "ledger": "gods", "amount": -3, "note": "Neris keeps count of things that should return and don't" }] }
+      ]
+    },
+    { "id": "s4-rest", "type": "talk", "text": "Elder Maru of the Brinefolk pools takes the letter with salt-veined hands, reads it twice, and says only: 'He always was the gentle one.' She keeps the apology. She gives you the forgiveness — to carry back to the grave.", "next": null },
+    { "id": "s4-walk", "type": "goto", "text": "You walk beside him to the lighthouse door, the way you'd see any neighbor home. He thanks you. Tomorrow he won't remember. You'll be back tomorrow anyway, or you won't.", "next": null },
+    { "id": "s4-take", "type": "collect", "text": "The oil-ring is good bronze and better oil. The walking figure behind you pats its coat, puzzled, and starts the twenty steps again.", "next": null }
+  ],
+  "echo": {
+    "text": "Rest: a marked grave on the shore-road that Brinefolk tend with salt-flowers; the walking stops. Walk: the walker walks, but the flats' Drowned no longer aggress you on that road. Take: the walking stops a week later on its own — the Drowned of the flats now follow YOU for a night whenever you carry bronze.",
+    "worldFlags": ["tomas-at-rest | tomas-walking-befriended | tomas-robbed"],
+    "dialogueKeys": ["brinefolk-elder-maru-letter"]
+  },
+  "rewards": {
+    "items": [{ "itemId": "item-bronze-salvage", "qty": 2 }],
+    "favor": { "god-neris": 6 }
+  },
+  "status": "draft",
+  "curatorNote": "EXEMPLAR for the pool pipeline — demonstrates all five laws: named giver with a Withdrawal wound; the turn (the walker IS the sender); observable echo per branch; 'collect/goto' verbs fully clothed; awaiting Jeff's law-5 read. Rewards deliberately small — the calling is the reward."
+}

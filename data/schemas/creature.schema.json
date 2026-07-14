@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "creature.schema.json",
+  "$comment": "v1",
+  "type": "object",
+  "required": ["id", "name", "biomeId", "archetype", "stats", "text"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^creature-[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "workingName": { "type": "boolean" },
+    "biomeId": { "type": "string" },
+    "archetype": { "enum": ["pack-hunter", "ambusher", "brute", "lure", "swarm", "the-drowned", "raider-human", "ambient", "boss"] },
+    "nightOnly": { "type": "boolean", "default": false },
+    "stats": { "type": "object", "additionalProperties": { "type": "number" } },
+    "drops": { "$ref": "common.schema.json#/$defs/cost" },
+    "remnantItemId": { "type": "string", "description": "bosses: the god-remnant they yield (enshrine/trade/consume)" },
+    "tamable": { "type": "boolean", "default": false },
+    "bossNotes": { "type": "string", "description": "arena, weak point, preparation grammar" },
+    "text": { "type": "string" }
+  }
+}

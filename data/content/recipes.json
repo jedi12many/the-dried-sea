@@ -1,0 +1,12 @@
+[
+  { "id": "recipe-rope", "track": "tree", "output": { "itemId": "item-rope", "qty": 2 }, "inputs": [{ "itemId": "item-ship-cloth", "qty": 1 }], "unlock": { "byItems": ["item-ship-cloth"] } },
+  { "id": "recipe-salt-harvest", "track": "tree", "output": { "itemId": "item-salt", "qty": 5 }, "inputs": [{ "itemId": "item-driftwood", "qty": 1 }], "stationWorkId": "work-workbench", "unlock": { "byTier": 0 } },
+  {
+    "id": "recipe-marens-own-harpoon", "track": "legend",
+    "output": { "itemId": "item-marens-own-harpoon", "qty": 1 },
+    "inputs": [{ "itemId": "item-tidebrass", "qty": 6 }, { "itemId": "item-storm-glass", "qty": 3 }, { "itemId": "item-wreck-timber", "qty": 4 }],
+    "unlock": { "fragments": 3 },
+    "ritual": { "atWorkId": "work-chapel", "eventMaterial": "item-storm-glass" },
+    "$comment": "Exemplar Track-2 legend: 3 PLACED fragments (Shellback's hoard / a storm-exposed wreck / a Maren sanctum), storm-glass only forms during great storms (event material), and the final craft is a rite at a Maren chapel. Rare because the journey is long, never lottery."
+  }
+]

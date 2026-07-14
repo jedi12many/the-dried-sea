@@ -1,0 +1,22 @@
+{
+  "$comment": "v0 — the four ledgers and the fork. Morality is read from ledgers, never a karma meter. Negative = dark-leaning.",
+  "ledgers": {
+    "gods": { "$comment": "Vigor taken vs worship returned, per god, whole game", "inputs": ["invocation-cast", "rite-completed", "offering-given", "god-restored"] },
+    "remnants": { "$comment": "enshrine (+) / trade (0) / consume (-), per remnant", "inputs": ["remnant-enshrined", "remnant-traded", "remnant-consumed"] },
+    "shepherd": { "$comment": "how you hold your people", "inputs": ["unbinding-performed", "key-met", "salt-wheel-use", "execution-no-evidence", "banishment", "broken-labor-days"] },
+    "peoples": { "$comment": "the Last Peoples: outcomes AND causes; engineered decline = massacre", "inputs": ["people-saved-action", "fair-trade", "exploit-violent", "exploit-extortive", "exploit-engineered", "people-extinguished"] }
+  },
+  "lean": {
+    "$comment": "computed per-player from ledger sums; used for priest dialogue pools, Ur-Noth warmth, epilogue color — never shown as a number",
+    "bands": ["shepherd", "steady", "taker", "dark"]
+  },
+  "fork": {
+    "location": "boss-drowned-priest",
+    "commit": "group rite — all present players; dissent triggers the Schism",
+    "paths": ["tidebringer", "unlit-compact", "ascension"]
+  },
+  "worldStrength": {
+    "$comment": "shared, server-owned god strength; a consumed remnant dims its god's domain effects WORLD-WIDE, permanently",
+    "consumedRemnantDim": 20
+  }
+}

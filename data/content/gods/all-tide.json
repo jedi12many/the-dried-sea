@@ -1,0 +1,28 @@
+{
+  "id": "god-all-tide",
+  "name": "the All-Tide",
+  "workingName": true,
+  "title": "the Empty Seat",
+  "domain": "The sea itself. Missing.",
+  "voice": {
+    "tone": "unknown — no living priest has heard it; the others speak of it the way children speak of a parent's empty chair",
+    "imagery": ["the empty seat", "a tide-mark on the world's rim", "every wave at once"],
+    "sampleLine": "…"
+  },
+  "blessing": {
+    "name": "—",
+    "text": "The All-Tide grants nothing. The All-Tide is not here.",
+    "effectsByRank": [[], [], []]
+  },
+  "invocations": [
+    { "id": "inv-all-tide-null-1", "name": "—", "rankRequired": 1, "vigorCost": 1, "text": "unattunable", "effects": [] },
+    { "id": "inv-all-tide-null-2", "name": "—", "rankRequired": 1, "vigorCost": 1, "text": "unattunable", "effects": [] }
+  ],
+  "priest": {
+    "title": "the Drowned Priest",
+    "arrival": "Does not arrive. Waits at the bottom of the Drop, holding a rite that has run for three generations."
+  },
+  "flags": ["missing"],
+  "affinityLegendIds": [],
+  "lore": "SPOILER SPINE (L3): the sea IS the All-Tide — the pantheon were aspects of it. Restoring the ocean is resurrecting this god. The Ascension fills or shares or abandons this seat. Not attunable in normal play; exists as data so the fork, the epilogues, and the pantheon UI have a real id to point at."
+}

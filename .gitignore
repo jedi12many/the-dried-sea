@@ -1,0 +1,15 @@
+# Godot
+game/.godot/
+*.translation
+
+# OS / editors
+.DS_Store
+Thumbs.db
+*.swp
+
+# Node (tools are dependency-free; keep it that way)
+node_modules/
+
+# Local scratch
+scratch/
+*.local.*

@@ -1,0 +1,10 @@
+[
+  { "id": "class-salvager", "name": "Salvager", "stationWorkIds": ["work-workbench"], "expeditionRoles": ["wreck-team"], "baseOutputPerHour": 1.0, "text": "Reads a wreck-field like an orchard." },
+  { "id": "class-smith", "name": "Smith", "stationWorkIds": ["work-workbench"], "expeditionRoles": [], "baseOutputPerHour": 1.0, "text": "Bronze now, reef-iron soon, tidebrass someday." },
+  { "id": "class-brinewife", "name": "Brinewife", "stationWorkIds": ["work-smokehouse", "work-hearth"], "expeditionRoles": [], "baseOutputPerHour": 1.0, "text": "Cook, alchemist, and the reason anyone survives winter. The title is ancient and not negotiable." },
+  { "id": "class-warden", "name": "Warden", "stationWorkIds": ["work-yoke-post"], "expeditionRoles": ["escort"], "baseOutputPerHour": 1.0, "text": "Watches the walls, the night, and the Taken. Understaff this and learn why it's a class." },
+  { "id": "class-reef-runner", "name": "Reef-Runner", "stationWorkIds": [], "expeditionRoles": ["scout", "gatherer"], "baseOutputPerHour": 1.0, "text": "Fast, light, and back before the light fails. Usually." },
+  { "id": "class-priest", "name": "Priest", "stationWorkIds": ["work-chapel"], "expeditionRoles": [], "baseOutputPerHour": 1.0, "text": "Arrives as a pilgrim to a chapel; conducts rites, Rededication, and Revelation; sells rumors. Each priest serves one god (assigned at arrival)." },
+  { "id": "class-reefkin-crafter", "name": "Reefkin Crafter", "uniqueToPeopleId": "people-reefkin", "stationWorkIds": ["work-workbench"], "expeditionRoles": [], "baseOutputPerHour": 1.2, "text": "The finest craftfolk left alive. Only a SAVED Reefkin settlement sends one." },
+  { "id": "class-brinefolk-stillmaster", "name": "Brinefolk Stillmaster", "uniqueToPeopleId": "people-brinefolk", "stationWorkIds": [], "expeditionRoles": [], "baseOutputPerHour": 1.0, "text": "Distills god-water in your own village. Only a SAVED Brinefolk settlement teaches this." }
+]

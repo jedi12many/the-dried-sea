@@ -1,0 +1,14 @@
+; The Dried Sea — Godot 4 project (Soul Build)
+; M0 fleshes this out: sim/ (pure, headless-testable), scenes/ (thin), tests/.
+; Engine version pinned at M0 start.
+
+config_version=5
+
+[application]
+
+config/name="The Dried Sea"
+config/features=PackedStringArray("4.3")
+
+[rendering]
+
+renderer/rendering_method="mobile"

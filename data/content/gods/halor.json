@@ -1,0 +1,47 @@
+{
+  "id": "god-halor",
+  "name": "Halor",
+  "workingName": true,
+  "title": "the Salt-Father",
+  "domain": "Preservation, endurance, hearth — what is kept well, keeps.",
+  "voice": {
+    "tone": "slow, warm, immovable; talks like a man banking a fire for the night",
+    "imagery": ["salt in the wound that saves the limb", "a full cellar in a lean year", "walls that remember every storm they turned"],
+    "sampleLine": "The sea left. The salt stayed. Think on which of us loved you more."
+  },
+  "blessing": {
+    "name": "The Kept Hearth",
+    "text": "What you store keeps; who you shelter, endures.",
+    "effectsByRank": [
+      [{ "type": "spoilage-slow", "magnitude": 0.5, "target": "self" }],
+      [{ "type": "spoilage-stop", "target": "self" }, { "type": "stat-mod", "params": { "stat": "resistances" }, "magnitude": 1.15, "target": "self" }],
+      [{ "type": "spoilage-stop", "target": "village" }, { "type": "village-morale", "magnitude": 1.1, "target": "village" }]
+    ]
+  },
+  "invocations": [
+    {
+      "id": "inv-pillar-of-salt",
+      "name": "Pillar of Salt",
+      "rankRequired": 1,
+      "vigorCost": 0.35,
+      "text": "You become the thing the sea could never wear down. Rooted. Untouchable. Patient.",
+      "effects": [{ "type": "petrify-invulnerable", "duration": 6, "target": "self" }]
+    },
+    {
+      "id": "inv-brine-ward",
+      "name": "Brine-Ward",
+      "rankRequired": 2,
+      "vigorCost": 0.4,
+      "text": "Salt in a line the dark will not cross; walls the storm declines to argue with.",
+      "effects": [{ "type": "structure-shield", "duration": 60, "target": "structure" }]
+    }
+  ],
+  "priest": {
+    "title": "Hearth-Warden",
+    "arrival": "Shows up with the first hard frost, knocks once, and starts fixing your smokehouse before introducing themselves.",
+    "notes": "Halor dims fastest toward players with a bloody Shepherd's ledger — the hearth god watches how you keep people, not just food."
+  },
+  "flags": [],
+  "affinityLegendIds": ["item-salt-fathers-hearthstone"],
+  "lore": "The homestead god. His works are the reason your village looks like a home and not a camp."
+}

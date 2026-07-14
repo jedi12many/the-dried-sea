@@ -1,0 +1,21 @@
+[
+  { "id": "item-driftwood", "name": "Driftwood", "category": "material", "tier": 0, "text": "The sea's last deliveries, still washing loose from the flats." },
+  { "id": "item-wreck-timber", "name": "Wreck-Timber", "category": "material", "tier": 0, "text": "Hull planking. Someone sailed this. Build gently." },
+  { "id": "item-rope", "name": "Salt-Stiff Rope", "category": "material", "tier": 0, "text": "Rigging that outlived its ship." },
+  { "id": "item-salt", "name": "Salt", "category": "material", "tier": 0, "stackSize": 50, "text": "The one thing there is no shortage of." },
+  { "id": "item-bronze-salvage", "name": "Bronze Salvage", "category": "material", "tier": 1, "text": "Fittings, nails, a ship's bell melted small." },
+  { "id": "item-ship-cloth", "name": "Ship-Cloth", "category": "material", "tier": 0, "text": "Sailcloth, faded to the color of the sky it worked under." },
+  { "id": "item-coralwood", "name": "Coralwood", "category": "material", "tier": 2, "text": "Timber from a forest where every tree is a dead animal." },
+  { "id": "item-reef-iron", "name": "Reef-Iron", "category": "material", "tier": 2, "text": "Ore seeded through petrified coral. The Reefkin call it 'marrow' and would rather you didn't." },
+  { "id": "item-pearl", "name": "Pearl", "category": "material", "tier": 2, "text": "The reef's last soft thing." },
+  { "id": "item-tidebrass", "name": "Tidebrass", "workingName": true, "category": "material", "tier": 3, "text": "Metal from the first-age wrecks. It remembers being wet." },
+  { "id": "item-storm-glass", "name": "Storm-Glass", "category": "offering", "tier": 2, "offeringValue": 12, "text": "Sand fused by Maren's own hand. The priests trade sermons for it." },
+  { "id": "item-trench-pearl", "name": "Trench Pearl", "category": "offering", "tier": 3, "offeringValue": 25, "text": "Grown in the dark by something that did not mean to make anything beautiful." },
+  { "id": "item-god-water", "name": "God-Water", "category": "offering", "tier": 1, "offeringValue": 18, "text": "Brinefolk-distilled. The best worship offering there is — mind how you came by it." },
+  { "id": "item-remnant-shellback", "name": "Remnant of the Shell", "category": "remnant", "tier": 1, "stackSize": 1, "text": "A divine fragment from Old Shellback's hoard. Enshrine it, trade it — or consume it, and hear a warm voice approve." },
+  { "id": "item-marens-own-harpoon", "name": "Maren's Own Harpoon", "category": "weapon", "tier": 3, "stackSize": 1, "legend": { "godAffinity": "god-maren", "history": "She threw it once, at something that deserved it, and the storm has been looking for it ever since. Strike true and the bolt comes down on your mark." }, "effects": [{ "type": "lightning-on-hit", "magnitude": 1, "target": "enemy" }], "text": "A legend of the storm-line." },
+  { "id": "item-neriss-hourglass", "name": "Neris's Hourglass", "category": "relic", "tier": 3, "stackSize": 1, "legend": { "godAffinity": "god-neris", "history": "Filled with the last wet sand in the world. Turn it and, once a day, ten seconds agree to happen again." }, "text": "A legend of the tide-line." },
+  { "id": "item-salt-fathers-hearthstone", "name": "The Salt-Father's Hearthstone", "category": "relic", "tier": 3, "stackSize": 1, "legend": { "godAffinity": "god-halor", "history": "A village heart. Set it in your hall and nothing within the walls spoils — food, stores, or resolve." }, "text": "A legend of the hearth-line." },
+  { "id": "item-the-unlit-crown", "name": "The Unlit Crown", "category": "armor", "tier": 3, "stackSize": 1, "legend": { "godAffinity": "god-ur-noth", "history": "It costs what you'd expect. It gives more than you'd hope. That is how he works." }, "text": "A legend of the dark-line." },
+  { "id": "item-lighthouse-keepers-lantern", "name": "The Lighthouse-Keeper's Lantern", "category": "tool", "tier": 1, "stackSize": 1, "legend": { "godAffinity": "god-halor", "history": "The keeper lit it the night the sea left, and swore it would burn until the water came back for it. He kept half the promise. The dark biomes respect it." }, "text": "It never goes out." }
+]

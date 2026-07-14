@@ -1,0 +1,29 @@
+[
+  {
+    "id": "biome-salt-shallows", "name": "The Salt Shallows", "band": 1, "palette": "blinding-white-bone-blue", "lightLevel": "blinding",
+    "resourceItemIds": ["item-driftwood", "item-wreck-timber", "item-rope", "item-salt", "item-bronze-salvage", "item-ship-cloth"],
+    "creatureIds": ["creature-salt-hound", "creature-scuttle-crab", "creature-dust-eel", "creature-raider"],
+    "bossCreatureId": "creature-old-shellback",
+    "peopleIds": ["people-brinefolk"],
+    "signatureLegendItemId": "item-lighthouse-keepers-lantern",
+    "text": "Blinding flats, salt pillars, beached fleets, brine pools that burn. The bones of the coast towns."
+  },
+  {
+    "id": "biome-reef-forest", "name": "The Reef Forest", "band": 2, "palette": "muted-purple-bone-white", "lightLevel": "twilight-canopy",
+    "resourceItemIds": ["item-coralwood", "item-reef-iron", "item-pearl"],
+    "creatureIds": ["creature-eel-wolf", "creature-the-drowned", "creature-angler-stalker"],
+    "bossCreatureId": "creature-anglermother",
+    "peopleIds": ["people-reefkin"],
+    "signatureLegendItemId": "item-neriss-hourglass",
+    "text": "A forest where every tree is a dead animal. Permanent twilight under the canopy; drowned towns in the tangle."
+  },
+  {
+    "id": "biome-the-drop", "name": "The Drop", "band": 3, "palette": "biolume-on-black", "lightLevel": "biolume-only",
+    "resourceItemIds": ["item-tidebrass", "item-storm-glass", "item-trench-pearl"],
+    "creatureIds": ["creature-angler-stalker", "creature-the-drowned"],
+    "bossCreatureId": "creature-drowned-priest",
+    "peopleIds": [],
+    "signatureLegendItemId": "item-the-unlit-crown",
+    "text": "The land tilts and the light gives up. First-age wrecks, god-vaults, the last brine. Ur-Noth's country. The Verdict fork waits at the bottom."
+  }
+]

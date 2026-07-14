@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "recipe.schema.json",
+  "$comment": "v1 — two-track itemization: track=tree is deterministic; track=legend is hunted, never on the tree",
+  "type": "object",
+  "required": ["id", "track", "output", "inputs"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^recipe-[a-z0-9-]+$" },
+    "track": { "enum": ["tree", "legend"] },
+    "output": {
+      "type": "object",
+      "required": ["itemId", "qty"],
+      "properties": { "itemId": { "type": "string" }, "qty": { "type": "integer", "minimum": 1 } },
+      "additionalProperties": false
+    },
+    "inputs": { "$ref": "common.schema.json#/$defs/cost" },
+    "stationWorkId": { "type": "string", "description": "where it's crafted; omit for hand-craft" },
+    "unlock": {
+      "type": "object",
+      "description": "tree: discovery by material pickup / tier. legend: fragments.",
+      "properties": {
+        "byItems": { "type": "array", "items": { "type": "string" } },
+        "byTier": { "type": "integer" },
+        "fragments": {
+          "type": "integer", "minimum": 1, "maximum": 3,
+          "description": "legend only: recipe fragment count, PLACED in the world, never rolled"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ritual": {
+      "type": "object",
+      "description": "legend finals: the craft is an event",
+      "properties": {
+        "atWorkId": { "type": "string" },
+        "eventMaterial": { "type": "string", "description": "at least one input sourced from an event (storm carcass, seasonal spawn, expedition)" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

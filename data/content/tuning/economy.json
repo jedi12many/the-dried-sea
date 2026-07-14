@@ -1,0 +1,26 @@
+{
+  "$comment": "v0 tuning — Vigor/worship/favor economy. Spec targets (WORLD-SPEC): magic saves your life ~once per pickle; if a player casts daily we tuned it wrong. All numbers are first guesses for the golden-economy test to interrogate.",
+  "vigor": {
+    "defaultMax": 100,
+    "castsUntilSpentTypical": 2.5,
+    "dormantThreshold": 5,
+    "blessingDimCurve": [[100, 1.0], [60, 0.85], [30, 0.5], [5, 0.0]]
+  },
+  "worship": {
+    "riteRecoveryPerDayByChurchTier": { "shrine": 4, "chapel": 9, "church": 16, "basilica": 28 },
+    "priestRankMult": [1.0, 1.25, 1.6],
+    "offeringBuydownMaxMult": 2.0,
+    "devoutVillagerTricklePerDay": 0.5,
+    "multiGodWorshipSplit": "per-god rites; time is the cost of breadth"
+  },
+  "devotion": {
+    "ranksBudgetAtEA": 5,
+    "rankCosts": [1, 1, 2],
+    "rededication": { "offeringCost": 40, "timeGateDays": 2, "urNothExitMult": 3.0 }
+  },
+  "favor": {
+    "buildPulse": 5,
+    "tierThresholds": [0, 25, 75, 150],
+    "$comment": "work favorTrickle rates are per-work in works.json; idle works trickle 0 by design"
+  }
+}

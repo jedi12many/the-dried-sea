@@ -1,0 +1,47 @@
+{
+  "id": "god-vessa",
+  "name": "Vessa",
+  "workingName": true,
+  "title": "the Current-Runner",
+  "domain": "Currents, travel, cunning — the shortest way is the one the water would have taken.",
+  "voice": {
+    "tone": "quick, amused, already halfway elsewhere; never finishes a goodbye",
+    "imagery": ["a channel through the flats only she remembers", "cargo that arrives before the news of it", "footprints that end mid-stride"],
+    "sampleLine": "Lost? No such thing. There are only ways you haven't used yet."
+  },
+  "blessing": {
+    "name": "The Runner's Trade",
+    "text": "The distance argues less with you than with other people.",
+    "effectsByRank": [
+      [{ "type": "stat-mod", "params": { "stat": "carry-weight" }, "magnitude": 1.15, "target": "self" }],
+      [{ "type": "stat-mod", "params": { "stat": "carry-weight" }, "magnitude": 1.3, "target": "self" }, { "type": "stat-mod", "params": { "stat": "move-speed" }, "magnitude": 1.1, "target": "self" }],
+      [{ "type": "stat-mod", "params": { "stat": "carry-weight" }, "magnitude": 1.3, "target": "self" }, { "type": "stat-mod", "params": { "stat": "move-speed" }, "magnitude": 1.15, "target": "self" }, { "type": "fall-damage-immune", "target": "self" }]
+    ]
+  },
+  "invocations": [
+    {
+      "id": "inv-rip-current",
+      "name": "Rip-Current",
+      "rankRequired": 1,
+      "vigorCost": 0.3,
+      "text": "The old current takes you — through them, past them, gone.",
+      "effects": [{ "type": "dash-through", "magnitude": 12, "target": "self", "params": { "carriesAllies": true } }]
+    },
+    {
+      "id": "inv-undertow",
+      "name": "Undertow",
+      "rankRequired": 2,
+      "vigorCost": 0.35,
+      "text": "The sea used to decide where things stood. For a moment, so do you.",
+      "effects": [{ "type": "forced-pull", "magnitude": 10, "target": "enemy", "params": { "direction": "to-or-from-caster" } }]
+    }
+  ],
+  "priest": {
+    "title": "Way-Finder",
+    "arrival": "You never see them arrive. They are simply at your map table one morning, correcting it.",
+    "notes": "Sells the best rumor stock of any priest — travel gossip is her tithe."
+  },
+  "flags": [],
+  "affinityLegendIds": [],
+  "lore": "The explorer's god. Every road you build is a prayer she answers with shortcuts."
+}
