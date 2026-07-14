@@ -17,8 +17,15 @@ stop — it belongs in data. A future Unreal build must be able to consume
   vigorCost change; spec bands are asserted (exit 1 = your tuning broke the design).
 - `git commit` style: `feat(sim): ...`, `feat(data): ...`, `fix(game): ...`;
   small commits, one system per commit.
-- Godot headless (once game/ is fleshed out at M0):
-  `godot --headless --path game --script res://tests/run_tests.gd`
+- Godot 4.7 is installed via winget WITHOUT a PATH alias. The exe:
+  `$LOCALAPPDATA/Microsoft/WinGet/Packages/GodotEngine.GodotEngine_Microsoft.Winget.Source_8wekyb3d8bbwe/Godot_v4.7-stable_win64_console.exe`
+- Run sim tests (after any sim/ or data/ change):
+  `"$GODOT" --headless --path game --script res://tests/run_tests.gd`
+- If tests fail with "Identifier not declared" parse errors after adding a
+  class_name: run `"$GODOT" --headless --path game --import` once to rebuild
+  the global class cache, then re-run.
+- GDScript gotcha: `:=` cannot infer from Dictionary member access (Variant) —
+  type it explicitly (`var x: float = float(dict.key)`).
 
 ## Conventions
 - IDs: kebab-case, globally unique, never renamed once committed (saves and

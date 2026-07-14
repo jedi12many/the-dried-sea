@@ -115,7 +115,7 @@ func blessing_strength(player_id: int, god_id: String) -> float:
 	if s.rank == 0 or s.dormant:
 		return 0.0
 	var curve: Array = econ.get("vigor", {}).get("blessingDimCurve", [])
-	var pct := s.vigor / max_vigor(god_id) * 100.0
+	var pct: float = float(s.vigor) / max_vigor(god_id) * 100.0
 	var strength := 0.0
 	for point: Array in curve:  # sorted desc by vigor pct
 		if pct <= float(point[0]):
