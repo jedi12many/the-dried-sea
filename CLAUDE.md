@@ -26,6 +26,9 @@ stop — it belongs in data. A future Unreal build must be able to consume
   the global class cache, then re-run.
 - GDScript gotcha: `:=` cannot infer from Dictionary member access (Variant) —
   type it explicitly (`var x: float = float(dict.key)`).
+- GDScript gotcha: lambdas capture locals BY VALUE — assigning a bool/int inside
+  a signal lambda does nothing outside it. Capture through an Array
+  (`var seen: Array[bool] = [false]` … `seen[0] = true`) or mutate a reference type.
 
 ## Conventions
 - IDs: kebab-case, globally unique, never renamed once committed (saves and
