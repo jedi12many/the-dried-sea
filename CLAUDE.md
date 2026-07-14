@@ -13,6 +13,8 @@ stop — it belongs in data. A future Unreal build must be able to consume
 
 ## Commands
 - `node tools/validate.mjs` — run after EVERY content edit; must pass clean.
+- `node tools/economy-model.mjs` — run after ANY tuning/economy.json or invocation
+  vigorCost change; spec bands are asserted (exit 1 = your tuning broke the design).
 - `git commit` style: `feat(sim): ...`, `feat(data): ...`, `fix(game): ...`;
   small commits, one system per commit.
 - Godot headless (once game/ is fleshed out at M0):

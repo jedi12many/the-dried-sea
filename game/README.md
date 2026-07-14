@@ -1,6 +1,11 @@
 # game/ — the Soul Build (Godot 4)
 
-Placeholder until M0. Structure to come (see docs/ARCHITECTURE.md):
+M0 in progress. **STATUS: sim skeleton written but NOT yet executed — Godot is
+not installed on this machine.** First action once installed:
+`godot --headless --path game --script res://tests/run_tests.gd`
+and fix whatever it says. Do not build on top of unverified sim code.
+
+Structure (see docs/ARCHITECTURE.md):
 
 ```
 game/
