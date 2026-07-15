@@ -60,6 +60,43 @@ func _ready() -> void:
 	check(host.clock.is_night(), "22:00 is night")
 	check(host.daynight.color != Color(1, 1, 1), "and the flats go cold")
 
+	# --- combat: the flats are not empty -----------------------------------
+	check(host.enemies.size() > 0, "salt-hounds prowl the flats")
+	check(not host.intent_attack(), "swinging at nothing hits nothing")
+	var hound: DSEnemy = host.enemies[0]
+	var far := hound.position.distance_to(host.player.position)
+	host.player.position = hound.position + Vector2(100, 0)  # inside aggro, outside bite
+	for i in 20:
+		await get_tree().physics_frame
+	check(hound.position.distance_to(host.player.position) < 100.0 - 10.0, "the hound comes for you (was %.0f away)" % far)
+
+	# it bites: standing in range costs blood
+	host.player.position = hound.position + Vector2(10, 0)
+	var hp0 := host.stats.hp(1)
+	for i in 12:
+		await get_tree().physics_frame
+	check(host.stats.hp(1) < hp0, "standing in the pack costs blood")
+
+	# swing back until it dies; the coat drops salt
+	var salt0 := host.inventory.count(1, "item-salt")
+	var pack0 := host.enemies.size()
+	var swings := 0
+	while host.enemies.size() == pack0 and swings < 30:
+		host.intent_attack()
+		swings += 1
+		for i in 8:
+			await get_tree().physics_frame  # let stamina breathe between swings
+	check(host.enemies.size() < pack0, "the hound falls (%d swings)" % swings)
+	check(host.inventory.count(1, "item-salt") > salt0, "its coat was never fur — salt drops")
+
+	# stamina gates the swing
+	host.stats.actors[1].stamina = 5.0
+	check(not host.intent_attack() or host.enemies.is_empty(), "too tired to swing")
+
+	# death is survivable (M1 placeholder: wake at center, whole)
+	host.damage_player(1000.0)
+	check(host.stats.hp(1) == 100.0, "death returns you to the center, whole")
+
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)
 

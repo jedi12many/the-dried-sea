@@ -19,6 +19,7 @@ func _init() -> void:
 	_test_works()
 	_test_verdict()
 	_test_save()
+	_test_stats()
 	_test_golden_run()
 	print("\n%d checks, %d failure(s)" % [checks, failures.size()])
 	quit(1 if failures.size() > 0 else 0)
@@ -218,6 +219,24 @@ func _test_save() -> void:
 	check(works2.placed[smoke].in_use, "the smokehouse is still curing")
 	check(ver2.lean(1) == "shepherd", "the ledgers survive")
 	check(vil2.add_tribesman("New", "class-warden", "rescued") != anna, "id counters restored — no collisions")
+
+func _test_stats() -> void:
+	var stats := StatsSystem.new()
+	stats.register("hero", 100.0, 100.0)
+	stats.register("hound", 40.0)
+
+	check(not stats.damage("hound", 39.0), "a wounded hound is not a dead hound")
+	var deaths: Array = []
+	stats.died.connect(func(id: Variant) -> void: deaths.append(id))
+	check(stats.damage("hound", 2.0), "the last point counts")
+	check(deaths == ["hound"], "death signal names the fallen")
+
+	check(stats.spend_stamina("hero", 60.0), "spend within means")
+	check(not stats.spend_stamina("hero", 60.0), "tired arms refuse — no negative stamina")
+	stats.tick(2.0)
+	check(stats.stamina("hero") > 40.0, "breath comes back with time")
+	stats.tick(100.0)
+	check(stats.stamina("hero") == 100.0, "stamina caps at max")
 
 func _test_golden_run() -> void:
 	## 30 sim-days, all systems ticking together, mid-game setup.
