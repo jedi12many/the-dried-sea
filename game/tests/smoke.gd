@@ -69,6 +69,11 @@ func _ready() -> void:
 	check((host.work_visuals[wall_inst] as Node2D).rotation_degrees == 90.0, "and the piece visibly turns")
 	host._rotate_work(wall_inst); host._rotate_work(wall_inst); host._rotate_work(wall_inst)
 	check(int(host.works.placed[wall_inst].get("rot", 0)) == 0, "four turns comes full circle")
+	# reclaim the wall — half the driftwood comes back
+	var drift_before := host.inventory.count(1, "item-driftwood")
+	host._demolish_work(wall_inst)
+	check(not host.works.placed.has(wall_inst), "Shift+right-click reclaims the wall")
+	check(host.inventory.count(1, "item-driftwood") == drift_before + 2, "and salvages half its driftwood (4→2)")
 	host.camp_center = Vector2.INF   # loosen for the scattered mechanic-tests below
 
 	# station crafting now unlocked

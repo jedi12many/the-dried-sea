@@ -26,6 +26,7 @@ on a **shared server** with the other testers. Thanks for helping.
 | X | consume a god-remnant (think first) |
 | left-drag | move any placed building |
 | right-click | turn a building 90° (walls into sides & corners) |
+| shift+right-click | reclaim a building — get half its materials back |
 
 ## What to do out there
 Follow the HUD bearings: kneel at the pale shrines, eat crabs, get home

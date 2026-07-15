@@ -11,7 +11,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.2.8"
+const GAME_VERSION := "0.2.9"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -394,15 +394,19 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and drag_work_id >= 0:
 		(work_visuals[drag_work_id] as Node2D).position = (get_global_mouse_position() / 16.0).round() * 16.0
 		return
-	# right-click a placed piece to spin it 90° (walls into corners and sides)
+	# right-click a placed piece to spin it 90°; SHIFT+right-click to reclaim it
 	if event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_RIGHT \
 			and (event as InputEventMouseButton).pressed and not menu_open and not sheet_open and net_mode != "server":
 		var mouse := get_global_mouse_position()
+		var demolish := (event as InputEventMouseButton).shift_pressed
 		for inst_id: Variant in work_visuals:
 			if is_instance_valid(work_visuals[inst_id]) \
 					and (work_visuals[inst_id] as Node2D).position.distance_to(mouse) < 30.0:
+				var act := "demolish_work" if demolish else "rotate_work"
 				if net_mode == "client":
-					rpc_id(1, "srv_intent", "rotate_work", [int(inst_id)])
+					rpc_id(1, "srv_intent", act, [int(inst_id)])
+				elif demolish:
+					_demolish_work(int(inst_id))
 				else:
 					_rotate_work(int(inst_id))
 				break
@@ -1131,6 +1135,39 @@ func _move_work(inst_id: int, pos: Vector2) -> void:
 	if net_mode == "server":
 		rpc("cl_world_sync", _world_sync())
 
+## Reclaim a placed work: remove it and refund HALF its build cost (rounded down).
+## The kindest "sell" the flats offer — there's no merchant, only what you salvage back.
+func _demolish_work(inst_id: int) -> void:
+	if not works.placed.has(inst_id):
+		return
+	var inst: Dictionary = works.placed[inst_id]
+	var work := registry.get_entity(str(inst.work_id))
+	var pos := Vector2(float(inst.get("x", 0)), float(inst.get("y", 0)))
+	var refunded: Array[String] = []
+	for c: Dictionary in work.get("buildCost", []):
+		var back := int(c.qty) / 2
+		if back > 0:
+			inventory.add(acting_pid, str(c.itemId), back)
+			refunded.append("%d %s" % [back, str(registry.get_entity(str(c.itemId)).get("name", c.itemId))])
+	# forget chapel dedication if this was one
+	for god_id: String in chapels.keys():
+		if (chapels[god_id] as Vector2).distance_to(pos) < 4.0:
+			chapels.erase(god_id)
+	works.placed.erase(inst_id)
+	if work_visuals.has(inst_id) and is_instance_valid(work_visuals[inst_id]):
+		work_visuals[inst_id].queue_free()
+	work_visuals.erase(inst_id)
+	# if that was the last structure, the camp un-plants (re-found it anywhere)
+	if works.placed.is_empty():
+		camp_center = Vector2.INF
+		_update_camp_ring()
+	sfx("build")
+	message = "You reclaim the %s.%s" % [str(work.name).to_lower(),
+		"  Salvaged: %s." % ", ".join(refunded) if refunded.size() > 0 else ""]
+	_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+
 ## Rotate a placed work 90° (walls, fences — everything can turn).
 func _rotate_work(inst_id: int) -> void:
 	if not works.placed.has(inst_id):
@@ -1574,7 +1611,7 @@ func _refresh_hud() -> void:
 		weather = "  — THE GREAT STORM"
 	elif "god-maren" in attuned_for(my_pid) and (clock.day + 1) % 4 == 3:
 		weather = "  — Maren whispers: storm tomorrow"
-	hud.text = "Day %d, %02d:%02d%s%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [T] tally  [SPACE] attack  [drag/R-click] move·turn builds%s\n%s" % [
+	hud.text = "Day %d, %02d:%02d%s%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [T] tally  [SPACE] attack  [drag] move  [R-click] turn  [Shift+R-click] reclaim%s\n%s" % [
 		clock.day + 1, clock.minute_of_day / 60, clock.minute_of_day % 60, weather,
 		"  — night. NIGHT BELONGS TO THE HOUNDS." if clock.is_night() else "",
 		"  |  fed ×%d" % fed if fed > 0 else "", _direction_hints(),
@@ -1745,6 +1782,7 @@ func srv_intent(kind: String, args: Array) -> void:
 		"deallocate": abilities.deallocate(acting_pid, str(args[0]))
 		"move_work": _move_work(int(args[0]), Vector2(float(args[1]), float(args[2])))
 		"rotate_work": _rotate_work(int(args[0]))
+		"demolish_work": _demolish_work(int(args[0]))
 	rpc_id(peer_id, "cl_player_state", _player_state(acting_pid))
 	rpc("cl_world_sync", _world_sync())
 
@@ -1891,6 +1929,13 @@ func cl_world_sync(w: Dictionary) -> void:
 			_spawn_work_visual(int(inst_id), str(inst.work_id), wpos, chapel_dict)
 		elif int(inst_id) != drag_work_id:
 			(work_visuals[int(inst_id)] as Node2D).position = wpos
+			(work_visuals[int(inst_id)] as Node2D).rotation_degrees = float(inst.get("rot", 0))
+	# a work removed on the server (demolished) must vanish here too
+	for vid: int in work_visuals.keys():
+		if not placed.has(vid):
+			if is_instance_valid(work_visuals[vid]):
+				work_visuals[vid].queue_free()
+			work_visuals.erase(vid)
 	for god_id: Variant in chapel_dict:
 		var cp: Array = chapel_dict[god_id]
 		chapels[str(god_id)] = Vector2(float(cp[0]), float(cp[1]))
