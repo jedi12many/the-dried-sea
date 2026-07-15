@@ -64,8 +64,28 @@ func _physics_process(_delta: float) -> void:
 			return
 		velocity = (target - position).normalized() * FOLLOW_SPEED
 	else:
-		# settled: small unhurried life around the village heart
-		if _wander_target == Vector2.ZERO or position.distance_to(_wander_target) < 8.0:
-			_wander_target = center + Vector2(_rng.randf_range(-120, 120), _rng.randf_range(-120, 120))
-		velocity = (_wander_target - position).normalized() * WANDER_SPEED
+		# settled: a real day — work in the morning, rites in the evening, home at night
+		var duty := _daily_target(center)
+		if duty != Vector2.INF:
+			if position.distance_to(duty) > 20.0:
+				velocity = (duty - position).normalized() * WANDER_SPEED * 2.2
+			else:
+				velocity = Vector2.ZERO   # at her post
+		else:
+			# midday: small unhurried life around the village heart
+			if _wander_target == Vector2.ZERO or position.distance_to(_wander_target) < 8.0:
+				_wander_target = center + Vector2(_rng.randf_range(-120, 120), _rng.randf_range(-120, 120))
+			velocity = (_wander_target - position).normalized() * WANDER_SPEED
 	move_and_slide()
+
+## Where her day wants her. INF = free time (wander).
+func _daily_target(center: Vector2) -> Vector2:
+	var hour := host.clock.minute_of_day / 60
+	if hour >= 6 and hour < 11:
+		var post := host.work_pos("work-smokehouse")
+		return post if post != Vector2.INF else host.work_pos("work-hearth")
+	if hour >= 17 and hour < 21:
+		return host.chapels.get("god-halor", Vector2.INF)
+	if hour >= 21 or hour < 6:
+		return center + Vector2(0, 40)   # home is near the heart, for now
+	return Vector2.INF

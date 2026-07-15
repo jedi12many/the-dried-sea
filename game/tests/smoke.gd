@@ -348,6 +348,27 @@ func _ready() -> void:
 	check(not host.is_storm_day(), "the sky clears")
 	check(_node_of(host, "item-storm-glass") == null, "and takes its glass back")
 
+	# --- Anna keeps a day ------------------------------------------------------
+	var center := Vector2(GameHost.WORLD.x * GameHost.TILE / 2.0, GameHost.WORLD.y * GameHost.TILE / 2.0)
+	host.survivor.position = center  # settled
+	host.inventory.add(1, "item-wreck-timber", 8)
+	host.inventory.add(1, "item-salt", 12)
+	host.player.position = center + Vector2(-200, 0)
+	check(host.intent_build("work-smokehouse") or host.works.count_of("work-smokehouse") > 0, "a smokehouse stands")
+	host.clock.minute_of_day = 8 * 60  # working morning
+	var post := host.work_pos("work-smokehouse")
+	var gap0 := host.survivor.position.distance_to(post)
+	for i in 40:
+		await get_tree().physics_frame
+	check(host.survivor.position.distance_to(post) < gap0, "morning: Anna walks to her work (%.0f -> %.0f)" % [gap0, host.survivor.position.distance_to(post)])
+	host.clock.minute_of_day = 18 * 60  # evening rites
+	for i in 40:
+		await get_tree().physics_frame
+	var chapel_gap: float = host.survivor.position.distance_to(host.chapels["god-halor"])
+	for i in 40:
+		await get_tree().physics_frame
+	check(host.survivor.position.distance_to(host.chapels["god-halor"]) <= chapel_gap, "evening: she turns toward the chapel")
+
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)
 

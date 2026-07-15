@@ -170,6 +170,14 @@ func load_game() -> void:
 		survivor.position = Vector2(float(sp[0]), float(sp[1]))
 	_refresh_hud()
 
+## Where the first instance of a work stands (villager duty posts).
+func work_pos(work_id: String) -> Vector2:
+	for inst_id: Variant in works.placed:
+		var inst: Dictionary = works.placed[inst_id]
+		if str(inst.work_id) == work_id:
+			return Vector2(float(inst.get("x", 0)), float(inst.get("y", 0)))
+	return Vector2.INF
+
 func _chapels_to_dict() -> Dictionary:
 	var out := {}
 	for god_id: String in chapels:
