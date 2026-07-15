@@ -1,15 +1,207 @@
 [
-  { "id": "recipe-rope", "track": "tree", "output": { "itemId": "item-rope", "qty": 2 }, "inputs": [{ "itemId": "item-ship-cloth", "qty": 1 }], "unlock": { "byItems": ["item-ship-cloth"] } },
-  { "id": "recipe-salt-harvest", "track": "tree", "output": { "itemId": "item-salt", "qty": 5 }, "inputs": [{ "itemId": "item-driftwood", "qty": 1 }], "stationWorkId": "work-workbench", "unlock": { "byTier": 0 } },
-  { "id": "recipe-smoked-crab", "track": "tree", "output": { "itemId": "item-smoked-crab", "qty": 1 }, "inputs": [{ "itemId": "item-crab-meat", "qty": 2 }, { "itemId": "item-salt", "qty": 1 }], "stationWorkId": "work-smokehouse", "unlock": { "byItems": ["item-crab-meat"] } },
-  { "id": "recipe-smoked-eel", "track": "tree", "output": { "itemId": "item-smoked-eel", "qty": 1 }, "inputs": [{ "itemId": "item-eel-meat", "qty": 2 }, { "itemId": "item-salt", "qty": 1 }], "stationWorkId": "work-smokehouse", "unlock": { "byItems": ["item-eel-meat"] } },
   {
-    "id": "recipe-marens-own-harpoon", "track": "legend",
-    "output": { "itemId": "item-marens-own-harpoon", "qty": 1 },
-    "inputs": [{ "itemId": "item-bronze-salvage", "qty": 6 }, { "itemId": "item-storm-glass", "qty": 3 }, { "itemId": "item-wreck-timber", "qty": 4 }],
-    "unlock": { "fragments": 3 },
+    "id": "recipe-rope",
+    "track": "tree",
+    "output": {
+      "itemId": "item-rope",
+      "qty": 2
+    },
+    "inputs": [
+      {
+        "itemId": "item-ship-cloth",
+        "qty": 1
+      }
+    ],
+    "unlock": {
+      "byItems": [
+        "item-ship-cloth"
+      ]
+    }
+  },
+  {
+    "id": "recipe-salt-harvest",
+    "track": "tree",
+    "output": {
+      "itemId": "item-salt",
+      "qty": 5
+    },
+    "inputs": [
+      {
+        "itemId": "item-driftwood",
+        "qty": 1
+      }
+    ],
+    "stationWorkId": "work-workbench",
+    "unlock": {
+      "byTier": 0
+    }
+  },
+  {
+    "id": "recipe-smoked-crab",
+    "track": "tree",
+    "output": {
+      "itemId": "item-smoked-crab",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-crab-meat",
+        "qty": 2
+      },
+      {
+        "itemId": "item-salt",
+        "qty": 1
+      }
+    ],
+    "stationWorkId": "work-smokehouse",
+    "unlock": {
+      "byItems": [
+        "item-crab-meat"
+      ]
+    }
+  },
+  {
+    "id": "recipe-smoked-eel",
+    "track": "tree",
+    "output": {
+      "itemId": "item-smoked-eel",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-eel-meat",
+        "qty": 2
+      },
+      {
+        "itemId": "item-salt",
+        "qty": 1
+      }
+    ],
+    "stationWorkId": "work-smokehouse",
+    "unlock": {
+      "byItems": [
+        "item-eel-meat"
+      ]
+    }
+  },
+  {
+    "id": "recipe-marens-own-harpoon",
+    "track": "legend",
+    "output": {
+      "itemId": "item-marens-own-harpoon",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-bronze-salvage",
+        "qty": 6
+      },
+      {
+        "itemId": "item-storm-glass",
+        "qty": 3
+      },
+      {
+        "itemId": "item-wreck-timber",
+        "qty": 4
+      }
+    ],
+    "unlock": {
+      "fragments": 3
+    },
     "fragmentItemId": "item-harpoon-verse",
-    "ritual": { "atWorkId": "work-chapel", "eventMaterial": "item-storm-glass" },
+    "ritual": {
+      "atWorkId": "work-chapel",
+      "eventMaterial": "item-storm-glass"
+    },
     "$comment": "The first live Track-2 legend. Verses PLACED: Shellback's hoard / Maren's shrine-gift / folded in storm-glass. Storm-glass only forms during great storms (event material); the final craft is a rite at a chapel. Slice-tier inputs (bronze); the tidebrass version returns at tier 3. Rare because the journey is long, never lottery."
+  },
+  {
+    "id": "recipe-driftwood-club",
+    "track": "tree",
+    "output": {
+      "itemId": "item-driftwood-club",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-driftwood",
+        "qty": 4
+      },
+      {
+        "itemId": "item-rope",
+        "qty": 1
+      }
+    ],
+    "unlock": {
+      "byItems": [
+        "item-driftwood"
+      ]
+    }
+  },
+  {
+    "id": "recipe-bronze-knife",
+    "track": "tree",
+    "output": {
+      "itemId": "item-bronze-knife",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-bronze-salvage",
+        "qty": 4
+      },
+      {
+        "itemId": "item-wreck-timber",
+        "qty": 1
+      }
+    ],
+    "stationWorkId": "work-workbench",
+    "unlock": {
+      "byItems": [
+        "item-bronze-salvage"
+      ]
+    }
+  },
+  {
+    "id": "recipe-salt-votive",
+    "track": "tree",
+    "output": {
+      "itemId": "item-salt-votive",
+      "qty": 2
+    },
+    "inputs": [
+      {
+        "itemId": "item-salt",
+        "qty": 6
+      }
+    ],
+    "stationWorkId": "work-workbench",
+    "unlock": {
+      "byTier": 0
+    }
+  },
+  {
+    "id": "recipe-salt-ration",
+    "track": "tree",
+    "output": {
+      "itemId": "item-salt-ration",
+      "qty": 2
+    },
+    "inputs": [
+      {
+        "itemId": "item-salt",
+        "qty": 2
+      },
+      {
+        "itemId": "item-crab-meat",
+        "qty": 1
+      }
+    ],
+    "stationWorkId": "work-smokehouse",
+    "unlock": {
+      "byItems": [
+        "item-crab-meat"
+      ]
+    }
   }
 ]

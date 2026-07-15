@@ -55,6 +55,28 @@ func _ready() -> void:
 	host.inventory.add(1, "item-driftwood", 1)
 	check(host.intent_craft("recipe-salt-harvest"), "workbench enables salt harvest")
 
+	# --- tools of the trade: the pack decides the swing ----------------------
+	check(host.attack_damage() == 12.0, "bare hands to start")
+	host.inventory.add(1, "item-driftwood", 4)
+	host.inventory.add(1, "item-rope", 1)
+	check(host.intent_craft("recipe-driftwood-club"), "a club from the sea's first gift")
+	check(host.attack_damage() == 15.0, "the club swings harder")
+	host.inventory.add(1, "item-bronze-salvage", 4)
+	host.inventory.add(1, "item-wreck-timber", 1)
+	check(host.intent_craft("recipe-bronze-knife"), "bronze knife off the workbench")
+	check(host.attack_damage() == 19.0, "bronze beats driftwood")
+
+	# tending: stand at the workbench, put it to work
+	var wb_pos := host.work_pos("work-workbench")
+	host.player.position = wb_pos
+	check(host.current_prompt().contains("working"), "crafting put the bench to work already")
+	host._on_sim_day(0)   # dawn: works rest
+	check(host.current_prompt().contains("Tend"), "at dawn it needs tending again")
+	check(host.intent_interact(), "tend the workbench")
+	for iid: Variant in host.works.placed:
+		if str(host.works.placed[iid].work_id) == "work-workbench":
+			check(bool(host.works.placed[iid].in_use), "and it is WORKING")
+
 	# day/night: run the clock to 22:00, the world darkens
 	host.clock.minute_of_day = 22 * 60
 	host.clock.advance(1.0)  # tick one minute to apply

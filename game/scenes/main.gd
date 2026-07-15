@@ -11,7 +11,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.2.2"
+const GAME_VERSION := "0.2.3"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -311,6 +311,12 @@ func current_prompt() -> String:
 			if _carrying_remnant():
 				return "[E] Enshrine the remnant"
 			return "[E] Hold the rite" if not rites_done_today.get(god_id, false) else "(rite already held today)"
+	var pw := nearest_work(player.position)
+	if pw >= 0:
+		var winst: Dictionary = works.placed[pw]
+		if bool(winst.get("in_use", false)):
+			return "(the %s is working)" % str(registry.get_entity(str(winst.work_id)).name).to_lower()
+		return "[E] Tend the %s" % str(registry.get_entity(str(winst.work_id)).name).to_lower()
 	var best := harvest_range()
 	var best_item := ""
 	for node in resource_nodes:
@@ -426,7 +432,44 @@ func intent_interact() -> bool:
 			if _carrying_remnant():
 				return intent_enshrine(god_id)
 			return intent_rite(god_id)
+	var near_work := nearest_work(acting_pos())
+	if near_work >= 0:
+		return intent_tend(near_work)
 	return intent_harvest()
+
+## The nearest placed work in reach that isn't a chapel (chapels have rites).
+func nearest_work(from: Vector2) -> int:
+	var best := interact_range()
+	var found := -1
+	for inst_id: Variant in works.placed:
+		var inst: Dictionary = works.placed[inst_id]
+		if str(inst.work_id) == "work-chapel":
+			continue
+		var d := from.distance_to(Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))))
+		if d < best:
+			best = d
+			found = int(inst_id)
+	return found
+
+## Tend a work: set it WORKING for the day (use is worship — its god gets the
+## trickle). Tend again to hear about it instead.
+func intent_tend(inst_id: int) -> bool:
+	var inst: Dictionary = works.placed[inst_id]
+	var work := registry.get_entity(str(inst.work_id))
+	var god_id: String = work.get("godId", "neutral")
+	var god_line := ""
+	if god_id != "neutral":
+		god_line = " %s's work — kept in use, it feeds them favor." % str(registry.get_entity(god_id).name)
+	if not bool(inst.get("in_use", false)):
+		works.set_in_use(inst_id, true)
+		sfx("craft")
+		message = "You tend the %s: it is WORKING until dawn.%s
+%s" % [str(work.name).to_lower(), god_line, str(work.get("text", ""))]
+	else:
+		message = "The %s is working.%s
+%s" % [str(work.name).to_lower(), god_line, str(work.get("text", ""))]
+	_refresh_hud()
+	return true
 
 func _carrying_remnant() -> bool:
 	for item_id: String in inventory._inv(acting_pid).keys():
@@ -638,6 +681,12 @@ func intent_craft(recipe_id: String) -> bool:
 	var ok := inventory.craft(acting_pid, recipe_id, works)
 	if ok:
 		sfx("craft")
+		var station: String = registry.get_entity(recipe_id).get("stationWorkId", "")
+		if station != "":
+			for inst_id: Variant in works.placed:
+				if str(works.placed[inst_id].work_id) == station:
+					works.set_in_use(int(inst_id), true)   # using it IS use
+					break
 		var recipe := registry.get_entity(recipe_id)
 		if recipe.get("track", "") == "legend":
 			var item := registry.get_entity(str(recipe.output.itemId))
@@ -689,9 +738,14 @@ func intent_attack() -> bool:
 		_on_enemy_killed(target)
 	return true
 
+const WEAPONS := {"item-marens-own-harpoon": 26.0, "item-bronze-knife": 19.0, "item-driftwood-club": 15.0}
+
 func attack_damage() -> float:
-	# the legend in your hands changes what your hands can do — and so do your virtues
-	var dmg := 26.0 if inventory.count(acting_pid, "item-marens-own-harpoon") > 0 else ATTACK_DAMAGE
+	# the best weapon in your pack decides the swing — legends, then bronze, then wood
+	var dmg := ATTACK_DAMAGE
+	for weapon: String in WEAPONS:
+		if inventory.count(acting_pid, weapon) > 0:
+			dmg = maxf(dmg, float(WEAPONS[weapon]))
 	dmg = abilities.mod_add(acting_pid, "melee-damage", dmg)
 	dmg = abilities.mod_add(acting_pid, "bolt-on-swing", dmg)
 	return dmg
@@ -907,7 +961,9 @@ func _spawn_work_visual(inst_id: int, work_id: String, pos: Vector2, chapel_hint
 	var work := registry.get_entity(work_id)
 	var work_sprites := {
 		"work-workbench": "workbench", "work-chapel": "chapel", "work-smokehouse": "smokehouse",
-		"work-hearth": "hearth", "work-driftwood-wall": "wall",
+		"work-hearth": "hearth", "work-driftwood-wall": "wall", "work-yoke-post": "yoke_post",
+		"work-salt-cellar": "salt_cellar", "work-lightning-rod": "lightning_rod",
+		"work-storm-cistern": "storm_cistern",
 	}
 	var fallback := Color("6e5138") if not work.get("grim", false) else Color("5b3a6e")
 	if work_id == "work-chapel":
@@ -1068,6 +1124,8 @@ func _on_sim_day(_day: int) -> void:
 	for id: int in village.tribesmen:
 		village.drift_day(id, conditions)
 	devotion.villager_trickle_day(acting_pid, "god-halor", village.devout_count("god-halor"))
+	for inst_id: Variant in works.placed:
+		works.placed[inst_id].in_use = false   # dawn: works rest until tended
 	village.end_of_day()
 	cheat_death_used.clear()
 	for pid: Variant in stats.actors:
