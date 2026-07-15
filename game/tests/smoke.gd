@@ -35,7 +35,7 @@ func _ready() -> void:
 	var cloth := _node_of(host, "item-ship-cloth")
 	host.player.position = cloth.position
 	check(host.intent_harvest(), "harvested the sail-cloth underfoot")
-	check(host.inventory.count(1, "item-ship-cloth") == 2, "cloth in hand")
+	check(host.inventory.count(1, "item-ship-cloth") == 3, "cloth in hand (nodes yield 3 now)")
 
 	# craft: rope from cloth, by hand
 	check(host.intent_craft("recipe-rope"), "hand-crafted rope from cloth")
@@ -293,6 +293,9 @@ func _ready() -> void:
 	check(host.verdict.god_world_strength["god-halor"] == halor_strength0 - 10.0, "some of what dimmed comes back")
 
 	# --- the flats remember: full save -> fresh world -> load ----------------
+	var take_one := _node_of(host, "item-salt")
+	host.player.position = take_one.position
+	host.intent_harvest()  # dawns respawn salvage now: ensure something is missing AT save time
 	host.save_game()
 	var host2: GameHost = load("res://scenes/main.tscn").instantiate()
 	host2.skip_autoload = true
@@ -306,12 +309,16 @@ func _ready() -> void:
 	check(host2.inventory.count(1, "item-rope") == host.inventory.count(1, "item-rope"), "the pack survives")
 	check(host2.village.tribesmen.size() == host.village.tribesmen.size(), "Anna is still yours")
 	check(host2.survivor.rescued, "and she knows it")
-	check(host2.resource_nodes.size() < 48, "harvested nodes stay harvested")
+	check(host2.resource_nodes.size() < host2.node_defs.size(), "harvested nodes stay harvested")
 	check(_enemy_of(host2, "creature-old-shellback") == null, "Old Shellback stays dead")
 	check(absf(float(host2.verdict.god_world_strength["god-halor"]) - float(host.verdict.god_world_strength["god-halor"])) < 0.01, "the world remembers what you consumed")
 	host2.queue_free()
 
 	# --- the great storm ------------------------------------------------------
+	# (dawns now respawn salvage, so guarantee something is freshly missing)
+	var fresh_node := _node_of(host, "item-driftwood")
+	host.player.position = fresh_node.position
+	host.intent_harvest()
 	var taken_before := host.harvested_indices.size()
 	check(taken_before > 0, "some salvage is gone (we took it)")
 	host.clock.day = 3

@@ -699,9 +699,14 @@ func _spawn_resource_nodes() -> void:
 	rng.seed = 11
 	var biome := registry.get_entity("biome-salt-shallows")
 	var idx := 0
+	var taken_tiles := {}
 	for item_id: String in biome.get("resourceItemIds", []):
-		for i in 8:
-			var pos := Vector2(rng.randi_range(2, WORLD.x - 2) * TILE, rng.randi_range(2, WORLD.y - 2) * TILE)
+		for i in 14:
+			var tile := Vector2i(rng.randi_range(2, WORLD.x - 2), rng.randi_range(2, WORLD.y - 2))
+			while taken_tiles.has(tile):
+				tile = Vector2i(rng.randi_range(2, WORLD.x - 2), rng.randi_range(2, WORLD.y - 2))
+			taken_tiles[tile] = true
+			var pos := Vector2(tile.x * TILE, tile.y * TILE)
 			node_defs.append({"item_id": item_id, "pos": pos, "idx": idx})
 			_spawn_one_node(item_id, pos, idx)
 			idx += 1
@@ -716,7 +721,7 @@ func _spawn_one_node(item_id: String, pos: Vector2, idx: int) -> Area2D:
 	var node := Area2D.new()
 	node.position = pos
 	node.set_meta("item_id", item_id)
-	node.set_meta("qty", 2)
+	node.set_meta("qty", 3)
 	node.set_meta("idx", idx)
 	var visual := SpriteKit.sprite(NODE_SPRITES.get(item_id, "none"),
 		Vector2(16, 16), ITEM_COLORS.get(item_id, Color("c9a648")))
@@ -783,17 +788,47 @@ func _storm_dawn() -> void:
 		if is_instance_valid(node) and int(node.get_meta("idx", -1)) >= STORM_GLASS_IDX_BASE:
 			resource_nodes.erase(node)
 			node.queue_free()
-	if not is_storm_day():
-		return
-	# the seabed shifts: some of what was taken is uncovered again
+	# every dawn uncovers a little; storm dawns uncover a lot
 	var respawned := 0
+	var respawn_cap := 12 if is_storm_day() else 5
 	for def: Dictionary in node_defs:
-		if respawned >= 8:
+		if respawned >= respawn_cap:
 			break
 		if int(def.idx) in harvested_indices:
 			harvested_indices.erase(int(def.idx))
 			_spawn_one_node(str(def.item_id), def.pos, int(def.idx))
 			respawned += 1
+	# and the flats restock their fauna (the food chain survives your appetite)
+	var crabs := 0
+	var hounds := 0
+	for e in enemies:
+		if is_instance_valid(e):
+			if e.creature_id == "creature-scuttle-crab":
+				crabs += 1
+			elif e.creature_id == "creature-salt-hound":
+				hounds += 1
+	var fauna_rng := RandomNumberGenerator.new()
+	fauna_rng.seed = 500 + clock.day
+	var center := Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
+	while crabs < 8:
+		var crab := DSEnemy.new()
+		crab.position = Vector2(fauna_rng.randi_range(2, WORLD.x - 2) * TILE, fauna_rng.randi_range(2, WORLD.y - 2) * TILE)
+		crab.setup(self, "creature-scuttle-crab")
+		add_child(crab)
+		enemies.append(crab)
+		crabs += 1
+	while hounds < 6:
+		var hound := DSEnemy.new()
+		var pos := center
+		while pos.distance_to(center) < 350.0:
+			pos = Vector2(fauna_rng.randi_range(2, WORLD.x - 2) * TILE, fauna_rng.randi_range(2, WORLD.y - 2) * TILE)
+		hound.position = pos
+		hound.setup(self, "creature-salt-hound")
+		add_child(hound)
+		enemies.append(hound)
+		hounds += 1
+	if not is_storm_day():
+		return
 	# and the sky leaves gifts: storm-glass, today only
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 100 + clock.day
