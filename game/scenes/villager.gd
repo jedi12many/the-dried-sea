@@ -8,6 +8,7 @@ extends CharacterBody2D
 const FOLLOW_SPEED := 120.0
 const SETTLE_RADIUS := 180.0
 const WANDER_SPEED := 30.0
+const FOLLOW_STOP := 44.0   # she keeps a respectful distance; never body-blocks
 
 var host: GameHost
 var display_name := "Anna"
@@ -19,6 +20,10 @@ var _label: Label
 
 func _ready() -> void:
 	_rng.seed = 31
+	# Friendly bodies don't block: she walks THROUGH the player and the world.
+	# (Pinning your rescuer against a salt pillar is not the fantasy.)
+	collision_layer = 0
+	collision_mask = 0
 	add_child(SpriteKit.sprite("villager", Vector2(18, 26), Color("b0765a")))
 	_label = Label.new()
 	_label.text = "someone, stranded"
@@ -46,8 +51,12 @@ func _physics_process(_delta: float) -> void:
 		return
 	var center := Vector2(GameHost.WORLD.x * GameHost.TILE / 2.0, GameHost.WORLD.y * GameHost.TILE / 2.0)
 	if position.distance_to(center) > SETTLE_RADIUS:
-		# follow whoever saved you, toward home
+		# follow whoever saved you, toward home — at heel, not underfoot
 		var target := host.player.position if host.player.position.distance_to(center) > SETTLE_RADIUS else center
+		if position.distance_to(target) <= FOLLOW_STOP:
+			velocity = Vector2.ZERO
+			move_and_slide()
+			return
 		velocity = (target - position).normalized() * FOLLOW_SPEED
 	else:
 		# settled: small unhurried life around the village heart

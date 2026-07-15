@@ -161,6 +161,22 @@ func _ready() -> void:
 	# readability: her need already stands built (the chapel) — she blooms on arrival
 	check(host.village.tribesmen[host.survivor.tribesman_id].bloomed, "Anna's Key was waiting: the chapel — she blooms")
 
+	# regression (Jeff, playtest): Anna must NEVER pin the player.
+	# She stands directly in your path north; you walk straight through her.
+	host.player.position = Vector2(4000, 4000)  # far from the village: she follows the player
+	host.survivor.position = host.player.position + Vector2(0, -30)
+	var y0 := host.player.position.y
+	Input.action_press("move_up")
+	for i in 40:
+		await get_tree().physics_frame
+	Input.action_release("move_up")
+	check(host.player.position.y < y0 - 60.0, "walked north straight through Anna (dy=%.0f)" % (host.player.position.y - y0))
+	# and at heel she idles instead of crowding into your hitbox
+	var gap := host.survivor.position.distance_to(host.player.position)
+	for i in 30:
+		await get_tree().physics_frame
+	check(host.survivor.position.distance_to(host.player.position) >= 30.0 or gap > 100.0, "she keeps a respectful distance")
+
 	# the prompt mirrors the world
 	host.player.position = host.chapels["god-halor"]
 	check(host.current_prompt().contains("rite"), "prompt at the chapel speaks of rites (got '%s')" % host.current_prompt())
