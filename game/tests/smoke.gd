@@ -259,11 +259,21 @@ func _ready() -> void:
 	host.player.position = worker.position
 	check(host.intent_interact(), "rescue the stranger")
 	check(worker.rescued and worker.tribesman_id >= 0, "they join the village")
-	check(worker.job_work_id == "work-workbench", "and take the workbench job (they are a salvager)")
+	check(worker.task == "salt", "the village assigns them to salt (best-suited, and salt is short)")
 	worker.position = host.village_heart()   # settle them at home so they work
-	var salt_b2 := host.inventory.count(1, "item-salt")
+	var salt_b2 := int(host.village_stock.get("item-salt", 0))
 	host._on_sim_day(2)
-	check(host.inventory.count(1, "item-salt") > salt_b2, "at dawn the salvager produced salt into your pack")
+	check(int(host.village_stock.get("item-salt", 0)) > salt_b2, "at dawn the salvager boiled salt into the stores")
+	# dynamic priority: fill the salt stores and their task shifts elsewhere
+	host.village_stock["item-salt"] = 50
+	host._assign_village_tasks()
+	check(worker.task != "salt", "salt full → the village moves them to what's actually short (%s)" % worker.task)
+
+	# NEED HELP: the danger helper reports the nearest beast; villagers flee on it
+	check(host.enemy_near_dist(Vector2(-8000, -8000)) > DSVillager.DANGER_RADIUS, "far off, no danger to a worker")
+	if host.enemies.size() > 0 and is_instance_valid(host.enemies[0]):
+		var e0: DSEnemy = host.enemies[0]
+		check(host.enemy_near_dist(e0.position) < DSVillager.DANGER_RADIUS, "a beast on the spot IS danger")
 	# feeding: pool food, and a fed villager doesn't go hungry
 	host.inventory.add(1, "item-smoked-crab", 5)
 	host.intent_give_food()

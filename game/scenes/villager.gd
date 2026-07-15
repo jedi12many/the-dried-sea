@@ -22,6 +22,10 @@ var job_work_id := ""       # the station this villager tends
 var mood := "steady"
 var is_captive := false     # a bound raider (origin "taken") — held, not free
 var days_held := 0
+var task := ""              # dynamically assigned: wood/food/salt/bronze
+var needs_help := false     # fled danger — waiting at home for the flats to clear
+const DANGER_RADIUS := 150.0
+const SAFE_RADIUS := 260.0
 var _wander_target := Vector2.ZERO
 var _rng := RandomNumberGenerator.new()
 var _label: Label
@@ -78,9 +82,13 @@ func _refresh_label() -> void:
 	if is_captive:
 		_label.text = "%s (bound · day %d)" % [display_name, days_held]
 		return
+	if needs_help:
+		_label.text = "%s — NEEDS HELP!" % display_name
+		return
 	var job := ""
-	if job_work_id != "" and host != null:
-		job = " · " + str(host.registry.get_entity(job_work_id).get("name", "")).to_lower()
+	if task != "":
+		job = " · " + {"wood": "gathering wood", "food": "cooking", "salt": "boiling salt",
+			"bronze": "salvaging bronze"}.get(task, task)
 	var moodword := "" if mood == "steady" else " (%s)" % _mood_word()
 	_label.text = "%s%s%s" % [display_name, job, moodword]
 
@@ -98,6 +106,25 @@ func _physics_process(_delta: float) -> void:
 	if host.net_mode == "client":
 		return   # the server walks them; we just watch
 	var center := host.village_heart()
+	# DANGER: a working villager caught near a beast drops everything and runs home
+	if rescued and not is_captive:
+		var edist := host.enemy_near_dist(position)
+		if not needs_help and edist < DANGER_RADIUS:
+			needs_help = true
+			_refresh_label()
+			if host.net_mode != "client":
+				host.on_villager_needs_help(self)
+		elif needs_help and edist > SAFE_RADIUS and position.distance_to(center) < SETTLE_RADIUS:
+			needs_help = false   # safe and home — back to work
+			_refresh_label()
+	if needs_help:
+		# run for the village heart and huddle there
+		if position.distance_to(center) > FOLLOW_STOP:
+			velocity = (center - position).normalized() * FOLLOW_SPEED
+		else:
+			velocity = Vector2.ZERO
+		move_and_slide()
+		return
 	if position.distance_to(center) > SETTLE_RADIUS:
 		var guide: Vector2 = host.nearest_threat(position).pos
 		if guide == Vector2.INF:
@@ -128,12 +155,8 @@ func _daily_target(center: Vector2) -> Vector2:
 		var yoke := host.work_pos("work-yoke-post")
 		return yoke if yoke != Vector2.INF else center   # bound to the post, or milling
 	var hour := host.clock.minute_of_day / 60
-	if hour >= 6 and hour < 17:
-		if job_work_id != "":
-			var post := host.work_pos(job_work_id)
-			if post != Vector2.INF:
-				return post
-		return Vector2.INF
+	if hour >= 6 and hour < 17 and task != "":
+		return host.task_work_zone(task)   # their assigned work: a station or a forage spot
 	if hour >= 17 and hour < 21 and def_patron != "":
 		return host.chapels.get(def_patron, Vector2.INF)
 	if hour >= 21 or hour < 6:

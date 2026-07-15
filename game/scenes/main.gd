@@ -11,7 +11,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.4.1"
+const GAME_VERSION := "0.4.2"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -81,6 +81,19 @@ const JOBS := {
 	"class-smith": ["work-workbench", "item-bronze-salvage", 2, false],
 	"class-reef-runner": ["", "item-driftwood", 2, false],
 	"class-warden": ["work-yoke-post", "", 0, false],
+}
+# the self-managing labor pool: needs, what each task yields, and who's suited
+const NEED_TARGETS := {"food": 12, "wood": 14, "salt": 14, "bronze": 10}
+const TASK_ITEM := {"food": "item-smoked-crab", "wood": "item-driftwood", "salt": "item-salt", "bronze": "item-bronze-salvage"}
+const TASK_STATION := {"food": "work-smokehouse", "wood": "", "salt": "work-workbench", "bronze": "work-workbench"}
+const TASK_FORAGE_ITEM := {"wood": "item-driftwood"}   # tasks that gather from world nodes
+const TASK_BASE := 2.0
+const CLASS_SUIT := {
+	"class-reef-runner": {"food": 0.9, "wood": 1.6, "salt": 0.7, "bronze": 0.4},
+	"class-salvager": {"food": 0.5, "wood": 0.9, "salt": 1.6, "bronze": 1.1},
+	"class-smith": {"food": 0.4, "wood": 0.5, "salt": 1.0, "bronze": 1.6},
+	"class-brinewife": {"food": 1.6, "wood": 0.5, "salt": 0.7, "bronze": 0.3},
+	"class-warden": {"food": 0.6, "wood": 0.6, "salt": 0.6, "bronze": 0.5},
 }
 const NAME_POOL := ["Bex", "Corin", "Del", "Enna", "Fisk", "Goro", "Hale", "Isa",
 	"Joss", "Kael", "Lorn", "Mira", "Nils", "Orla", "Perr", "Renn", "Sable", "Tovin"]
@@ -284,7 +297,7 @@ func save_game() -> void:
 			return {"nid": int(v.get_meta("nid", 0)), "rescued": v.rescued, "tid": v.tribesman_id,
 				"cls": v.def_class, "job": v.job_work_id, "x": v.position.x, "y": v.position.y,
 				"name": v.display_name, "traits": v.def_traits, "patron": v.def_patron,
-				"captive": v.is_captive, "held": v.days_held}),
+				"captive": v.is_captive, "held": v.days_held, "task": v.task, "help": v.needs_help}),
 		"villager_nid": _villager_nid,
 		"village_stock": village_stock.duplicate(),
 		"message": message,
@@ -374,6 +387,7 @@ func load_game() -> void:
 		v.position = Vector2(float(pd.x), float(pd.y))
 		v.is_captive = bool(pd.get("captive", false))
 		v.days_held = int(pd.get("held", 0))
+		v.task = str(pd.get("task", ""))
 		if bool(pd.rescued):
 			v.rescued = true
 			v.tribesman_id = int(pd.get("tid", -1))
@@ -1482,30 +1496,34 @@ func _toggle_village(open: bool) -> void:
 	(village_panel.get_meta("back") as ColorRect).visible = open
 	if not open:
 		return
-	var lines := ["THE VILLAGE — [G] pool your food into the stores, [V] to close", ""]
+	var lines := ["THE VILLAGE — the flats manage their own labor; [G] trade the stores, [V] to close", ""]
 	var roster := all_villagers().filter(func(v: DSVillager) -> bool: return v.rescued and v.tribesman_id >= 0)
 	if roster.is_empty():
 		lines.append("No one has joined you yet. Strangers are stranded out on the flats — find them.")
 	else:
-		lines.append("%-10s %-11s %-13s %s" % ["NAME", "TRADE", "MOOD", "NEEDS"])
+		lines.append("%-10s %-11s %-13s %s" % ["NAME", "TRADE", "DOING", "STATUS"])
 		for v: DSVillager in roster:
 			var rec: Dictionary = village.tribesmen.get(v.tribesman_id, {})
 			var cls := str(registry.get_entity(v.def_class).get("name", "?"))
 			if v.is_captive:
 				var covered := bool(rec.get("warden_covered", true))
-				var need := "break at the Salt-Wheel, or Unbind in %d day(s)" % maxi(0, 3 - v.days_held)
-				lines.append("%-10s %-11s %-13s %s" % [v.display_name.left(10), "CAPTIVE", ("warded" if covered else "UNWATCHED"), need])
+				lines.append("%-10s %-11s %-13s %s" % [v.display_name.left(10), "CAPTIVE", ("warded" if covered else "UNWATCHED"),
+					"break at the Salt-Wheel, or Unbind in %d day(s)" % maxi(0, 3 - v.days_held)])
 				continue
-			var moodw := "content" if bool(rec.get("bloomed", false)) else v._mood_word()
-			var need := _villager_need(v, rec)
-			lines.append("%-10s %-11s %-13s %s" % [v.display_name.left(10), cls.left(11), moodw.left(13), need])
+			var doing: String = {"wood": "gathering wood", "food": "cooking", "salt": "boiling salt", "bronze": "salvaging bronze"}.get(v.task, "idle")
+			var status: String = "NEEDS HELP!" if v.needs_help else ("content" if bool(rec.get("bloomed", false)) else v._mood_word())
+			if not v.needs_help and not bool(rec.get("bloomed", false)):
+				status += " — " + _villager_need(v, rec)
+			lines.append("%-10s %-11s %-13s %s" % [v.display_name.left(10), cls.left(11), doing.left(13), status.left(40)])
 	lines.append("")
-	var food := _stock_food_total()
-	var stores: Array[String] = []
-	for item_id: String in village_stock:
-		stores.append("%d %s" % [int(village_stock[item_id]), str(registry.get_entity(item_id).name)])
-	lines.append("STORES: %s" % (", ".join(stores) if stores.size() > 0 else "empty"))
-	lines.append("Your people eat %d food a day; the stores hold %d. Feed them, or they sour." % [roster.size(), food])
+	var pri := _need_priority()
+	var need_bits: Array[String] = []
+	for task: String in NEED_TARGETS:
+		var have: int = _stock_food_total() if task == "food" else int(village_stock.get(TASK_ITEM[task], 0))
+		var mark := "!!" if float(pri[task]) > 0.6 else ("·" if float(pri[task]) < 0.1 else "")
+		need_bits.append("%s %d/%d%s" % [task, have, NEED_TARGETS[task], mark])
+	lines.append("NEEDS: %s   (!! = short, drives who does what)" % "   ".join(need_bits))
+	lines.append("Your people eat %d food a day. Danger sends them home; clear it or post a warden." % roster.size())
 	village_panel.text = "\n".join(lines)
 
 func _villager_need(v: DSVillager, rec: Dictionary) -> String:
@@ -1527,6 +1545,8 @@ func _villager_need(v: DSVillager, rec: Dictionary) -> String:
 	return "attention — a good day or two"
 
 ## Pool the player's food into the shared stores (feed the village).
+## Manage the stores: pour your food IN (feed the village), draw the materials
+## your people gathered OUT into your pack.
 func intent_give_food() -> void:
 	var given := 0
 	for item_id: String in inventory._inv(acting_pid).keys():
@@ -1535,8 +1555,15 @@ func intent_give_food() -> void:
 			village_stock[item_id] = int(village_stock.get(item_id, 0)) + n
 			inventory.pay(acting_pid, [{"itemId": item_id, "qty": n}])
 			given += n
+	var took := 0
+	for item_id: String in village_stock.keys():
+		if str(registry.get_entity(item_id).get("category", "")) != "food":
+			var n := int(village_stock[item_id])
+			inventory.add(acting_pid, item_id, n)
+			village_stock.erase(item_id)
+			took += n
 	sfx("build")
-	message = "You set %d food in the village stores. A fed camp is a loyal one." % given
+	message = "Stores: you gave %d food, drew %d salvage. A fed camp is a loyal one." % [given, took]
 	if village_panel_open:
 		_toggle_village(true)
 	_refresh_hud()
@@ -1854,34 +1881,32 @@ func _village_dawn() -> void:
 			if not rec2.is_empty():
 				rec2.warden_covered = covered < warden_cap
 				covered += 1
-	# 1. WORK: settled villagers with a job produce — food to the stores, materials to you
-	var produced: Array[String] = []
+	# 1. WORK: the village reassesses its needs and everyone works their task
+	_assign_village_tasks()
+	var produced := {}   # item_id -> total qty
+	var scared := 0
 	for v: DSVillager in all_villagers():
-		if not v.rescued or v.tribesman_id < 0 or v.is_captive:
-			continue   # captives are held, not working
-		if v.position.distance_to(village_heart()) > DSVillager.SETTLE_RADIUS + 80.0:
-			continue   # too far out to have worked today
-		var job: Array = JOBS.get(v.def_class, [])
-		if job.is_empty() or str(job[1]) == "":
+		if not v.rescued or v.tribesman_id < 0 or v.is_captive or v.task == "":
 			continue
-		var station: String = job[0]
+		if v.needs_help:
+			scared += 1
+			continue   # spent the day cowering at home, no work done
+		var task: String = v.task
+		var station: String = TASK_STATION[task]
 		if station != "" and works.count_of(station) == 0:
-			continue   # their building isn't built
-		if station != "":
-			# their labor keeps the station fed to its god
+			continue
+		if station != "":   # their labor keeps the station fed to its god
 			for inst_id: Variant in works.placed:
 				if str(works.placed[inst_id].work_id) == station:
 					works.set_in_use(int(inst_id), true)
 					break
-		var qty := int(round(float(job[2]) * village.output_per_hour(v.tribesman_id)))
+		var suit: float = float(CLASS_SUIT.get(v.def_class, {}).get(task, 0.5))
+		var qty := int(round(TASK_BASE * suit * village.output_per_hour(v.tribesman_id)))
 		if qty <= 0:
 			continue
-		var item_id := str(job[1])
-		if bool(job[3]):
-			village_stock[item_id] = int(village_stock.get(item_id, 0)) + qty
-		else:
-			inventory.add(acting_pid, item_id, qty)
-		produced.append("%s %s" % [qty, str(registry.get_entity(item_id).name)])
+		var item_id: String = TASK_ITEM[task]
+		village_stock[item_id] = int(village_stock.get(item_id, 0)) + qty
+		produced[item_id] = int(produced.get(item_id, 0)) + qty
 	# 2. EAT + MOOD: each villager eats from the stores; hunger and neglect sour them
 	var deserters: Array[DSVillager] = []
 	for v: DSVillager in all_villagers():
@@ -1907,24 +1932,87 @@ func _village_dawn() -> void:
 		if v == survivor:
 			survivor.rescued = false
 		v.queue_free()
-	if produced.size() > 0 and net_mode != "client":
-		message = "Dawn. Your people worked: %s." % ", ".join(produced)
+	if net_mode != "client":
+		var bits: Array[String] = []
+		for item_id: String in produced:
+			bits.append("%d %s" % [int(produced[item_id]), str(registry.get_entity(item_id).name)])
+		if bits.size() > 0:
+			message = "Dawn. The village worked: %s.%s" % [", ".join(bits),
+				"  (%d hid from danger)" % scared if scared > 0 else ""]
+		elif scared > 0:
+			message = "Dawn. Danger kept your people home — nothing got done. Clear the flats."
 	if village_panel_open:
 		_toggle_village(true)
 
-## Assign the nearest matching station as this villager's job (or forager/idle).
+## Kept for compatibility (unbind/rescue call it); real work is task-assigned.
 func assign_job(v: DSVillager) -> void:
-	var job: Array = JOBS.get(v.def_class, [])
-	if job.is_empty():
-		return
-	var station: String = job[0]
-	if station == "" or works.count_of(station) > 0:
-		v.job_work_id = station   # "" = forager (needs no building)
+	_assign_village_tasks()
 
 func _reassign_all_jobs() -> void:
+	_assign_village_tasks()
+
+## How badly the village wants each resource, 0 (full) .. ~1.5 (desperate).
+func _need_priority() -> Dictionary:
+	var out := {}
+	for task: String in NEED_TARGETS:
+		var have: int = _stock_food_total() if task == "food" else int(village_stock.get(TASK_ITEM[task], 0))
+		var target: int = NEED_TARGETS[task]
+		out[task] = clampf(float(target - have) / float(target), 0.0, 1.5)
+	return out
+
+## The village manages itself: each free villager takes the task where their
+## suitability × the current need is highest. Short on wood, your best forager
+## goes for wood; stores full, that task falls to the bottom.
+func _assign_village_tasks() -> void:
+	var pri := _need_priority()
 	for v: DSVillager in all_villagers():
-		if v.rescued and v.job_work_id == "":
-			assign_job(v)
+		if not v.rescued or v.is_captive or v.tribesman_id < 0:
+			continue
+		var suit: Dictionary = CLASS_SUIT.get(v.def_class, {})
+		var best_task := ""
+		var best_score := 0.05   # below this, idle (nothing worth doing)
+		for task: String in NEED_TARGETS:
+			var station: String = TASK_STATION[task]
+			if station != "" and works.count_of(station) == 0:
+				continue   # can't cook without a smokehouse, etc.
+			var score: float = float(pri[task]) * float(suit.get(task, 0.5))
+			if score > best_score:
+				best_score = score
+				best_task = task
+		v.task = best_task
+
+## Where a task is done: a station building, else a forage spot (nearest matching
+## world node — which is where the danger is).
+func task_work_zone(task: String) -> Vector2:
+	var station: String = TASK_STATION.get(task, "")
+	if station != "":
+		var post := work_pos(station)
+		if post != Vector2.INF:
+			return post
+	if TASK_FORAGE_ITEM.has(task):
+		var best := INF
+		var spot := Vector2.INF
+		for node in resource_nodes:
+			if is_instance_valid(node) and str(node.get_meta("item_id")) == TASK_FORAGE_ITEM[task]:
+				var d := village_heart().distance_to(node.position)
+				if d < best:
+					best = d
+					spot = node.position
+		if spot != Vector2.INF:
+			return spot
+	return village_heart() + Vector2(90, -60)   # camp edge
+
+## Distance to the nearest hostile (hound/raider) — used by villagers to flee.
+func enemy_near_dist(from: Vector2) -> float:
+	var best := INF
+	for e in enemies:
+		if is_instance_valid(e) and not e.peaceful and not e.surrendered and not e.is_boss:
+			best = minf(best, from.distance_to(e.position))
+	return best
+
+func on_villager_needs_help(v: DSVillager) -> void:
+	message = "%s fled danger and is running home — clear the flats, or send a warden." % v.display_name
+	_refresh_hud()
 
 func _on_sim_day(_day: int) -> void:
 	_village_dawn()
@@ -2462,7 +2550,7 @@ func _world_sync() -> Dictionary:
 		"pool": villagers.map(func(v: DSVillager) -> Dictionary:
 			return {"nid": int(v.get_meta("nid", 0)), "name": v.display_name, "cls": v.def_class,
 				"x": v.position.x, "y": v.position.y, "rescued": v.rescued, "mood": v.mood, "job": v.job_work_id,
-				"captive": v.is_captive, "held": v.days_held}),
+				"captive": v.is_captive, "held": v.days_held, "task": v.task, "help": v.needs_help}),
 		"stock": village_stock,
 	}
 
@@ -2630,6 +2718,8 @@ func cl_world_sync(w: Dictionary) -> void:
 		body.job_work_id = str(pd.get("job", ""))
 		body.is_captive = bool(pd.get("captive", false))
 		body.days_held = int(pd.get("held", 0))
+		body.task = str(pd.get("task", ""))
+		body.needs_help = bool(pd.get("help", false))
 		if bool(pd.rescued) and not body.rescued:
 			body.rescued = true
 		if body.rescued:
