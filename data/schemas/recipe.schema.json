@@ -16,6 +16,7 @@
     },
     "inputs": { "$ref": "common.schema.json#/$defs/cost" },
     "stationWorkId": { "type": "string", "description": "where it's crafted; omit for hand-craft" },
+    "fragmentItemId": { "type": "string", "description": "legend only: the placed fragment item; hold unlock.fragments of them to know the making (knowledge is not consumed)" },
     "unlock": {
       "type": "object",
       "description": "tree: discovery by material pickup / tier. legend: fragments.",

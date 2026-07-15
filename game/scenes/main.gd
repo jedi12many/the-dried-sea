@@ -310,6 +310,9 @@ func intent_kneel(god_id: String) -> bool:
 	message = "You kneel at the fallen shrine. %s: '%s'\n%s is with you — %s Their strength is not endless." % [
 		str(god.voice.tone).split(";")[0], str(god.voice.sampleLine),
 		str(god.name).to_upper(), str(KNEEL_HINTS.get(god_id, ""))]
+	if god_id == "god-maren":
+		inventory.add(LOCAL_PLAYER, "item-harpoon-verse", 1)
+		message += "\nTucked in the shrine-stones: a VERSE OF THE HARPOON-SONG. Whalers say there are three."
 	_toggle_build_menu(false)
 	_refresh_hud()
 	return true
@@ -399,6 +402,9 @@ func intent_harvest() -> bool:
 	if nearest == null:
 		return false
 	inventory.add(LOCAL_PLAYER, nearest.get_meta("item_id"), int(nearest.get_meta("qty")))
+	if str(nearest.get_meta("item_id")) == "item-storm-glass" and inventory.count(LOCAL_PLAYER, "item-harpoon-verse") == 2:
+		inventory.add(LOCAL_PLAYER, "item-harpoon-verse", 1)
+		message = "Folded inside the storm-glass, impossibly: the LAST VERSE of the harpoon-song.\nYou know the whole making now. It wants a rite at a chapel — bronze, storm-glass, and good timber."
 	harvested_indices.append(int(nearest.get_meta("idx", -1)))
 	resource_nodes.erase(nearest)
 	nearest.queue_free()
@@ -466,10 +472,19 @@ func _toggle_build_menu(open: bool) -> void:
 
 func intent_craft(recipe_id: String) -> bool:
 	var ok := inventory.craft(LOCAL_PLAYER, recipe_id, works)
+	if ok:
+		var recipe := registry.get_entity(recipe_id)
+		if recipe.get("track", "") == "legend":
+			var item := registry.get_entity(str(recipe.output.itemId))
+			message = "THE RITE IS DONE. %s is yours.\n%s" % [str(item.name).to_upper(), str(item.get("legend", {}).get("history", ""))]
 	_refresh_hud()
 	return ok
 
 func intent_craft_first() -> void:
+	# a known legend always takes precedence — you don't accidentally make rope instead
+	for recipe: Dictionary in registry.all_of("recipe"):
+		if recipe.get("track", "") == "legend" and intent_craft(str(recipe.id)):
+			return
 	for recipe: Dictionary in registry.all_of("recipe"):
 		if recipe.get("track", "") == "tree" and intent_craft(str(recipe.id)):
 			return
@@ -493,9 +508,15 @@ func intent_attack() -> bool:
 		return false
 	_flash_swing(target.position)
 	target.on_hit()
-	if stats.damage(target, ATTACK_DAMAGE):
+	if inventory.count(LOCAL_PLAYER, "item-marens-own-harpoon") > 0:
+		_flash_bolt(target.position)   # strike true and the bolt comes down on your mark
+	if stats.damage(target, attack_damage()):
 		_on_enemy_killed(target)
 	return true
+
+func attack_damage() -> float:
+	# the legend in your hands changes what your hands can do
+	return 26.0 if inventory.count(LOCAL_PLAYER, "item-marens-own-harpoon") > 0 else ATTACK_DAMAGE
 
 ## A short slash flash toward the target — SPACE should feel like something.
 func _flash_swing(toward: Vector2) -> void:
@@ -948,6 +969,9 @@ func _direction_hints() -> String:
 			bits.append("a pale shrine %s" % _bearing(s.position))
 	if survivor != null and not survivor.rescued:
 		bits.append("someone stranded %s" % _bearing(survivor.position))
+	var verses := inventory.count(LOCAL_PLAYER, "item-harpoon-verse")
+	if verses > 0 and verses < 3:
+		bits.append("the harpoon-song: %d/3 verses" % verses)
 	return "  |  " + ";  ".join(bits) if bits.size() > 0 else ""
 
 func _bearing(to: Vector2) -> String:

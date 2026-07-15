@@ -325,6 +325,24 @@ func _ready() -> void:
 	check(host.intent_cast("inv-call-squall"), "call the squall INTO the storm")
 	var after_cast: float = host.devotion.state[1]["god-maren"].vigor
 	check(after_cast > 60.0, "she is everywhere today — half cost (vigor %.0f)" % after_cast)
+	# --- the legend hunt: Maren's Own Harpoon --------------------------------
+	# verses so far: the shrine-gift (kneeling) + Shellback's hoard = 2
+	check(host.inventory.count(1, "item-harpoon-verse") == 2, "two verses of the harpoon-song held (got %d)" % host.inventory.count(1, "item-harpoon-verse"))
+	check(not host.intent_craft("recipe-marens-own-harpoon"), "two verses are not the song — the making refuses")
+	var glass := _node_of(host, "item-storm-glass")
+	while glass != null:
+		host.player.position = glass.position
+		host.intent_harvest()
+		glass = _node_of(host, "item-storm-glass")
+	check(host.inventory.count(1, "item-harpoon-verse") == 3, "the last verse was folded in the glass")
+	check(host.inventory.count(1, "item-storm-glass") >= 3, "storm-glass in hand — the event material")
+	host.inventory.add(1, "item-bronze-salvage", 6)
+	host.inventory.add(1, "item-wreck-timber", 4)
+	check(host.intent_craft("recipe-marens-own-harpoon"), "THE RITE IS DONE — the harpoon is forged")
+	check(host.inventory.count(1, "item-marens-own-harpoon") == 1, "Maren's Own Harpoon, in hand")
+	check(host.attack_damage() > 20.0, "the legend changes what your hands can do")
+	check(host.inventory.count(1, "item-harpoon-verse") == 3, "the song is knowledge — not consumed")
+
 	host.clock.day = 4
 	host._on_sim_day(4)
 	check(not host.is_storm_day(), "the sky clears")

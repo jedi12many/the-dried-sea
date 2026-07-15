@@ -6,9 +6,10 @@
   {
     "id": "recipe-marens-own-harpoon", "track": "legend",
     "output": { "itemId": "item-marens-own-harpoon", "qty": 1 },
-    "inputs": [{ "itemId": "item-tidebrass", "qty": 6 }, { "itemId": "item-storm-glass", "qty": 3 }, { "itemId": "item-wreck-timber", "qty": 4 }],
+    "inputs": [{ "itemId": "item-bronze-salvage", "qty": 6 }, { "itemId": "item-storm-glass", "qty": 3 }, { "itemId": "item-wreck-timber", "qty": 4 }],
     "unlock": { "fragments": 3 },
+    "fragmentItemId": "item-harpoon-verse",
     "ritual": { "atWorkId": "work-chapel", "eventMaterial": "item-storm-glass" },
-    "$comment": "Exemplar Track-2 legend: 3 PLACED fragments (Shellback's hoard / a storm-exposed wreck / a Maren sanctum), storm-glass only forms during great storms (event material), and the final craft is a rite at a Maren chapel. Rare because the journey is long, never lottery."
+    "$comment": "The first live Track-2 legend. Verses PLACED: Shellback's hoard / Maren's shrine-gift / folded in storm-glass. Storm-glass only forms during great storms (event material); the final craft is a rite at a chapel. Slice-tier inputs (bronze); the tidebrass version returns at tier 3. Rare because the journey is long, never lottery."
   }
 ]

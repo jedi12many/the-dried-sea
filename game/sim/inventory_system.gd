@@ -45,12 +45,18 @@ func pay(player_id: int, cost: Array) -> bool:
 	return true
 
 ## Craft a recipe. Station proximity enforced by the caller (intent layer).
+## Legend recipes need their PLACED fragments held — the knowledge, not consumed.
 func craft(player_id: int, recipe_id: String, works: WorksSystem) -> bool:
 	var recipe := registry.get_entity(recipe_id)
 	if recipe.is_empty():
 		return false
 	var station: String = recipe.get("stationWorkId", "")
+	if station == "":
+		station = recipe.get("ritual", {}).get("atWorkId", "")
 	if station != "" and works.count_of(station) == 0:
+		return false
+	var fragments := int(recipe.get("unlock", {}).get("fragments", 0))
+	if fragments > 0 and count(player_id, str(recipe.get("fragmentItemId", ""))) < fragments:
 		return false
 	if not pay(player_id, recipe.get("inputs", [])):
 		return false
