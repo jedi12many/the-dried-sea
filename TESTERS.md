@@ -19,7 +19,9 @@ on a **shared server** with the other testers. Thanks for helping.
 | E | interact — kneel, rescue, hold rites, gather (the prompt over your head tells you) |
 | SPACE | attack |
 | F | eat (food raises your maximums — eat BEFORE trouble) |
-| C | craft · B | build menu · T | character sheet (the Tally) |
+| C | CRAFT MENU — every recipe, its cost, and where to make it |
+| B | BUILD MENU — every building and what it does |
+| T | character sheet (the Tally) |
 | Q / R | miracles, once you've knelt to the right god |
 | X | consume a god-remnant (think first) |
 | mouse | click-and-drag any building to move it |

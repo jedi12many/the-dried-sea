@@ -55,6 +55,15 @@ func _ready() -> void:
 	host.inventory.add(1, "item-driftwood", 1)
 	check(host.intent_craft("recipe-salt-harvest"), "workbench enables salt harvest")
 
+	# --- the menus you can read ----------------------------------------------
+	var craftable := host.craftable_recipes()
+	check("recipe-rope" in craftable, "the craft menu lists rope")
+	check("recipe-marens-own-harpoon" not in craftable, "but hides the legend until you hold its verses")
+	host._render_craft_menu()
+	check(host.menu_label.text.contains("CRAFT") and host.menu_label.text.contains("by hand"), "craft menu shows recipes + where")
+	host._render_build_menu()
+	check(host.menu_label.text.contains("Workbench") and host.menu_label.text.contains("Crafting station"), "build menu shows each building's PURPOSE")
+
 	# --- tools of the trade: the pack decides the swing ----------------------
 	check(host.attack_damage() == 12.0, "bare hands to start")
 	host.inventory.add(1, "item-driftwood", 4)

@@ -29,6 +29,7 @@
       }
     },
     "footprint": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 },
+    "purpose": { "type": "string", "description": "plain one-line function shown in menus (what it DOES), distinct from flavor text" },
     "text": { "type": "string" }
   }
 }

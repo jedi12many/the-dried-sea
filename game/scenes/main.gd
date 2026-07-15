@@ -11,7 +11,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.2.5"
+const GAME_VERSION := "0.2.6"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -71,6 +71,7 @@ var petrify_frames := 0
 var message := "Something pale stands in the north flats. It looks like it is waiting."
 var menu_label: Label
 var menu_open := false
+var menu_mode := "build"   # "build" | "craft"
 
 # persistence
 var save_path := "user://dried-sea-save.json"
@@ -148,6 +149,16 @@ func _ready() -> void:
 		for i in 3:
 			abilities.allocate(acting_pid, "virtue-hunger")
 		_toggle_sheet(true)
+		_screenshot_and_quit()
+	elif "--screenshot-craft" in OS.get_cmdline_user_args():
+		for it: String in ["item-driftwood", "item-rope", "item-bronze-salvage", "item-wreck-timber", "item-salt", "item-crab-meat"]:
+			inventory.add(acting_pid, it, 8)
+		works.place("work-workbench", acting_pid, player.position + Vector2(40, 0))
+		_toggle_menu(true, "craft")
+		_screenshot_and_quit()
+	elif "--screenshot-build" in OS.get_cmdline_user_args():
+		attuned_for(acting_pid).append("god-halor")
+		_toggle_menu(true, "build")
 		_screenshot_and_quit()
 	elif "--screenshot-boss" in OS.get_cmdline_user_args():
 		player.position = Vector2(TILE * 9.0, TILE * 7.0)
@@ -376,21 +387,26 @@ func _unhandled_input(event: InputEvent) -> void:
 		var key := (event as InputEventKey).physical_keycode
 		if key >= KEY_1 and key <= KEY_9:
 			var idx := int(key - KEY_1)
-			var options := menu_works()
+			var options := menu_works() if menu_mode == "build" else craftable_recipes()
 			if idx < options.size():
-				intent_build(str(options[idx]))
-			_toggle_build_menu(false)
+				if menu_mode == "build":
+					intent_build(str(options[idx]))
+				else:
+					intent_craft(str(options[idx]))
+			_toggle_menu(false)
 			return
-		if key == KEY_ESCAPE or key == KEY_B:
-			_toggle_build_menu(false)
+		if key == KEY_ESCAPE or (key == KEY_B and menu_mode == "build") or (key == KEY_C and menu_mode == "craft"):
+			_toggle_menu(false)
 			return
+		# the OTHER menu key falls through to switch modes below
 	if event.is_action_pressed("interact"):
 		intent_interact()
 	elif event.is_action_pressed("craft"):
-		intent_craft_first()
+		sfx("ui")
+		_toggle_menu(not (menu_open and menu_mode == "craft"), "craft")
 	elif event.is_action_pressed("build"):
 		sfx("ui")
-		_toggle_build_menu(not menu_open)
+		_toggle_menu(not (menu_open and menu_mode == "build"), "build")
 	elif event.is_action_pressed("eat"):
 		intent_eat()
 	elif event.is_action_pressed("attack"):
@@ -469,14 +485,13 @@ func intent_tend(inst_id: int) -> bool:
 	var god_line := ""
 	if god_id != "neutral":
 		god_line = " %s's work — kept in use, it feeds them favor." % str(registry.get_entity(god_id).name)
+	var what := str(work.get("purpose", work.get("text", "")))
 	if not bool(inst.get("in_use", false)):
 		works.set_in_use(inst_id, true)
 		sfx("craft")
-		message = "You tend the %s: it is WORKING until dawn.%s
-%s" % [str(work.name).to_lower(), god_line, str(work.get("text", ""))]
+		message = "You tend the %s — WORKING until dawn.%s\n%s" % [str(work.name).to_lower(), god_line, what]
 	else:
-		message = "The %s is working.%s
-%s" % [str(work.name).to_lower(), god_line, str(work.get("text", ""))]
+		message = "The %s is working.%s\n%s" % [str(work.name).to_lower(), god_line, what]
 	_refresh_hud()
 	return true
 
@@ -504,7 +519,7 @@ func intent_kneel(god_id: String) -> bool:
 		inventory.add(acting_pid, "item-harpoon-verse", 1)
 		message += "\nTucked in the shrine-stones: a VERSE OF THE HARPOON-SONG. Whalers say there are three."
 	abilities.earn(acting_pid, 1)   # kneeling to a god tempers you
-	_toggle_build_menu(false)
+	_toggle_menu(false)
 	_refresh_hud()
 	return true
 
@@ -659,13 +674,41 @@ func menu_works() -> Array:
 	return out
 
 func _toggle_build_menu(open: bool) -> void:
+	_toggle_menu(open, "build")
+
+func _cost_str(cost: Array) -> String:
+	var bits: Array[String] = []
+	for c: Dictionary in cost:
+		bits.append("%s×%d" % [str(registry.get_entity(str(c.itemId)).get("name", c.itemId)), int(c.qty)])
+	return ", ".join(bits)
+
+## Recipes you can see: tree recipes always; legend recipes only once you hold
+## their fragments.
+func craftable_recipes() -> Array:
+	var out: Array = []
+	for recipe: Dictionary in registry.all_of("recipe"):
+		if recipe.get("track", "") == "legend":
+			var frags := int(recipe.get("unlock", {}).get("fragments", 0))
+			if frags > 0 and inventory.count(acting_pid, str(recipe.get("fragmentItemId", ""))) < frags:
+				continue
+		out.append(str(recipe.id))
+	return out
+
+func _toggle_menu(open: bool, mode: String = "build") -> void:
 	menu_open = open
+	menu_mode = mode
 	if menu_label == null:
 		return
 	menu_label.visible = open
 	if not open:
 		return
-	var lines := ["BUILD — press a number, [B] to close"]
+	if mode == "build":
+		_render_build_menu()
+	else:
+		_render_craft_menu()
+
+func _render_build_menu() -> void:
+	var lines := ["BUILD — number to raise it, [B] to close"]
 	var options := menu_works()
 	var last_god := ""
 	for i in options.size():
@@ -674,13 +717,35 @@ func _toggle_build_menu(open: bool) -> void:
 		if god_id != last_god:
 			last_god = god_id
 			lines.append("· %s ·" % ("salvage" if god_id == "neutral" else str(registry.get_entity(god_id).name) + "'s works"))
-		var cost_bits: Array[String] = []
-		for c: Dictionary in work.get("buildCost", []):
-			cost_bits.append("%s×%d" % [str(registry.get_entity(str(c.itemId)).get("name", c.itemId)), int(c.qty)])
 		var afford := inventory.can_afford(acting_pid, work.get("buildCost", []))
-		lines.append("%d. %s%s — %s" % [i + 1, str(work.name), "" if afford else "  (can't afford)", ", ".join(cost_bits)])
+		lines.append("%d. %s%s" % [i + 1, str(work.name), "" if afford else "  (can't afford)"])
+		lines.append("     %s" % str(work.get("purpose", work.get("text", ""))))
+		lines.append("     cost: %s" % _cost_str(work.get("buildCost", [])))
 	if attuned_for(my_pid).size() < 2:
 		lines.append("· more works open when you kneel at new shrines ·")
+	menu_label.text = "\n".join(lines)
+
+func _render_craft_menu() -> void:
+	var lines := ["CRAFT — number to make it, [C] to close"]
+	var options := craftable_recipes()
+	for i in options.size():
+		var recipe := registry.get_entity(str(options[i]))
+		var item := registry.get_entity(str(recipe.output.itemId))
+		var station: String = recipe.get("stationWorkId", "")
+		if station == "":
+			station = str(recipe.get("ritual", {}).get("atWorkId", ""))
+		var afford := inventory.can_afford(acting_pid, recipe.get("inputs", []))
+		var have_station := station == "" or works.count_of(station) > 0
+		var tag := ""
+		if not have_station:
+			tag = "  (needs %s)" % str(registry.get_entity(station).name)
+		elif not afford:
+			tag = "  (can't afford)"
+		var where := "  @ %s" % str(registry.get_entity(station).name) if station != "" else "  (by hand)"
+		lines.append("%d. %s ×%d%s" % [i + 1, str(item.name), int(recipe.output.qty), tag])
+		lines.append("     %s%s" % [_cost_str(recipe.get("inputs", [])), where])
+	if options.is_empty():
+		lines.append("Nothing to make yet — gather materials, raise a workbench.")
 	menu_label.text = "\n".join(lines)
 
 func intent_craft(recipe_id: String) -> bool:
