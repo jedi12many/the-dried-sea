@@ -151,6 +151,18 @@ func _ready() -> void:
 	check(host.devotion.state[1]["god-halor"].vigor > dry, "worship restores what casting spent")
 	check(not host.intent_rite("god-halor"), "one rite a day — Halor keeps slow time")
 
+	# click-and-drag: the chapel moves, and its dedication moves with it
+	var chapel_inst := -1
+	for iid: Variant in host.works.placed:
+		if str(host.works.placed[iid].work_id) == "work-chapel":
+			chapel_inst = int(iid)
+	var new_spot: Vector2 = (host.chapels["god-halor"] as Vector2) + Vector2(160, 0)
+	host._move_work(chapel_inst, new_spot)
+	check(host.chapels["god-halor"] == new_spot, "the dedication travels with the chapel")
+	check((host.work_visuals[chapel_inst] as Node2D).position == new_spot, "and so does its body")
+	host.player.position = new_spot
+	check(host.current_prompt().contains("rite already"), "rites find the chapel at its new home")
+
 	# the stranded survivor joins the village and prays
 	host.player.position = host.survivor.position
 	check(host.intent_interact(), "rescue Anna of the coast towns")

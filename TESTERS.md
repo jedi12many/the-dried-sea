@@ -22,6 +22,7 @@ on a **shared server** with the other testers. Thanks for helping.
 | C | craft · B | build menu · T | character sheet (the Tally) |
 | Q / R | miracles, once you've knelt to the right god |
 | X | consume a god-remnant (think first) |
+| mouse | click-and-drag any building to move it |
 
 ## What to do out there
 Follow the HUD bearings: kneel at the pale shrines, eat crabs, get home

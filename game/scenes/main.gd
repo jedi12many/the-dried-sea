@@ -11,7 +11,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.2.0"
+const GAME_VERSION := "0.2.1"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -25,7 +25,8 @@ var remote_nodes: Dictionary = {}    # pid -> Node2D (client visuals for OTHER p
 var enemy_net_ids: Dictionary = {}   # DSEnemy -> int (server)
 var _next_enemy_net_id := 1
 var _pos_timer := 0.0
-var _works_spawned_count := 0        # client: how many placed works have visuals
+var work_visuals: Dictionary = {}    # works.placed id -> visual Node2D
+var drag_work_id := -1               # click-and-drag: which work is in hand
 
 var registry := Registry.new()
 var clock := SimClock.new()
@@ -209,7 +210,7 @@ func load_game() -> void:
 	var chapel_dict: Dictionary = g.get("chapels", {})
 	for inst_id: Variant in works.placed:
 		var inst: Dictionary = works.placed[inst_id]
-		_spawn_work_visual(str(inst.work_id), Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))), chapel_dict)
+		_spawn_work_visual(int(inst_id), str(inst.work_id), Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))), chapel_dict)
 	boss_dead = bool(g.get("boss_dead", false))
 	if g.has("abilities"):
 		abilities.state = SaveSystem._int_keys(g.get("abilities", {}))
@@ -321,6 +322,31 @@ func current_prompt() -> String:
 	return ""
 
 func _unhandled_input(event: InputEvent) -> void:
+	# click-and-drag placed works: grab, ghost, drop (synced in multiplayer)
+	if event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT \
+			and not menu_open and not sheet_open and net_mode != "server":
+		if (event as InputEventMouseButton).pressed:
+			var mouse := get_global_mouse_position()
+			for inst_id: Variant in work_visuals:
+				if is_instance_valid(work_visuals[inst_id]) \
+						and (work_visuals[inst_id] as Node2D).position.distance_to(mouse) < 30.0:
+					drag_work_id = int(inst_id)
+					(work_visuals[drag_work_id] as Node2D).modulate.a = 0.55
+					break
+		elif drag_work_id >= 0:
+			var visual := work_visuals[drag_work_id] as Node2D
+			visual.modulate.a = 1.0
+			var snapped_pos := (get_global_mouse_position() / 16.0).round() * 16.0
+			visual.position = snapped_pos
+			if net_mode == "client":
+				rpc_id(1, "srv_intent", "move_work", [drag_work_id, snapped_pos.x, snapped_pos.y])
+			else:
+				_move_work(drag_work_id, snapped_pos)
+			drag_work_id = -1
+		return
+	if event is InputEventMouseMotion and drag_work_id >= 0:
+		(work_visuals[drag_work_id] as Node2D).position = (get_global_mouse_position() / 16.0).round() * 16.0
+		return
 	if sheet_open and event is InputEventKey and event.pressed:
 		var skey := (event as InputEventKey).physical_keycode
 		if skey >= KEY_1 and skey <= KEY_6:
@@ -792,14 +818,14 @@ func intent_build(work_id: String) -> bool:
 		_refresh_hud()
 		return false
 	var pos := acting_pos() + Vector2(40, 0)
-	works.place(work_id, acting_pid, pos)
+	var inst_id := works.place(work_id, acting_pid, pos)
 	if work_id == "work-chapel":
 		# dedicate to the first attuned god who lacks one
 		for god_id: String in attuned_for(acting_pid):
 			if not chapels.has(god_id):
 				message = "A chapel to %s, raised from wreck-timber. Hold rites here [E] — their strength returns through worship." % str(registry.get_entity(god_id).name)
 				break
-	_spawn_work_visual(work_id, pos, {})
+	_spawn_work_visual(inst_id, work_id, pos, {})
 	_check_village_keys()
 	_refresh_hud()
 	return true
@@ -829,9 +855,26 @@ func _toggle_sheet(open: bool) -> void:
 			lines.append("    %s %s (%d) — %s" % ["■" if lit else "□", str(talent.name), int(talent.threshold), str(talent.text)])
 	sheet_label.text = "\n".join(lines)
 
+## Move a placed work (drag-drop commit). Server/offline authority.
+func _move_work(inst_id: int, pos: Vector2) -> void:
+	if not works.placed.has(inst_id):
+		return
+	var inst: Dictionary = works.placed[inst_id]
+	var old_pos := Vector2(float(inst.get("x", 0)), float(inst.get("y", 0)))
+	inst.x = pos.x
+	inst.y = pos.y
+	# a chapel carries its dedication with it
+	for god_id: String in chapels.keys():
+		if (chapels[god_id] as Vector2).distance_to(old_pos) < 1.0:
+			chapels[god_id] = pos
+	if work_visuals.has(inst_id) and is_instance_valid(work_visuals[inst_id]):
+		(work_visuals[inst_id] as Node2D).position = pos
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+
 ## Shared by building and loading: the physical body of a placed work.
 ## chapel_hint maps god_id -> [x, y] from a save; empty when building live.
-func _spawn_work_visual(work_id: String, pos: Vector2, chapel_hint: Dictionary) -> void:
+func _spawn_work_visual(inst_id: int, work_id: String, pos: Vector2, chapel_hint: Dictionary) -> void:
 	var work := registry.get_entity(work_id)
 	var work_sprites := {
 		"work-workbench": "workbench", "work-chapel": "chapel", "work-smokehouse": "smokehouse",
@@ -861,6 +904,8 @@ func _spawn_work_visual(work_id: String, pos: Vector2, chapel_hint: Dictionary) 
 			if god_id == "god-maren":
 				visual.modulate = Color(0.82, 0.88, 1.0)
 			visual.add_child(_world_label("chapel of %s" % str(registry.get_entity(god_id).name), Vector2(0, 30)))
+	visual.set_meta("inst_id", inst_id)
+	work_visuals[inst_id] = visual
 	add_child(visual)
 
 ## Some works ARE what a villager needed (their Key). The chapel gives the
@@ -1417,6 +1462,7 @@ func srv_intent(kind: String, args: Array) -> void:
 		"consume": intent_consume_remnant()
 		"allocate": abilities.allocate(acting_pid, str(args[0]))
 		"deallocate": abilities.deallocate(acting_pid, str(args[0]))
+		"move_work": _move_work(int(args[0]), Vector2(float(args[1]), float(args[2])))
 	rpc_id(peer_id, "cl_player_state", _player_state(acting_pid))
 	rpc("cl_world_sync", _world_sync())
 
@@ -1465,7 +1511,7 @@ func _world_sync() -> Dictionary:
 	return {
 		"day": clock.day, "minute": clock.minute_of_day,
 		"harvested": harvested_indices, "extra_defs": extra_defs,
-		"works": works.placed.values(), "chapels": _chapels_to_dict(),
+		"works": works.placed, "chapels": _chapels_to_dict(),
 		"boss_dead": boss_dead, "enemies": enemy_list, "specials": specials,
 		"villager": {"rescued": survivor.rescued, "x": survivor.position.x, "y": survivor.position.y},
 	}
@@ -1547,14 +1593,18 @@ func cl_world_sync(w: Dictionary) -> void:
 		if not want_specials.has(idx):
 			resource_nodes.erase(have_specials[idx])
 			(have_specials[idx] as Node).queue_free()
-	# works: spawn visuals for anything new
-	var placed: Array = w.get("works", [])
+	# works: spawn visuals for anything new; follow positions (someone may be dragging)
+	var placed: Dictionary = SaveSystem._int_keys(w.get("works", {}))
+	works.placed = placed
 	chapels.clear()
 	var chapel_dict: Dictionary = w.get("chapels", {})
-	while _works_spawned_count < placed.size():
-		var inst: Dictionary = placed[_works_spawned_count]
-		_spawn_work_visual(str(inst.work_id), Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))), chapel_dict)
-		_works_spawned_count += 1
+	for inst_id: Variant in placed:
+		var inst: Dictionary = placed[inst_id]
+		var wpos := Vector2(float(inst.get("x", 0)), float(inst.get("y", 0)))
+		if not work_visuals.has(int(inst_id)):
+			_spawn_work_visual(int(inst_id), str(inst.work_id), wpos, chapel_dict)
+		elif int(inst_id) != drag_work_id:
+			(work_visuals[int(inst_id)] as Node2D).position = wpos
 	for god_id: Variant in chapel_dict:
 		var cp: Array = chapel_dict[god_id]
 		chapels[str(god_id)] = Vector2(float(cp[0]), float(cp[1]))
