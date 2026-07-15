@@ -102,6 +102,8 @@ func _update_expression(id: int) -> void:
 	var current := "steady"
 	var best := -1.0
 	for expr: String in thresholds:
+		if expr.begins_with("$"):  # tuning-file metadata ($comment), not an expression
+			continue
 		var t := float(thresholds[expr])
 		if score >= t and t > best:
 			best = t

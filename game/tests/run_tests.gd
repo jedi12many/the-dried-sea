@@ -17,6 +17,9 @@ func _init() -> void:
 	_test_devotion()
 	_test_village()
 	_test_works()
+	_test_verdict()
+	_test_save()
+	_test_golden_run()
 	print("\n%d checks, %d failure(s)" % [checks, failures.size()])
 	quit(1 if failures.size() > 0 else 0)
 
@@ -155,3 +158,111 @@ func _test_works() -> void:
 	works.place("work-salt-wheel", P)
 	check(grim_seen[0] and works.grim_in_village(), "the Salt-Wheel testifies")
 	check(dev.state[P]["god-ur-noth"].favor > 0.0, "and Ur-Noth felt it go up")
+
+func _test_verdict() -> void:
+	var reg := Registry.new()
+	reg.load_all()
+	var ver := VerdictSystem.new(reg)
+	var P := 1
+
+	check(ver.lean(P) == "steady", "a blank slate reads steady")
+	ver.record(P, "shepherd", 25.0, "many keys met")
+	check(ver.lean(P) == "shepherd", "kept people -> shepherd lean")
+
+	# remnants: consume dims the god WORLD-WIDE, permanently
+	var dimmed: Array[bool] = [false]
+	ver.god_dimmed_worldwide.connect(func(_g: String, _s: float) -> void: dimmed[0] = true)
+	ver.remnant_consume(P, "god-neris")
+	check(dimmed[0] and ver.god_world_strength["god-neris"] == 80.0, "consuming Neris breaks a piece of everyone's tides")
+	ver.remnant_enshrine(P, "god-neris")
+	check(ver.god_world_strength["god-neris"] == 90.0, "enshrining gives some of it back")
+
+	# a purge spree reads dark
+	ver.record(P, "shepherd", -15.0, "execution without evidence")
+	ver.record(P, "shepherd", -15.0, "execution without evidence")
+	ver.record(P, "peoples", -22.0, "pool-draining")
+	check(ver.lean(P) in ["taker", "dark"], "the ledgers notice a tyrant (lean=%s)" % ver.lean(P))
+
+func _test_save() -> void:
+	var reg := Registry.new()
+	reg.load_all()
+	var clock := SimClock.new()
+	var dev := DevotionSystem.new(reg)
+	var vil := VillageSystem.new(reg)
+	var works := WorksSystem.new(reg, dev)
+	var ver := VerdictSystem.new(reg)
+
+	clock.day = 12
+	dev.attune(1, "god-halor")
+	dev.cast(1, "inv-pillar-of-salt")
+	var anna := vil.add_tribesman("Anna", "class-brinewife", "rescued", ["trait-devout"], "god-halor")
+	vil.meet_key(anna)
+	var smoke := works.place("work-smokehouse", 1)
+	works.set_in_use(smoke, true)
+	ver.record(1, "shepherd", 25.0, "test deeds")
+
+	# round-trip through JSON on disk (the real path, string keys and all)
+	var path := "user://test_save.json"
+	check(SaveSystem.write_file(path, SaveSystem.to_save(clock, dev, vil, works, ver)), "save writes")
+	var clock2 := SimClock.new()
+	var dev2 := DevotionSystem.new(reg)
+	var vil2 := VillageSystem.new(reg)
+	var works2 := WorksSystem.new(reg, dev2)
+	var ver2 := VerdictSystem.new(reg)
+	SaveSystem.apply(SaveSystem.read_file(path), clock2, dev2, vil2, works2, ver2)
+
+	check(clock2.day == 12, "clock survives the round trip")
+	check(dev2.state[1]["god-halor"].rank == 1, "attunement survives")
+	check(absf(float(dev2.state[1]["god-halor"].vigor) - float(dev.state[1]["god-halor"].vigor)) < 0.001, "vigor survives")
+	check(vil2.tribesmen[anna].bloomed, "Anna's bloom survives")
+	check(works2.placed[smoke].in_use, "the smokehouse is still curing")
+	check(ver2.lean(1) == "shepherd", "the ledgers survive")
+	check(vil2.add_tribesman("New", "class-warden", "rescued") != anna, "id counters restored — no collisions")
+
+func _test_golden_run() -> void:
+	## 30 sim-days, all systems ticking together, mid-game setup.
+	## The WORLD-SPEC tuning laws asserted as an integration outcome.
+	var reg := Registry.new()
+	reg.load_all()
+	var dev := DevotionSystem.new(reg)
+	var vil := VillageSystem.new(reg)
+	var works := WorksSystem.new(reg, dev)
+	var ver := VerdictSystem.new(reg)
+	dev.ledger_event.connect(func(p: int, l: String, a: float, n: String) -> void: ver.record(p, l, a, n))
+	vil.ledger_event.connect(func(l: String, a: float, n: String) -> void: ver.record(1, l, a, n))
+
+	var P := 1
+	dev.attune(P, "god-halor")
+	dev.attune(P, "god-halor")  # rank 2: unlocks brine-ward; pillar from r1
+	var tended: Array[int] = []
+	for i in 3:
+		tended.append(vil.add_tribesman("Tended%d" % i, "class-brinewife", "rescued", ["trait-devout"], "god-halor"))
+	var neglected := vil.add_tribesman("Forgotten", "class-salvager", "rescued", ["trait-bitter"])
+	var smoke := works.place("work-smokehouse", P)
+	works.set_in_use(smoke, true)
+
+	var casts := 0
+	for day in 30:
+		for hour in 24:
+			works.favor_hour()
+		# greedy clutch-casting: cast the moment the god can afford it
+		if dev.can_cast(P, "inv-pillar-of-salt"):
+			dev.cast(P, "inv-pillar-of-salt")
+			casts += 1
+		for id: int in tended:
+			vil.drift_day(id, ["rested", "riteAttended"])
+		vil.drift_day(neglected, ["overworked", "noShrineAccess"])
+		dev.rite_day(P, "god-halor", "chapel", 1)
+		dev.villager_trickle_day(P, "god-halor", vil.devout_count("god-halor"))
+		vil.end_of_day()
+
+	# the tuning law: 'once per pickle' — mid-game sustainable casts land in band
+	check(casts >= 5 and casts <= 14, "30-day mid-game casts in spec band [5,14] (got %d)" % casts)
+	# tended villagers hold; the forgotten one soured
+	for id: int in tended:
+		check(vil.tribesmen[id].expression == "steady", "tended villager stays steady")
+	check(vil.tribesmen[neglected].expression != "steady", "the Forgotten soured (%s)" % vil.tribesmen[neglected].expression)
+	# a month of honest use courts the god materially
+	check(dev.favor_tier(P, "god-halor") >= 1, "a month of smokehouse courts Halor to tier %d" % dev.favor_tier(P, "god-halor"))
+	# and the whole month reads as decent shepherding
+	check(ver.lean(P) != "dark", "an honest month doesn't read dark (lean=%s)" % ver.lean(P))

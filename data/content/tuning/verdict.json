@@ -7,8 +7,9 @@
     "peoples": { "$comment": "the Last Peoples: outcomes AND causes; engineered decline = massacre", "inputs": ["people-saved-action", "fair-trade", "exploit-violent", "exploit-extortive", "exploit-engineered", "people-extinguished"] }
   },
   "lean": {
-    "$comment": "computed per-player from ledger sums; used for priest dialogue pools, Ur-Noth warmth, epilogue color — never shown as a number",
-    "bands": ["shepherd", "steady", "taker", "dark"]
+    "$comment": "computed per-player from ledger sums; used for priest dialogue pools, Ur-Noth warmth, epilogue color — never shown as a number. Band = first threshold the total meets, top-down.",
+    "bands": ["shepherd", "steady", "taker", "dark"],
+    "thresholds": { "shepherd": 20, "steady": -10, "taker": -40 }
   },
   "fork": {
     "location": "boss-drowned-priest",
