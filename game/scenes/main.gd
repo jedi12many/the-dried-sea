@@ -553,10 +553,19 @@ func _on_enemy_killed(enemy: DSEnemy) -> void:
 		inventory.add(LOCAL_PLAYER, str(drop.itemId), int(drop.qty))
 	if enemy.is_boss:
 		boss_dead = true
+		# the wreck-ring opens: his hoard becomes salvage ground
+		var hoard_rng := RandomNumberGenerator.new()
+		hoard_rng.seed = 77
+		for i in 6:
+			var item := "item-bronze-salvage" if i % 2 == 0 else "item-wreck-timber"
+			var pos := enemy.spawn_pos + Vector2(hoard_rng.randf_range(-120, 120), hoard_rng.randf_range(-100, 100))
+			var def_idx := node_defs.size()
+			node_defs.append({"item_id": item, "pos": pos, "idx": def_idx})
+			_spawn_one_node(item, pos, def_idx)
 	var remnant_id: String = creature.get("remnantItemId", "")
 	if remnant_id != "":
 		inventory.add(LOCAL_PLAYER, remnant_id, 1)
-		message = "%s falls. Something divine remains in the wreck of him.\nA warm, reasonable voice: 'They'd ask you to feed it to them. I only ever ask you to eat.'\n[E] at a chapel to ENSHRINE it — or [X] to consume it. Some doors only open once." % str(creature.name)
+		message = "%s falls — the oldest sailor left, out of his depth at last. His wreck-ring is yours to salvage.\nSomething divine remains in him. A warm, reasonable voice: 'They'd ask you to feed it to them. I only ever ask you to eat.'\n[E] at a chapel to ENSHRINE it — or [X] to consume it. Some doors only open once." % str(creature.name)
 	stats.unregister(enemy)
 	enemies.erase(enemy)
 	enemy.queue_free()
@@ -817,7 +826,9 @@ func _storm_dawn() -> void:
 		add_child(crab)
 		enemies.append(crab)
 		crabs += 1
-	while hounds < 6:
+	# the king is gone: scavengers fill a throne faster than grief does
+	var hound_cap := 8 if boss_dead else 6
+	while hounds < hound_cap:
 		var hound := DSEnemy.new()
 		var pos := center
 		while pos.distance_to(center) < 350.0:

@@ -264,6 +264,7 @@ func _ready() -> void:
 	check(boss.position.distance_to(boss.spawn_pos) < 900.0 and boss.velocity.length() >= 0.0, "he leashes home rather than hunting you across the flats")
 
 	# the kill (test-accelerated: we've proven melee elsewhere)
+	var boss_home: Vector2 = boss.spawn_pos  # he'll be freed; ask now
 	host.player.position = boss.position + Vector2(40, 0)
 	host.stats.damage(boss, 880.0)
 	boss.on_hit()
@@ -276,6 +277,11 @@ func _ready() -> void:
 		tries += 1
 		await get_tree().physics_frame
 	check(host.inventory.count(1, "item-remnant-shellback") == 1, "something divine remains in the wreck of him")
+	var hoard_nodes := 0
+	for n in host.resource_nodes:
+		if is_instance_valid(n) and n.position.distance_to(boss_home) < 150.0:
+			hoard_nodes += 1
+	check(hoard_nodes >= 4, "the wreck-ring opens — his hoard becomes salvage ground (%d nodes)" % hoard_nodes)
 
 	# the Verdict, in hand: CONSUME — power now, a dimmer world forever
 	var base_hp0: float = host.stats.actors[1].base_hp
