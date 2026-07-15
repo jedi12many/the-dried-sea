@@ -470,6 +470,31 @@ def gen_hearth() -> Image.Image:
     return img
 
 
+def gen_shellback() -> Image.Image:
+    """Old Shellback: a crab the size of a chapel, wearing a hull as a shell."""
+    w, h = 48, 34
+    img = new_canvas(w, h)
+    # the hull-shell: planked, keel-up, weathered
+    rect(img, 8, 4, 39, 14, PALETTE["WOOD_MED"])
+    for y0 in (6, 9, 12):
+        hline(img, 9, 38, y0, PALETTE["WOOD_DARK"])
+    hline(img, 10, 37, 4, PALETTE["WOOD_TAN"])            # sun-bleached keel line
+    px(img, 14, 5, PALETTE["BRONZE"]); px(img, 33, 5, PALETTE["BRONZE"])  # old fittings
+    # the crab beneath: pale, huge
+    rect(img, 6, 15, 41, 24, PALETTE["HOUND_BODY"])
+    rect(img, 4, 17, 5, 22, PALETTE["HOUND_BODY"])         # left claw arm
+    rect(img, 42, 17, 43, 22, PALETTE["HOUND_BODY"])       # right claw arm
+    rect(img, 1, 15, 4, 19, PALETTE["HOUND_SHADE"])        # left claw
+    rect(img, 43, 15, 46, 19, PALETTE["HOUND_SHADE"])      # right claw
+    for lx in (9, 15, 21, 27, 33, 38):                     # legs
+        rect(img, lx, 25, lx + 1, 29, PALETTE["HOUND_SHADE"])
+    px(img, 16, 18, PALETTE["RED"]); px(img, 31, 18, PALETTE["RED"])  # eyes, old and patient
+    # the harpoon scar (his weak point, per bossNotes)
+    px(img, 24, 16, PALETTE["GOLD"]); px(img, 24, 17, PALETTE["GOLD"])
+    add_outline(img, PALETTE["WOOD_DARK"])
+    return img
+
+
 SPRITES = [
     ("ground.png", lambda: gen_ground(seed=1)),
     ("ground2.png", lambda: gen_ground(seed=2)),
@@ -491,6 +516,7 @@ SPRITES = [
     ("wall.png", gen_wall),
     ("smokehouse.png", gen_smokehouse),
     ("hearth.png", gen_hearth),
+    ("shellback.png", gen_shellback),
 ]
 
 

@@ -7,13 +7,15 @@ const AGGRO_RADIUS := 170.0
 const ATTACK_RANGE := 30.0
 const ATTACK_COOLDOWN := 1.1
 
-const CREATURE_SPRITES := {"creature-salt-hound": "hound", "creature-scuttle-crab": "crab"}
+const CREATURE_SPRITES := {"creature-salt-hound": "hound", "creature-scuttle-crab": "crab", "creature-old-shellback": "shellback"}
 
 var host: GameHost
 var creature_id: String
 var speed := 60.0
 var attack_damage := 8.0
 var peaceful := false   # ambient archetypes never chase or bite
+var is_boss := false
+var spawn_pos := Vector2.ZERO   # bosses guard their ground and leash back to it
 var _cooldown := 0.0
 var _stun := 0.0
 var _visual: Node2D
@@ -52,6 +54,8 @@ func setup(game_host: GameHost, id: String) -> void:
 	speed = float(stats.get("speed", 1.0)) * 70.0
 	attack_damage = float(stats.get("damage", 5))
 	peaceful = creature.get("archetype", "") == "ambient"
+	is_boss = creature.get("archetype", "") == "boss"
+	spawn_pos = position
 	host.stats.register(self, float(stats.get("hp", 20)))
 
 func _ready() -> void:
@@ -77,12 +81,25 @@ func _physics_process(delta: float) -> void:
 	var night := host.clock.is_night()
 	var aggro := AGGRO_RADIUS * (2.4 if night else 1.0)
 	var run_speed := speed * (1.35 if night else 1.0)
+	if is_boss:
+		aggro = 240.0   # he guards his hoard; he does not hunt
+		run_speed = speed
 	var to_player := host.player.position - position
 	var dist := to_player.length()
-	if dist <= ATTACK_RANGE:
+	var attack_range := ATTACK_RANGE * (1.6 if is_boss else 1.0)
+	if is_boss and (position.distance_to(spawn_pos) > 380.0 or dist > 480.0):
+		# leash: walk home; an unbothered boss knits himself back together
+		if position.distance_to(spawn_pos) > 8.0:
+			velocity = (spawn_pos - position).normalized() * speed
+		else:
+			velocity = Vector2.ZERO
+			host.stats.heal_full(self)
+		move_and_slide()
+		return
+	if dist <= attack_range:
 		velocity = Vector2.ZERO
 		if _cooldown == 0.0:
-			_cooldown = ATTACK_COOLDOWN
+			_cooldown = ATTACK_COOLDOWN * (1.6 if is_boss else 1.0)
 			host.damage_player(attack_damage)
 	elif dist <= aggro:
 		velocity = to_player.normalized() * run_speed

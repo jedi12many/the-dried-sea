@@ -15,6 +15,7 @@
     "stats": { "type": "object", "additionalProperties": { "type": "number" } },
     "effects": { "$ref": "common.schema.json#/$defs/effectList" },
     "offeringValue": { "type": "number", "description": "worship-rate buydown value; offerings only" },
+    "remnantOf": { "type": "string", "description": "remnants only: the god this fragment belongs to — consuming it dims THEM, world-wide" },
     "legend": {
       "type": "object",
       "description": "Track-2 named artifacts only",

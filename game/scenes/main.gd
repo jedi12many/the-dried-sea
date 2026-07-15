@@ -27,6 +27,8 @@ var hp_bar: ColorRect
 var stamina_bar: ColorRect
 var vigor_bar: ColorRect
 var maren_bar: ColorRect
+var boss_bar: ColorRect
+var boss_name: Label
 var daynight: CanvasModulate
 var resource_nodes: Array[Area2D] = []
 var enemies: Array[DSEnemy] = []
@@ -95,7 +97,27 @@ func _physics_process(delta: float) -> void:
 			message = "The salt lets you go. Halor's strength is spent — worship gives it back."
 			_refresh_hud()
 	_update_prompt()
+	_update_boss_bar()
 	_refresh_bars()
+
+## The big red bar appears when you walk into a boss's world.
+func _update_boss_bar() -> void:
+	if boss_bar == null:
+		return
+	var near_boss: DSEnemy = null
+	for e in enemies:
+		if is_instance_valid(e) and e.is_boss and player.position.distance_to(e.position) < 420.0:
+			near_boss = e
+			break
+	var show := near_boss != null
+	boss_bar.visible = show
+	(boss_bar.get_meta("back") as ColorRect).visible = show
+	boss_name.visible = show
+	if show:
+		var creature := registry.get_entity(near_boss.creature_id)
+		boss_name.text = str(creature.name)
+		var max_hp := float(creature.get("stats", {}).get("hp", 100))
+		boss_bar.size.x = 396.0 * clampf(stats.hp(near_boss) / max_hp, 0.0, 1.0)
 
 ## The floating [E] prompt above the survivor's head — mirrors intent_interact's priority.
 func _update_prompt() -> void:
@@ -111,6 +133,8 @@ func current_prompt() -> String:
 		return "[E] Rescue her"
 	for god_id: String in chapels:
 		if player.position.distance_to(chapels[god_id]) < INTERACT_RANGE:
+			if _carrying_remnant():
+				return "[E] Enshrine the remnant"
 			return "[E] Hold the rite" if not rites_done_today.get(god_id, false) else "(rite already held today)"
 	var best := HARVEST_RANGE
 	var best_item := ""
@@ -152,6 +176,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		intent_cast("inv-pillar-of-salt")
 	elif event.is_action_pressed("cast_2"):
 		intent_cast("inv-call-squall")
+	elif event.is_action_pressed("consume"):
+		intent_consume_remnant()
 
 ## --- intents (the only door into the sim from presentation) --------------------
 ## E is contextual: kneel at a shrine, rescue the stranded, hold a rite, else harvest.
@@ -164,8 +190,16 @@ func intent_interact() -> bool:
 		return intent_rescue()
 	for god_id: String in chapels:
 		if player.position.distance_to(chapels[god_id]) < INTERACT_RANGE:
+			if _carrying_remnant():
+				return intent_enshrine(god_id)
 			return intent_rite(god_id)
 	return intent_harvest()
+
+func _carrying_remnant() -> bool:
+	for item_id: String in inventory._inv(LOCAL_PLAYER).keys():
+		if registry.get_entity(item_id).get("category", "") == "remnant":
+			return true
+	return false
 
 const KNEEL_HINTS := {
 	"god-halor": "[Q] Pillar of Salt, when the pinch comes.",
@@ -384,12 +418,46 @@ func damage_player(amount: float) -> void:
 	_refresh_bars()
 
 func _on_enemy_killed(enemy: DSEnemy) -> void:
-	for drop: Dictionary in registry.get_entity(enemy.creature_id).get("drops", []):
+	var creature := registry.get_entity(enemy.creature_id)
+	for drop: Dictionary in creature.get("drops", []):
 		inventory.add(LOCAL_PLAYER, str(drop.itemId), int(drop.qty))
+	var remnant_id: String = creature.get("remnantItemId", "")
+	if remnant_id != "":
+		inventory.add(LOCAL_PLAYER, remnant_id, 1)
+		message = "%s falls. Something divine remains in the wreck of him.\nA warm, reasonable voice: 'They'd ask you to feed it to them. I only ever ask you to eat.'\n[E] at a chapel to ENSHRINE it — or [X] to consume it. Some doors only open once." % str(creature.name)
 	stats.unregister(enemy)
 	enemies.erase(enemy)
 	enemy.queue_free()
 	_refresh_hud()
+
+## The Verdict, in your hands: consume a remnant for permanent strength —
+## and the god it belonged to dims, for everyone, forever.
+func intent_consume_remnant() -> bool:
+	for item_id: String in inventory._inv(LOCAL_PLAYER).keys():
+		var item := registry.get_entity(item_id)
+		if item.get("category", "") != "remnant":
+			continue
+		var god_id: String = item.get("remnantOf", "god-halor")
+		inventory.pay(LOCAL_PLAYER, [{"itemId": item_id, "qty": 1}])
+		stats.actors[LOCAL_PLAYER].base_hp = float(stats.actors[LOCAL_PLAYER].base_hp) + 15.0
+		verdict.remnant_consume(LOCAL_PLAYER, god_id)
+		message = "You eat what was left of a god's strength. You feel MAGNIFICENT.\nSomewhere, %s grows quieter — for everyone, forever. The warm voice sounds pleased." % str(registry.get_entity(god_id).name)
+		_refresh_hud()
+		return true
+	return false
+
+func intent_enshrine(god_id_of_chapel: String) -> bool:
+	for item_id: String in inventory._inv(LOCAL_PLAYER).keys():
+		var item := registry.get_entity(item_id)
+		if item.get("category", "") != "remnant":
+			continue
+		var god_id: String = item.get("remnantOf", god_id_of_chapel)
+		inventory.pay(LOCAL_PLAYER, [{"itemId": item_id, "qty": 1}])
+		verdict.remnant_enshrine(LOCAL_PLAYER, god_id)
+		message = "You set the remnant in the chapel-stone. %s steadies — the whole world's worth of them.\nThe warm voice says nothing at all." % str(registry.get_entity(god_id).name)
+		_refresh_hud()
+		return true
+	return false
 
 func intent_build(work_id: String) -> bool:
 	var work := registry.get_entity(work_id)
@@ -555,6 +623,13 @@ func _spawn_enemies() -> void:
 		crab.setup(self, "creature-scuttle-crab")
 		add_child(crab)
 		enemies.append(crab)
+	# Old Shellback guards the northwest wreck-ring. The first name you learn to fear.
+	var boss := DSEnemy.new()
+	boss.position = Vector2(TILE * 5.0, TILE * 5.0)
+	boss.setup(self, "creature-old-shellback")
+	boss.add_child(_world_label("Old Shellback", Vector2(0, 22)))
+	add_child(boss)
+	enemies.append(boss)
 
 ## --- day/night + HUD ---------------------------------------------------------------
 func _on_sim_minute(_m: int) -> void:
@@ -634,6 +709,27 @@ func _build_hud() -> void:
 	maren_bar.size = Vector2(0, 8)
 	maren_bar.color = Color("aebfc9")   # Maren's storm-light
 	layer.add_child(maren_bar)
+	boss_name = Label.new()
+	boss_name.position = Vector2(440, 640)
+	boss_name.custom_minimum_size = Vector2(400, 0)
+	boss_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	boss_name.add_theme_color_override("font_color", Color("3b3428"))
+	boss_name.add_theme_font_size_override("font_size", 16)
+	boss_name.visible = false
+	layer.add_child(boss_name)
+	var boss_back := ColorRect.new()
+	boss_back.position = Vector2(440, 664)
+	boss_back.size = Vector2(400, 12)
+	boss_back.color = Color("4a3021")
+	boss_back.visible = false
+	layer.add_child(boss_back)
+	boss_bar = ColorRect.new()
+	boss_bar.position = Vector2(442, 666)
+	boss_bar.size = Vector2(396, 8)
+	boss_bar.color = Color("b0483c")
+	boss_bar.visible = false
+	layer.add_child(boss_bar)
+	boss_bar.set_meta("back", boss_back)
 	menu_label = Label.new()
 	menu_label.position = Vector2(12, 200)
 	menu_label.add_theme_color_override("font_color", Color("3b3428"))
@@ -694,7 +790,7 @@ static func _setup_input() -> void:
 		"move_left": [KEY_A, KEY_LEFT], "move_right": [KEY_D, KEY_RIGHT],
 		"move_up": [KEY_W, KEY_UP], "move_down": [KEY_S, KEY_DOWN],
 		"interact": [KEY_E], "craft": [KEY_C], "build": [KEY_B], "eat": [KEY_F],
-		"attack": [KEY_SPACE, KEY_J], "cast": [KEY_Q], "cast_2": [KEY_R],
+		"attack": [KEY_SPACE, KEY_J], "cast": [KEY_Q], "cast_2": [KEY_R], "consume": [KEY_X],
 	}
 	for action: String in keys:
 		if InputMap.has_action(action):

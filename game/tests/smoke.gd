@@ -248,6 +248,48 @@ func _ready() -> void:
 	check(host.devotion.state[1]["god-maren"].vigor > m_dry, "worship restores the storm")
 	check(host.devotion.devotion_spent(1) == 2, "two gods, two devotion points — the budget holds")
 
+	# --- Old Shellback and the first Verdict choice --------------------------
+	var boss := _enemy_of(host, "creature-old-shellback")
+	check(boss != null and boss.is_boss, "Old Shellback guards the northwest")
+	boss._stun = 0.0   # the earlier squall test may have clipped him; not what we're testing
+	host.player.position = boss.position + Vector2(200, 0)
+	for i in 10:
+		await get_tree().physics_frame
+	check(boss.velocity.length() > 1.0, "walk into his ring and he comes")
+	host.player.position = boss.position + Vector2(900, 0)  # flee far
+	for i in 10:
+		await get_tree().physics_frame
+	check(boss.position.distance_to(boss.spawn_pos) < 900.0 and boss.velocity.length() >= 0.0, "he leashes home rather than hunting you across the flats")
+
+	# the kill (test-accelerated: we've proven melee elsewhere)
+	host.player.position = boss.position + Vector2(40, 0)
+	host.stats.damage(boss, 880.0)
+	boss.on_hit()
+	host.stats.actors[1].stamina = 60.0
+	var packn := host.enemies.size()
+	var tries := 0
+	while host.enemies.size() == packn and tries < 20:
+		host.stats.actors[1].stamina = 60.0
+		host.intent_attack()
+		tries += 1
+		await get_tree().physics_frame
+	check(host.inventory.count(1, "item-remnant-shellback") == 1, "something divine remains in the wreck of him")
+
+	# the Verdict, in hand: CONSUME — power now, a dimmer world forever
+	var base_hp0: float = host.stats.actors[1].base_hp
+	var halor_strength0: float = host.verdict.god_world_strength["god-halor"]
+	check(host.intent_consume_remnant(), "the warm voice gets its way")
+	check(host.stats.actors[1].base_hp == base_hp0 + 15.0, "you feel MAGNIFICENT — permanently")
+	check(host.verdict.god_world_strength["god-halor"] == halor_strength0 - 20.0, "and Halor dims, for everyone, forever")
+	check(host.verdict.ledgers[1]["remnants"] < 0.0, "the ledger remembers what you ate")
+
+	# ...and ENSHRINE, the other door (a second remnant, test-granted)
+	host.inventory.add(1, "item-remnant-shellback", 1)
+	host.player.position = host.chapels["god-halor"]
+	check(host.current_prompt().contains("Enshrine"), "the chapel prompt offers the better door")
+	check(host.intent_enshrine("god-halor"), "set the remnant in the chapel-stone")
+	check(host.verdict.god_world_strength["god-halor"] == halor_strength0 - 10.0, "some of what dimmed comes back")
+
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)
 
