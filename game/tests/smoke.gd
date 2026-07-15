@@ -14,6 +14,8 @@ func check(cond: bool, msg: String) -> void:
 
 func _ready() -> void:
 	var host: GameHost = load("res://scenes/main.tscn").instantiate()
+	host.skip_autoload = true
+	host.save_path = "user://smoke-test-save.json"
 	add_child(host)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
@@ -289,6 +291,25 @@ func _ready() -> void:
 	check(host.current_prompt().contains("Enshrine"), "the chapel prompt offers the better door")
 	check(host.intent_enshrine("god-halor"), "set the remnant in the chapel-stone")
 	check(host.verdict.god_world_strength["god-halor"] == halor_strength0 - 10.0, "some of what dimmed comes back")
+
+	# --- the flats remember: full save -> fresh world -> load ----------------
+	host.save_game()
+	var host2: GameHost = load("res://scenes/main.tscn").instantiate()
+	host2.skip_autoload = true
+	host2.save_path = host.save_path
+	add_child(host2)
+	await get_tree().physics_frame
+	host2.load_game()
+	await get_tree().physics_frame
+	check(host2.attuned_gods == host.attuned_gods, "both gods still know you")
+	check(host2.chapels.size() == 2, "both chapels stand where they stood")
+	check(host2.inventory.count(1, "item-rope") == host.inventory.count(1, "item-rope"), "the pack survives")
+	check(host2.village.tribesmen.size() == host.village.tribesmen.size(), "Anna is still yours")
+	check(host2.survivor.rescued, "and she knows it")
+	check(host2.resource_nodes.size() < 48, "harvested nodes stay harvested")
+	check(_enemy_of(host2, "creature-old-shellback") == null, "Old Shellback stays dead")
+	check(absf(float(host2.verdict.god_world_strength["god-halor"]) - float(host.verdict.god_world_strength["god-halor"])) < 0.01, "the world remembers what you consumed")
+	host2.queue_free()
 
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)

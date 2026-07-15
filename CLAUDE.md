@@ -29,6 +29,9 @@ stop — it belongs in data. A future Unreal build must be able to consume
 - GDScript gotcha: lambdas capture locals BY VALUE — assigning a bool/int inside
   a signal lambda does nothing outside it. Capture through an Array
   (`var seen: Array[bool] = [false]` … `seen[0] = true`) or mutate a reference type.
+- GDScript gotcha: `Array.has()` / `in` is TYPE-STRICT: `40 in [40.0]` is FALSE
+  even though `40 == 40.0` is true. JSON parses all numbers as floats — cast
+  arrays back to int (`arr.map(func(v): return int(v))`) before membership tests.
 
 ## Conventions
 - IDs: kebab-case, globally unique, never renamed once committed (saves and

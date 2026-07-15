@@ -46,6 +46,11 @@ func rescue() -> void:
 	if _label != null:
 		_label.text = display_name
 
+## Restore the nameplate after a save-load (rescue() would double-register her).
+func set_label_name() -> void:
+	if _label != null:
+		_label.text = display_name
+
 func _physics_process(_delta: float) -> void:
 	if host == null or not rescued:
 		return

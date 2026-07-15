@@ -46,6 +46,12 @@ var message := "Something pale stands in the north flats. It looks like it is wa
 var menu_label: Label
 var menu_open := false
 
+# persistence
+var save_path := "user://dried-sea-save.json"
+var skip_autoload := false        # tests and --fresh runs start clean
+var harvested_indices: Array = [] # which resource nodes are gone
+var boss_dead := false
+
 # STYLE-BIBLE salt-shallows palette (placeholder blocks, right colors)
 const ITEM_COLORS := {
 	"item-driftwood": Color("a08768"), "item-wreck-timber": Color("6e5138"),
@@ -84,11 +90,86 @@ func _ready() -> void:
 	clock.sim_minute.connect(_on_sim_minute)
 	_refresh_hud()
 
+	if "--fresh" in OS.get_cmdline_user_args():
+		skip_autoload = true
+	if not skip_autoload and FileAccess.file_exists(save_path):
+		load_game()
 	if "--screenshot-boss" in OS.get_cmdline_user_args():
 		player.position = Vector2(TILE * 9.0, TILE * 7.0)
 		_screenshot_and_quit()
 	elif "--screenshot" in OS.get_cmdline_user_args():
 		_screenshot_and_quit()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and not skip_autoload:
+		save_game()
+
+## --- persistence: the flats remember -------------------------------------------
+func save_game() -> void:
+	var s := SaveSystem.to_save(clock, devotion, village, works, verdict)
+	s["game"] = {
+		"inventory": inventory.inventories.duplicate(true),
+		"player_stats": stats.actors.get(LOCAL_PLAYER, {}).duplicate(true),
+		"player_pos": [player.position.x, player.position.y],
+		"attuned_gods": attuned_gods.duplicate(),
+		"chapels": _chapels_to_dict(),
+		"rites_done_today": rites_done_today.duplicate(),
+		"harvested_indices": harvested_indices.duplicate(),
+		"boss_dead": boss_dead,
+		"survivor": {"rescued": survivor.rescued if survivor != null else false,
+			"tribesman_id": survivor.tribesman_id if survivor != null else -1,
+			"pos": [survivor.position.x, survivor.position.y] if survivor != null else [0, 0]},
+		"message": message,
+	}
+	SaveSystem.write_file(save_path, s)
+
+func load_game() -> void:
+	var s := SaveSystem.read_file(save_path)
+	if s.is_empty():
+		return
+	SaveSystem.apply(s, clock, devotion, village, works, verdict)
+	var g: Dictionary = s.get("game", {})
+	inventory.inventories = SaveSystem._int_keys(g.get("inventory", {}))
+	if g.has("player_stats"):
+		stats.actors[LOCAL_PLAYER] = g.player_stats
+	var pp: Array = g.get("player_pos", [WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0])
+	player.position = Vector2(float(pp[0]), float(pp[1]))
+	attuned_gods.assign(g.get("attuned_gods", []))
+	rites_done_today = g.get("rites_done_today", {})
+	message = str(g.get("message", "The flats are as you left them."))
+	# world state: remove harvested nodes, rebuild work visuals, restore the boss & Anna
+	# (JSON floats -> ints: Array.has is TYPE-STRICT — 40 in [40.0] is false)
+	harvested_indices = (g.get("harvested_indices", []) as Array).map(func(v: Variant) -> int: return int(v))
+	for node in resource_nodes.duplicate():
+		if int(node.get_meta("idx", -1)) in harvested_indices:
+			resource_nodes.erase(node)
+			node.queue_free()
+	chapels.clear()
+	var chapel_dict: Dictionary = g.get("chapels", {})
+	for inst_id: Variant in works.placed:
+		var inst: Dictionary = works.placed[inst_id]
+		_spawn_work_visual(str(inst.work_id), Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))), chapel_dict)
+	boss_dead = bool(g.get("boss_dead", false))
+	if boss_dead:
+		for e in enemies.duplicate():
+			if is_instance_valid(e) and e.is_boss:
+				stats.unregister(e)
+				enemies.erase(e)
+				e.queue_free()
+	var sv: Dictionary = g.get("survivor", {})
+	if bool(sv.get("rescued", false)) and survivor != null:
+		survivor.rescued = true
+		survivor.tribesman_id = int(sv.get("tribesman_id", -1))
+		survivor.set_label_name()
+		var sp: Array = sv.get("pos", [0, 0])
+		survivor.position = Vector2(float(sp[0]), float(sp[1]))
+	_refresh_hud()
+
+func _chapels_to_dict() -> Dictionary:
+	var out := {}
+	for god_id: String in chapels:
+		out[god_id] = [chapels[god_id].x, chapels[god_id].y]
+	return out
 
 func _physics_process(delta: float) -> void:
 	clock.advance(delta)
@@ -181,6 +262,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		intent_cast("inv-call-squall")
 	elif event.is_action_pressed("consume"):
 		intent_consume_remnant()
+	elif event.is_action_pressed("save"):
+		save_game()
+		message = "The flats will remember. (saved)"
+		_refresh_hud()
 
 ## --- intents (the only door into the sim from presentation) --------------------
 ## E is contextual: kneel at a shrine, rescue the stranded, hold a rite, else harvest.
@@ -302,6 +387,7 @@ func intent_harvest() -> bool:
 	if nearest == null:
 		return false
 	inventory.add(LOCAL_PLAYER, nearest.get_meta("item_id"), int(nearest.get_meta("qty")))
+	harvested_indices.append(int(nearest.get_meta("idx", -1)))
 	resource_nodes.erase(nearest)
 	nearest.queue_free()
 	_refresh_hud()
@@ -424,6 +510,8 @@ func _on_enemy_killed(enemy: DSEnemy) -> void:
 	var creature := registry.get_entity(enemy.creature_id)
 	for drop: Dictionary in creature.get("drops", []):
 		inventory.add(LOCAL_PLAYER, str(drop.itemId), int(drop.qty))
+	if enemy.is_boss:
+		boss_dead = true
 	var remnant_id: String = creature.get("remnantItemId", "")
 	if remnant_id != "":
 		inventory.add(LOCAL_PLAYER, remnant_id, 1)
@@ -467,7 +555,23 @@ func intent_build(work_id: String) -> bool:
 	if work.is_empty() or not inventory.pay(LOCAL_PLAYER, work.get("buildCost", [])):
 		_refresh_hud()
 		return false
-	works.place(work_id, LOCAL_PLAYER)
+	var pos := player.position + Vector2(40, 0)
+	works.place(work_id, LOCAL_PLAYER, pos)
+	if work_id == "work-chapel":
+		# dedicate to the first attuned god who lacks one
+		for god_id: String in attuned_gods:
+			if not chapels.has(god_id):
+				message = "A chapel to %s, raised from wreck-timber. Hold rites here [E] — their strength returns through worship." % str(registry.get_entity(god_id).name)
+				break
+	_spawn_work_visual(work_id, pos, {})
+	_check_village_keys()
+	_refresh_hud()
+	return true
+
+## Shared by building and loading: the physical body of a placed work.
+## chapel_hint maps god_id -> [x, y] from a save; empty when building live.
+func _spawn_work_visual(work_id: String, pos: Vector2, chapel_hint: Dictionary) -> void:
+	var work := registry.get_entity(work_id)
 	var work_sprites := {
 		"work-workbench": "workbench", "work-chapel": "chapel", "work-smokehouse": "smokehouse",
 		"work-hearth": "hearth", "work-driftwood-wall": "wall",
@@ -477,21 +581,26 @@ func intent_build(work_id: String) -> bool:
 		fallback = Color("f2efe8")
 	var visual := SpriteKit.sprite(work_sprites.get(work_id, "none"),
 		Vector2(28, 28) if work_id != "work-chapel" else Vector2(40, 48), fallback)
-	visual.position = player.position + Vector2(40, 0)
+	visual.position = pos
 	if work_id == "work-chapel":
-		# dedicate to the first attuned god who lacks one
-		for god_id: String in attuned_gods:
-			if not chapels.has(god_id):
-				chapels[god_id] = visual.position
-				if god_id == "god-maren":
-					visual.modulate = Color(0.82, 0.88, 1.0)
-				visual.add_child(_world_label("chapel of %s" % str(registry.get_entity(god_id).name), Vector2(0, 30)))
-				message = "A chapel to %s, raised from wreck-timber. Hold rites here [E] — their strength returns through worship." % str(registry.get_entity(god_id).name)
-				break
+		var god_id := ""
+		if chapel_hint.is_empty():
+			for g: String in attuned_gods:
+				if not chapels.has(g):
+					god_id = g
+					break
+		else:
+			for g: Variant in chapel_hint:
+				var hp: Array = chapel_hint[g]
+				if Vector2(float(hp[0]), float(hp[1])).distance_to(pos) < 4.0:
+					god_id = str(g)
+					break
+		if god_id != "":
+			chapels[god_id] = pos
+			if god_id == "god-maren":
+				visual.modulate = Color(0.82, 0.88, 1.0)
+			visual.add_child(_world_label("chapel of %s" % str(registry.get_entity(god_id).name), Vector2(0, 30)))
 	add_child(visual)
-	_check_village_keys()
-	_refresh_hud()
-	return true
 
 ## Some works ARE what a villager needed (their Key). The chapel gives the
 ## devout their shrine; the hearth gives the storyteller their fire.
@@ -546,12 +655,15 @@ func _spawn_resource_nodes() -> void:
 		"item-rope": "rope",
 	}
 	var biome := registry.get_entity("biome-salt-shallows")
+	var idx := 0
 	for item_id: String in biome.get("resourceItemIds", []):
 		for i in 8:
 			var node := Area2D.new()
 			node.position = Vector2(rng.randi_range(2, WORLD.x - 2) * TILE, rng.randi_range(2, WORLD.y - 2) * TILE)
 			node.set_meta("item_id", item_id)
 			node.set_meta("qty", 2)
+			node.set_meta("idx", idx)
+			idx += 1
 			var visual := SpriteKit.sprite(node_sprites.get(item_id, "none"),
 				Vector2(16, 16), ITEM_COLORS.get(item_id, Color.MAGENTA))
 			if item_id == "item-salt" and SpriteKit.texture("salt_mound") == null:
@@ -606,6 +718,8 @@ func _on_sim_day(_day: int) -> void:
 		village.drift_day(id, conditions)
 	devotion.villager_trickle_day(LOCAL_PLAYER, "god-halor", village.devout_count("god-halor"))
 	village.end_of_day()
+	if not skip_autoload:
+		save_game()  # each dawn, the flats remember
 
 func _spawn_enemies() -> void:
 	var rng := RandomNumberGenerator.new()
@@ -794,6 +908,7 @@ static func _setup_input() -> void:
 		"move_up": [KEY_W, KEY_UP], "move_down": [KEY_S, KEY_DOWN],
 		"interact": [KEY_E], "craft": [KEY_C], "build": [KEY_B], "eat": [KEY_F],
 		"attack": [KEY_SPACE, KEY_J], "cast": [KEY_Q], "cast_2": [KEY_R], "consume": [KEY_X],
+		"save": [KEY_F5],
 	}
 	for action: String in keys:
 		if InputMap.has_action(action):

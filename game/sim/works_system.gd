@@ -20,13 +20,13 @@ func _init(reg: Registry, dev: DevotionSystem) -> void:
 	devotion = dev
 	econ = reg.tuning.get("economy", {})
 
-func place(work_id: String, owner_player: int) -> int:
+func place(work_id: String, owner_player: int, pos: Vector2 = Vector2.ZERO) -> int:
 	var work := registry.get_entity(work_id)
 	if work.is_empty():
 		return -1
 	var id := _next_id
 	_next_id += 1
-	placed[id] = {"work_id": work_id, "owner": owner_player, "in_use": false}
+	placed[id] = {"work_id": work_id, "owner": owner_player, "in_use": false, "x": pos.x, "y": pos.y}
 	var god_id: String = work.get("godId", "neutral")
 	if god_id != "neutral":
 		devotion.work_favor_hour(owner_player, god_id, float(econ.get("favor", {}).get("buildPulse", 5)))
