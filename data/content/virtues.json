@@ -1,0 +1,56 @@
+[
+  {
+    "id": "virtue-grit", "name": "GRIT", "godId": "god-halor",
+    "text": "What the drying could not wear out of you. Halor's virtue: endurance, keeping, the refusal to spoil.",
+    "talents": [
+      { "id": "talent-salt-skin", "name": "Salt-Skin", "threshold": 3, "text": "The flats cure you like good meat. +20 health.", "effects": [{ "type": "base-hp", "magnitude": 20 }] },
+      { "id": "talent-keepers-larder", "name": "Keeper's Larder", "threshold": 6, "text": "A third meal stays down. What is kept well, keeps you.", "effects": [{ "type": "food-slots", "magnitude": 1 }] },
+      { "id": "talent-pillar-stand", "name": "Pillar-Stand", "threshold": 9, "text": "When you become the pillar, you become it thoroughly. Pillar of Salt lasts half again as long.", "effects": [{ "type": "petrify-mult", "magnitude": 1.5 }] }
+    ]
+  },
+  {
+    "id": "virtue-storm", "name": "STORM", "godId": "god-maren",
+    "text": "The weather that got into your blood. Maren's virtue: ferocity spent all at once, without apology.",
+    "talents": [
+      { "id": "talent-whalers-arm", "name": "Whaler's Arm", "threshold": 3, "text": "You swing like the boats never stopped going out. +6 damage.", "effects": [{ "type": "melee-damage", "magnitude": 6 }] },
+      { "id": "talent-squall-born", "name": "Squall-Born", "threshold": 6, "text": "The squall knows its own. Calling it costs Maren a quarter less.", "effects": [{ "type": "squall-cost-mult", "magnitude": 0.75 }] },
+      { "id": "talent-bolt-marked", "name": "Bolt-Marked", "threshold": 9, "text": "The storm signs your work. Every swing carries a little lightning. +8 damage.", "effects": [{ "type": "bolt-on-swing", "magnitude": 8 }] }
+    ]
+  },
+  {
+    "id": "virtue-tide", "name": "TIDE", "godId": "god-neris",
+    "text": "The rhythm the water kept and you keep still. Neris's virtue: timing, recovery, the long return.",
+    "talents": [
+      { "id": "talent-second-wind", "name": "Second Wind", "threshold": 3, "text": "Your breath comes back like something owed to you. Stamina recovers half again as fast.", "effects": [{ "type": "stamina-regen-mult", "magnitude": 1.5 }] },
+      { "id": "talent-slack-water", "name": "Slack-Water", "threshold": 6, "text": "You spend effort at slack, not against the flood. Swings cost 5 less stamina.", "effects": [{ "type": "attack-cost-reduction", "magnitude": 5 }] },
+      { "id": "talent-the-returning", "name": "The Returning", "threshold": 9, "text": "What goes out comes back — once a day, even you. The first death each day leaves you at 1 health instead.", "effects": [{ "type": "cheat-death-daily", "magnitude": 1 }] }
+    ]
+  },
+  {
+    "id": "virtue-current", "name": "CURRENT", "godId": "god-vessa",
+    "text": "The shortest way, worn into your legs. Vessa's virtue: swiftness, reach, arriving before the news of you.",
+    "talents": [
+      { "id": "talent-flats-runner", "name": "Flats-Runner", "threshold": 3, "text": "Distance argues less with you. +15% move speed.", "effects": [{ "type": "move-speed-mult", "magnitude": 1.15 }] },
+      { "id": "talent-long-arms", "name": "Long Arms", "threshold": 6, "text": "You gather from where you stand, mostly. +12 reach on harvest and interaction.", "effects": [{ "type": "interact-range", "magnitude": 12 }] },
+      { "id": "talent-undertow-step", "name": "Undertow Step", "threshold": 9, "text": "The dark is a current; you ride it. Another +15% speed at night.", "effects": [{ "type": "night-speed-mult", "magnitude": 1.15 }] }
+    ]
+  },
+  {
+    "id": "virtue-wild", "name": "WILD", "godId": "god-ghal",
+    "text": "The part of you the beasts recognize. Old Ghal's virtue: patience with everything hungry and honest.",
+    "talents": [
+      { "id": "talent-soft-step", "name": "Soft-Step", "threshold": 3, "text": "You smell less like prey. Hounds notice you from a quarter closer.", "effects": [{ "type": "hound-aggro-mult", "magnitude": 0.75 }] },
+      { "id": "talent-crab-friend", "name": "Crab-Friend", "threshold": 6, "text": "You take crabs the respectful way, and there is more of them for it. +1 meat.", "effects": [{ "type": "crab-bonus-drop", "magnitude": 1 }] },
+      { "id": "talent-herd-sense", "name": "Herd-Sense", "threshold": 9, "text": "Beasts hesitate before biting what Old Ghal has touched. Hounds strike you slower.", "effects": [{ "type": "hound-cooldown-mult", "magnitude": 1.4 }] }
+    ]
+  },
+  {
+    "id": "virtue-hunger", "name": "HUNGER", "godId": "god-ur-noth",
+    "text": "The empty place the sea left, and what you are willing to put in it. The Unlit's virtue. He is delighted you asked.",
+    "talents": [
+      { "id": "talent-take-more", "name": "Take More", "threshold": 3, "text": "The flats owe you, in your accounting. +1 to every harvest.", "effects": [{ "type": "harvest-bonus-qty", "magnitude": 1 }] },
+      { "id": "talent-waste-nothing", "name": "Waste Nothing", "threshold": 6, "text": "You eat like the dark eats: completely. Meals restore half again as much.", "effects": [{ "type": "eat-restore-mult", "magnitude": 1.5 }] },
+      { "id": "talent-unlit-feast", "name": "The Unlit Feast", "threshold": 9, "text": "You have learned to chew what gods are made of. Consumed remnants grant +25 health instead. The warm voice is so proud.", "effects": [{ "type": "consume-bonus-hp", "magnitude": 10 }] }
+    ]
+  }
+]

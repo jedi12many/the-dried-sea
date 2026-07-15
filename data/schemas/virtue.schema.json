@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "virtue.schema.json",
+  "$comment": "v1 — a god's virtue: one of the six ability scores. Talents ignite at point thresholds in the virtue (one currency: Temper). Respec is free.",
+  "type": "object",
+  "required": ["id", "name", "godId", "text", "talents"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^virtue-[a-z0-9-]+$" },
+    "name": { "type": "string", "description": "the score's name, in caps on the sheet" },
+    "godId": { "type": "string" },
+    "text": { "type": "string", "description": "what this virtue IS, in-world" },
+    "talents": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "threshold", "text", "effects"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^talent-[a-z0-9-]+$" },
+          "name": { "type": "string" },
+          "threshold": { "type": "integer", "minimum": 1 },
+          "text": { "type": "string" },
+          "effects": { "$ref": "common.schema.json#/$defs/effectList" }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

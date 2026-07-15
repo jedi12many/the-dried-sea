@@ -76,6 +76,9 @@ This is systems + data + a handful of scripted moments — squarely in AI's stro
 
 Each god defines: **2–3 clutch invocations** (break-glass magic, never a rotation), **one passive blessing**, **a priest type + church aesthetic**, and **an affinity artifact line** (Track 2 legendaries requiring rank-2+ attunement).
 
+### The Six Virtues — the Tally (character sheet, shipped in the Soul Build)
+Ability scores are *what the sea left in you*, and each is a god's virtue — the pantheon read into a person: **GRIT** (Halor: endurance), **STORM** (Maren: ferocity), **TIDE** (Neris: rhythm/recovery), **CURRENT** (Vessa: swiftness/reach), **WILD** (Ghal: beast-sense), **HUNGER** (Ur-Noth: appetite and its prices). One currency — **Temper**, earned by survived days and deeds (bosses, rescues, kneeling) — is spent directly into virtues, and **talents ignite at 3/6/9 points** in that virtue: the allocation IS the tree, no second currency. Respec is free and unlimited (drain a virtue, the Temper returns whole) — builds are meant to be explored. 18 talents live in data/content/virtues.json; all mechanically real. Design note: virtue scores are the player-side mirror of NPC traits — same theology, opposite side of the ledger.
+
 ### Gear leads the build (the found-armor pull)
 The intended respec driver is **loot, not advice**: legendary finds are build-defining and attunement-affine, so pulling the ultimate tank armor out of a deep wreck *is* the game suggesting you tank. Rededication is priced cheap precisely so that moment works — you found the Salt-Father's Bulwark, of course you're going to rebuild around it. Design rule: seed Track-2 finds (and their rumors) across *all* the gods' affinity lines regardless of the player's current build, so the world keeps handing you reasons to become someone else.
 

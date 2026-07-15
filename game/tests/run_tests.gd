@@ -18,6 +18,7 @@ func _init() -> void:
 	_test_village()
 	_test_works()
 	_test_verdict()
+	_test_abilities()
 	_test_save()
 	_test_stats()
 	_test_golden_run()
@@ -183,6 +184,35 @@ func _test_verdict() -> void:
 	ver.record(P, "shepherd", -15.0, "execution without evidence")
 	ver.record(P, "peoples", -22.0, "pool-draining")
 	check(ver.lean(P) in ["taker", "dark"], "the ledgers notice a tyrant (lean=%s)" % ver.lean(P))
+
+func _test_abilities() -> void:
+	var reg := Registry.new()
+	reg.load_all()
+	var ab := AbilitiesSystem.new(reg)
+	var P := 1
+
+	check(reg.all_of("virtue").size() == 6, "six virtues — the pantheon read into a person")
+	check(not ab.allocate(P, "virtue-grit"), "no Temper, no tempering")
+	ab.earn(P, 10)
+	var ignited: Array[String] = []
+	ab.talent_ignited.connect(func(_p: int, t: String) -> void: ignited.append(t))
+	for i in 3:
+		check(ab.allocate(P, "virtue-grit"), "spend Temper into GRIT")
+	check(ab.talent_active(P, "talent-salt-skin"), "Salt-Skin ignites at 3")
+	check("talent-salt-skin" in ignited, "and the signal fired")
+	check(ab.mod_add(P, "base-hp") == 20.0, "+20 health from the talent")
+	check(ab.available(P) == 7, "seven Temper left")
+
+	# free, unlimited respec — the Temper returns whole
+	check(ab.deallocate(P, "virtue-grit"), "take one back")
+	check(not ab.talent_active(P, "talent-salt-skin"), "the talent goes dark below threshold")
+	check(ab.available(P) == 8, "the Temper returns whole")
+
+	# multiplicative mods
+	for i in 3:
+		ab.allocate(P, "virtue-tide")
+	check(ab.mod_mult(P, "stamina-regen-mult") == 1.5, "Second Wind: breath owed to you")
+	check(ab.mod_mult(P, "nonexistent-mod") == 1.0 and ab.mod_add(P, "nonexistent-mod") == 0.0, "unknown mods are inert")
 
 func _test_save() -> void:
 	var reg := Registry.new()

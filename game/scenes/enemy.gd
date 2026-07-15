@@ -81,6 +81,8 @@ func _physics_process(delta: float) -> void:
 	var bold := host.clock.is_night() or host.is_storm_day()
 	var aggro := AGGRO_RADIUS * (2.4 if bold else 1.0)
 	var run_speed := speed * (1.35 if bold else 1.0)
+	if creature_id == "creature-salt-hound":
+		aggro *= host.abilities.mod_mult(GameHost.LOCAL_PLAYER, "hound-aggro-mult")  # Soft-Step
 	if is_boss:
 		aggro = 240.0   # he guards his hoard; he does not hunt
 		run_speed = speed
@@ -100,6 +102,8 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		if _cooldown == 0.0:
 			_cooldown = ATTACK_COOLDOWN * (1.6 if is_boss else 1.0)
+			if creature_id == "creature-salt-hound":
+				_cooldown *= host.abilities.mod_mult(GameHost.LOCAL_PLAYER, "hound-cooldown-mult")  # Herd-Sense
 			host.damage_player(attack_damage)
 	elif dist <= aggro:
 		velocity = to_player.normalized() * run_speed

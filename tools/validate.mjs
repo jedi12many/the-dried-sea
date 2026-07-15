@@ -67,6 +67,7 @@ const REQUIRED = {
   people: ["name", "biomeId", "brink", "wealth", "reactions", "lore"],
   creature: ["name", "biomeId", "archetype", "stats", "text"],
   biome: ["name", "band", "text"],
+  virtue: ["name", "godId", "text", "talents"],
   inv: null, // sub-entities, skipped
 };
 
@@ -120,6 +121,14 @@ for (const { file, obj } of entities) {
     for (const k of ["resourceItemIds", "creatureIds", "peopleIds"]) for (const id of obj[k] ?? []) ref(file, obj.id, id, k);
     if (obj.bossCreatureId) ref(file, obj.id, obj.bossCreatureId, "boss");
     if (obj.signatureLegendItemId) ref(file, obj.id, obj.signatureLegendItemId, "signatureLegend");
+  }
+  if (t === "virtue") {
+    ref(file, obj.id, obj.godId, "godId");
+    const thresholds = (obj.talents ?? []).map((tal) => tal.threshold);
+    if (JSON.stringify(thresholds) !== JSON.stringify([...thresholds].sort((a, b) => a - b)))
+      err(file, `${obj.id} talents must ascend by threshold`);
+    for (const tal of obj.talents ?? [])
+      if (!tal.effects?.length) err(file, `${obj.id}/${tal.id} talent with no effects — sheet candy is not a talent`);
   }
   if (t === "class") {
     for (const w of obj.stationWorkIds ?? []) ref(file, obj.id, w, "stationWorkIds");

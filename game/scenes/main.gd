@@ -20,6 +20,14 @@ var works: WorksSystem
 var verdict: VerdictSystem
 var inventory: InventorySystem
 var stats: StatsSystem
+var abilities: AbilitiesSystem
+
+# the Six Virtues (character sheet)
+var sheet_label: Label
+var sheet_back: ColorRect
+var sheet_open := false
+var consumed_hp_bonus := 0.0       # permanent strength eaten from gods
+var cheat_death_used_today := false
 
 var player: DSPlayer
 var hud: Label
@@ -77,6 +85,9 @@ func _ready() -> void:
 	inventory = InventorySystem.new(registry)
 	stats = StatsSystem.new()
 	stats.register(LOCAL_PLAYER, 60.0, 60.0)   # unfed floor — food raises the ceiling
+	abilities = AbilitiesSystem.new(registry)
+	abilities.earn(LOCAL_PLAYER, 6)            # the flats have already tempered you a little
+	abilities.changed.connect(func(_p: int) -> void: _recompute_vitals())
 	devotion.ledger_event.connect(func(p: int, l: String, a: float, n: String) -> void: verdict.record(p, l, a, n, clock.day))
 	village.ledger_event.connect(func(l: String, a: float, n: String) -> void: verdict.record(LOCAL_PLAYER, l, a, n, clock.day))
 
@@ -99,7 +110,15 @@ func _ready() -> void:
 		skip_autoload = true
 	if not skip_autoload and FileAccess.file_exists(save_path):
 		load_game()
-	if "--screenshot-boss" in OS.get_cmdline_user_args():
+	if "--screenshot-sheet" in OS.get_cmdline_user_args():
+		abilities.earn(LOCAL_PLAYER, 6)
+		for i in 4:
+			abilities.allocate(LOCAL_PLAYER, "virtue-grit")
+		for i in 3:
+			abilities.allocate(LOCAL_PLAYER, "virtue-hunger")
+		_toggle_sheet(true)
+		_screenshot_and_quit()
+	elif "--screenshot-boss" in OS.get_cmdline_user_args():
 		player.position = Vector2(TILE * 9.0, TILE * 7.0)
 		_screenshot_and_quit()
 	elif "--screenshot" in OS.get_cmdline_user_args():
@@ -121,6 +140,9 @@ func save_game() -> void:
 		"rites_done_today": rites_done_today.duplicate(),
 		"harvested_indices": harvested_indices.duplicate(),
 		"boss_dead": boss_dead,
+		"abilities": abilities.state.duplicate(true),
+		"consumed_hp_bonus": consumed_hp_bonus,
+		"cheat_death_used_today": cheat_death_used_today,
 		"survivor": {"rescued": survivor.rescued if survivor != null else false,
 			"tribesman_id": survivor.tribesman_id if survivor != null else -1,
 			"pos": [survivor.position.x, survivor.position.y] if survivor != null else [0, 0]},
@@ -155,6 +177,10 @@ func load_game() -> void:
 		var inst: Dictionary = works.placed[inst_id]
 		_spawn_work_visual(str(inst.work_id), Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))), chapel_dict)
 	boss_dead = bool(g.get("boss_dead", false))
+	abilities.state = SaveSystem._int_keys(g.get("abilities", {}))
+	consumed_hp_bonus = float(g.get("consumed_hp_bonus", 0.0))
+	cheat_death_used_today = bool(g.get("cheat_death_used_today", false))
+	_recompute_vitals()
 	if boss_dead:
 		for e in enemies.duplicate():
 			if is_instance_valid(e) and e.is_boss:
@@ -227,16 +253,16 @@ func _update_prompt() -> void:
 
 func current_prompt() -> String:
 	for s in shrines:
-		if player.position.distance_to(s.position) < INTERACT_RANGE and s.get_meta("god_id") not in attuned_gods:
+		if player.position.distance_to(s.position) < interact_range() and s.get_meta("god_id") not in attuned_gods:
 			return "[E] Kneel"
-	if survivor != null and not survivor.rescued and player.position.distance_to(survivor.position) < INTERACT_RANGE:
+	if survivor != null and not survivor.rescued and player.position.distance_to(survivor.position) < interact_range():
 		return "[E] Rescue her"
 	for god_id: String in chapels:
-		if player.position.distance_to(chapels[god_id]) < INTERACT_RANGE:
+		if player.position.distance_to(chapels[god_id]) < interact_range():
 			if _carrying_remnant():
 				return "[E] Enshrine the remnant"
 			return "[E] Hold the rite" if not rites_done_today.get(god_id, false) else "(rite already held today)"
-	var best := HARVEST_RANGE
+	var best := harvest_range()
 	var best_item := ""
 	for node in resource_nodes:
 		if is_instance_valid(node) and player.position.distance_to(node.position) < best:
@@ -250,6 +276,20 @@ func current_prompt() -> String:
 	return ""
 
 func _unhandled_input(event: InputEvent) -> void:
+	if sheet_open and event is InputEventKey and event.pressed:
+		var skey := (event as InputEventKey).physical_keycode
+		if skey >= KEY_1 and skey <= KEY_6:
+			var virtues := registry.all_of("virtue")
+			var virtue_id := str(virtues[int(skey - KEY_1)].id)
+			if (event as InputEventKey).shift_pressed:
+				abilities.deallocate(LOCAL_PLAYER, virtue_id)
+			else:
+				abilities.allocate(LOCAL_PLAYER, virtue_id)
+			_toggle_sheet(true)
+			return
+		if skey == KEY_ESCAPE or skey == KEY_T:
+			_toggle_sheet(false)
+			return
 	if menu_open and event is InputEventKey and event.pressed:
 		var key := (event as InputEventKey).physical_keycode
 		if key >= KEY_1 and key <= KEY_9:
@@ -278,6 +318,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		intent_cast("inv-call-squall")
 	elif event.is_action_pressed("consume"):
 		intent_consume_remnant()
+	elif event.is_action_pressed("sheet"):
+		_toggle_sheet(not sheet_open)
 	elif event.is_action_pressed("save"):
 		save_game()
 		message = "The flats will remember. (saved)"
@@ -285,15 +327,21 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## --- intents (the only door into the sim from presentation) --------------------
 ## E is contextual: kneel at a shrine, rescue the stranded, hold a rite, else harvest.
+func interact_range() -> float:
+	return INTERACT_RANGE + abilities.mod_add(LOCAL_PLAYER, "interact-range")
+
+func harvest_range() -> float:
+	return HARVEST_RANGE + abilities.mod_add(LOCAL_PLAYER, "interact-range")
+
 func intent_interact() -> bool:
 	for s in shrines:
 		var god_id: String = s.get_meta("god_id")
-		if player.position.distance_to(s.position) < INTERACT_RANGE and god_id not in attuned_gods:
+		if player.position.distance_to(s.position) < interact_range() and god_id not in attuned_gods:
 			return intent_kneel(god_id)
-	if survivor != null and not survivor.rescued and player.position.distance_to(survivor.position) < INTERACT_RANGE:
+	if survivor != null and not survivor.rescued and player.position.distance_to(survivor.position) < interact_range():
 		return intent_rescue()
 	for god_id: String in chapels:
-		if player.position.distance_to(chapels[god_id]) < INTERACT_RANGE:
+		if player.position.distance_to(chapels[god_id]) < interact_range():
 			if _carrying_remnant():
 				return intent_enshrine(god_id)
 			return intent_rite(god_id)
@@ -321,6 +369,7 @@ func intent_kneel(god_id: String) -> bool:
 	if god_id == "god-maren":
 		inventory.add(LOCAL_PLAYER, "item-harpoon-verse", 1)
 		message += "\nTucked in the shrine-stones: a VERSE OF THE HARPOON-SONG. Whalers say there are three."
+	abilities.earn(LOCAL_PLAYER, 1)   # kneeling to a god tempers you
 	_toggle_build_menu(false)
 	_refresh_hud()
 	return true
@@ -336,10 +385,17 @@ func intent_cast(invocation_id: String = "inv-pillar-of-salt") -> bool:
 		return false
 	for effect: Dictionary in inv.get("effects", []):
 		_apply_effect(effect)
-	# during the great storm, Maren's magic costs half — she is everywhere today
+	# cost relief: storms make Maren generous; Squall-Born makes her yours
 	var found2 := devotion._find_invocation(invocation_id)
-	if is_storm_day() and found2.get("god_id", "") == "god-maren":
-		devotion._restore(LOCAL_PLAYER, "god-maren", float(found2.inv.vigorCost) * devotion.max_vigor("god-maren") * 0.5)
+	if found2.get("god_id", "") == "god-maren":
+		var relief := 0.0
+		if is_storm_day():
+			relief += 0.5
+		if invocation_id == "inv-call-squall":
+			relief += 1.0 - abilities.mod_mult(LOCAL_PLAYER, "squall-cost-mult")
+		if relief > 0.0:
+			devotion._restore(LOCAL_PLAYER, "god-maren",
+				float(found2.inv.vigorCost) * devotion.max_vigor("god-maren") * minf(relief, 0.9))
 	message = str(inv.text)
 	_refresh_hud()
 	return true
@@ -348,7 +404,7 @@ func intent_cast(invocation_id: String = "inv-pillar-of-salt") -> bool:
 func _apply_effect(effect: Dictionary) -> void:
 	match str(effect.get("type", "")):
 		"petrify-invulnerable":
-			petrify_frames = int(float(effect.get("duration", 6)) * 60.0)
+			petrify_frames = int(float(effect.get("duration", 6)) * 60.0 * abilities.mod_mult(LOCAL_PLAYER, "petrify-mult"))
 			player.modulate = Color("cfd0ce")
 		"aoe-knockdown":
 			var radius := float(effect.get("radius", 8)) * TILE
@@ -381,6 +437,7 @@ func _flash_bolt(at: Vector2) -> void:
 
 func intent_rescue() -> bool:
 	survivor.rescue()
+	abilities.earn(LOCAL_PLAYER, 1)   # saving someone tempers you differently
 	message = "%s, of the drowned coast towns. She follows you home — give her a hearth and she'll keep it.\nShe is devout: her prayers feed Halor a little every day." % survivor.display_name
 	_check_village_keys()  # if her need already stands built, she blooms on arrival
 	_refresh_hud()
@@ -399,7 +456,7 @@ func intent_rite(god_id: String) -> bool:
 
 func intent_harvest() -> bool:
 	var nearest: Area2D = null
-	var best := HARVEST_RANGE
+	var best := harvest_range()
 	for node in resource_nodes:
 		if not is_instance_valid(node):
 			continue
@@ -409,7 +466,8 @@ func intent_harvest() -> bool:
 			nearest = node
 	if nearest == null:
 		return false
-	inventory.add(LOCAL_PLAYER, nearest.get_meta("item_id"), int(nearest.get_meta("qty")))
+	inventory.add(LOCAL_PLAYER, nearest.get_meta("item_id"),
+		int(nearest.get_meta("qty")) + int(abilities.mod_add(LOCAL_PLAYER, "harvest-bonus-qty")))
 	if str(nearest.get_meta("item_id")) == "item-storm-glass" and inventory.count(LOCAL_PLAYER, "item-harpoon-verse") == 2:
 		inventory.add(LOCAL_PLAYER, "item-harpoon-verse", 1)
 		message = "Folded inside the storm-glass, impossibly: the LAST VERSE of the harpoon-song.\nYou know the whole making now. It wants a rite at a chapel — bronze, storm-glass, and good timber."
@@ -510,21 +568,43 @@ func intent_attack() -> bool:
 			target = e
 	if target == null:
 		return false
-	if not stats.spend_stamina(LOCAL_PLAYER, ATTACK_STAMINA):
+	if not stats.spend_stamina(LOCAL_PLAYER, attack_stamina_cost()):
 		message = "Too winded to swing. Breath comes back — or food raises the ceiling."
 		_refresh_hud()
 		return false
 	_flash_swing(target.position)
 	target.on_hit()
-	if inventory.count(LOCAL_PLAYER, "item-marens-own-harpoon") > 0:
+	if inventory.count(LOCAL_PLAYER, "item-marens-own-harpoon") > 0 \
+			or abilities.talent_active(LOCAL_PLAYER, "talent-bolt-marked"):
 		_flash_bolt(target.position)   # strike true and the bolt comes down on your mark
 	if stats.damage(target, attack_damage()):
 		_on_enemy_killed(target)
 	return true
 
 func attack_damage() -> float:
-	# the legend in your hands changes what your hands can do
-	return 26.0 if inventory.count(LOCAL_PLAYER, "item-marens-own-harpoon") > 0 else ATTACK_DAMAGE
+	# the legend in your hands changes what your hands can do — and so do your virtues
+	var dmg := 26.0 if inventory.count(LOCAL_PLAYER, "item-marens-own-harpoon") > 0 else ATTACK_DAMAGE
+	dmg = abilities.mod_add(LOCAL_PLAYER, "melee-damage", dmg)
+	dmg = abilities.mod_add(LOCAL_PLAYER, "bolt-on-swing", dmg)
+	return dmg
+
+func attack_stamina_cost() -> float:
+	return maxf(ATTACK_STAMINA - abilities.mod_add(LOCAL_PLAYER, "attack-cost-reduction"), 5.0)
+
+## Recompute everything the virtues touch on the body. Called on every
+## allocation change, load, and remnant consumption.
+func _recompute_vitals() -> void:
+	var a: Dictionary = stats.actors.get(LOCAL_PLAYER, {})
+	if a.is_empty():
+		return
+	a.base_hp = 60.0 + consumed_hp_bonus + abilities.mod_add(LOCAL_PLAYER, "base-hp")
+	a.food_slots = StatsSystem.FOOD_SLOTS + int(abilities.mod_add(LOCAL_PLAYER, "food-slots"))
+	a.regen_mult = abilities.mod_mult(LOCAL_PLAYER, "stamina-regen-mult")
+	a.eat_mult = abilities.mod_mult(LOCAL_PLAYER, "eat-restore-mult")
+	a.hp = minf(float(a.hp), stats.max_hp(LOCAL_PLAYER))
+	_refresh_bars()
+	if sheet_open:
+		_toggle_sheet(true)
 
 ## A short slash flash toward the target — SPACE should feel like something.
 func _flash_swing(toward: Vector2) -> void:
@@ -540,6 +620,15 @@ func _flash_swing(toward: Vector2) -> void:
 func damage_player(amount: float) -> void:
 	if petrify_frames > 0:
 		return  # the salt holds
+	# The Returning: what goes out comes back — once a day, even you
+	if abilities.talent_active(LOCAL_PLAYER, "talent-the-returning") and not cheat_death_used_today \
+			and stats.hp(LOCAL_PLAYER) - amount <= 0.0:
+		cheat_death_used_today = true
+		stats.actors[LOCAL_PLAYER].hp = 1.0
+		message = "The tide takes you out — and brings you back. Once a day, Neris keeps that promise."
+		_refresh_hud()
+		_refresh_bars()
+		return
 	if stats.damage(LOCAL_PLAYER, amount):
 		# Death penalty is an open design question (GAME-SPEC); M1 placeholder:
 		# wake at the village center, hurt pride only.
@@ -550,9 +639,13 @@ func damage_player(amount: float) -> void:
 func _on_enemy_killed(enemy: DSEnemy) -> void:
 	var creature := registry.get_entity(enemy.creature_id)
 	for drop: Dictionary in creature.get("drops", []):
-		inventory.add(LOCAL_PLAYER, str(drop.itemId), int(drop.qty))
+		var qty := int(drop.qty)
+		if enemy.creature_id == "creature-scuttle-crab" and str(drop.itemId) == "item-crab-meat":
+			qty += int(abilities.mod_add(LOCAL_PLAYER, "crab-bonus-drop"))  # the respectful way
+		inventory.add(LOCAL_PLAYER, str(drop.itemId), qty)
 	if enemy.is_boss:
 		boss_dead = true
+		abilities.earn(LOCAL_PLAYER, 2)   # nothing tempers like a king
 		# the wreck-ring opens: his hoard becomes salvage ground
 		var hoard_rng := RandomNumberGenerator.new()
 		hoard_rng.seed = 77
@@ -580,7 +673,8 @@ func intent_consume_remnant() -> bool:
 			continue
 		var god_id: String = item.get("remnantOf", "god-halor")
 		inventory.pay(LOCAL_PLAYER, [{"itemId": item_id, "qty": 1}])
-		stats.actors[LOCAL_PLAYER].base_hp = float(stats.actors[LOCAL_PLAYER].base_hp) + 15.0
+		consumed_hp_bonus += 15.0 + abilities.mod_add(LOCAL_PLAYER, "consume-bonus-hp")
+		_recompute_vitals()
 		verdict.remnant_consume(LOCAL_PLAYER, god_id)
 		message = "You eat what was left of a god's strength. You feel MAGNIFICENT.\nSomewhere, %s grows quieter — for everyone, forever. The warm voice sounds pleased." % str(registry.get_entity(god_id).name)
 		_refresh_hud()
@@ -617,6 +711,31 @@ func intent_build(work_id: String) -> bool:
 	_check_village_keys()
 	_refresh_hud()
 	return true
+
+## --- the sheet: what the sea left in you ------------------------------------------
+func _toggle_sheet(open: bool) -> void:
+	sheet_open = open
+	if sheet_label == null:
+		return
+	sheet_label.visible = open
+	sheet_back.visible = open
+	if not open:
+		return
+	var lines := ["THE TALLY — what the sea left in you",
+		"Temper: %d unspent (of %d)   [1-6] +1  [SHIFT+1-6] take back  [T] close" % [
+			abilities.available(LOCAL_PLAYER), abilities.earned(LOCAL_PLAYER)]]
+	var virtues := registry.all_of("virtue")
+	for i in virtues.size():
+		var v: Dictionary = virtues[i]
+		var s := abilities.score(LOCAL_PLAYER, str(v.id))
+		var pips := ""
+		for p in AbilitiesSystem.VIRTUE_CAP:
+			pips += "●" if p < s else "·"
+		lines.append("%d. %-8s %s %2d   (%s)" % [i + 1, str(v.name), pips, s, str(registry.get_entity(str(v.godId)).name)])
+		for talent: Dictionary in v.talents:
+			var lit := s >= int(talent.threshold)
+			lines.append("    %s %s (%d) — %s" % ["■" if lit else "□", str(talent.name), int(talent.threshold), str(talent.text)])
+	sheet_label.text = "\n".join(lines)
 
 ## Shared by building and loading: the physical body of a placed work.
 ## chapel_hint maps god_id -> [x, y] from a save; empty when building live.
@@ -783,6 +902,8 @@ func _on_sim_day(_day: int) -> void:
 		village.drift_day(id, conditions)
 	devotion.villager_trickle_day(LOCAL_PLAYER, "god-halor", village.devout_count("god-halor"))
 	village.end_of_day()
+	cheat_death_used_today = false
+	abilities.earn(LOCAL_PLAYER, 2)   # every survived day tempers you
 	_storm_dawn()
 	if not skip_autoload:
 		save_game()  # each dawn, the flats remember
@@ -979,6 +1100,20 @@ func _build_hud() -> void:
 	boss_bar.visible = false
 	layer.add_child(boss_bar)
 	boss_bar.set_meta("back", boss_back)
+	sheet_back = ColorRect.new()
+	sheet_back.position = Vector2(560, 96)
+	sheet_back.size = Vector2(700, 608)
+	sheet_back.color = Color(0.949, 0.937, 0.910, 0.93)   # keepsake-paper cream
+	sheet_back.visible = false
+	layer.add_child(sheet_back)
+	sheet_label = Label.new()
+	sheet_label.position = Vector2(576, 106)
+	sheet_label.custom_minimum_size = Vector2(668, 0)
+	sheet_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sheet_label.add_theme_color_override("font_color", Color("3b3428"))
+	sheet_label.add_theme_font_size_override("font_size", 12)
+	sheet_label.visible = false
+	layer.add_child(sheet_label)
 	menu_label = Label.new()
 	menu_label.position = Vector2(12, 200)
 	menu_label.add_theme_color_override("font_color", Color("3b3428"))
@@ -1015,7 +1150,7 @@ func _refresh_hud() -> void:
 		weather = "  — THE GREAT STORM"
 	elif "god-maren" in attuned_gods and (clock.day + 1) % 4 == 3:
 		weather = "  — Maren whispers: storm tomorrow"
-	hud.text = "Day %d, %02d:%02d%s%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [SPACE] attack%s\n%s" % [
+	hud.text = "Day %d, %02d:%02d%s%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [T] tally  [SPACE] attack%s\n%s" % [
 		clock.day + 1, clock.minute_of_day / 60, clock.minute_of_day % 60, weather,
 		"  — night. NIGHT BELONGS TO THE HOUNDS." if clock.is_night() else "",
 		"  |  fed ×%d" % fed if fed > 0 else "", _direction_hints(),
@@ -1048,7 +1183,7 @@ static func _setup_input() -> void:
 		"move_up": [KEY_W, KEY_UP], "move_down": [KEY_S, KEY_DOWN],
 		"interact": [KEY_E], "craft": [KEY_C], "build": [KEY_B], "eat": [KEY_F],
 		"attack": [KEY_SPACE, KEY_J], "cast": [KEY_Q], "cast_2": [KEY_R], "consume": [KEY_X],
-		"save": [KEY_F5],
+		"save": [KEY_F5], "sheet": [KEY_T],
 	}
 	for action: String in keys:
 		if InputMap.has_action(action):

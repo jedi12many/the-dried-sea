@@ -361,6 +361,40 @@ func _ready() -> void:
 	check(not host.is_storm_day(), "the sky clears")
 	check(_node_of(host, "item-storm-glass") == null, "and takes its glass back")
 
+	# --- the Tally: virtues in play --------------------------------------------
+	check(host.abilities.available(1) > 3, "the flats have tempered you (deeds + days: %d)" % host.abilities.available(1))
+	var max0: float = host.stats.max_hp(1)
+	for i in 3:
+		host.abilities.allocate(1, "virtue-grit")
+	check(host.stats.max_hp(1) == max0 + 20.0, "3 GRIT ignites Salt-Skin: the body follows the sheet")
+	var speed_mult: float = host.abilities.mod_mult(1, "move-speed-mult")
+	check(speed_mult == 1.0, "no CURRENT yet, no speed")
+	for i in 3:
+		host.abilities.allocate(1, "virtue-hunger")
+	var salt_before := host.inventory.count(1, "item-salt")
+	var salt_node := _node_of(host, "item-salt")
+	if salt_node != null:
+		host.player.position = salt_node.position
+		host.intent_harvest()
+		check(host.inventory.count(1, "item-salt") - salt_before == 4, "Take More: +1 to every harvest (got %d)" % (host.inventory.count(1, "item-salt") - salt_before))
+	# free respec: drain HUNGER, the Temper returns
+	var avail_before := host.abilities.available(1)
+	for i in 3:
+		host.abilities.deallocate(1, "virtue-hunger")
+	check(host.abilities.available(1) == avail_before + 3, "unlimited respec: the Temper returns whole")
+	check(host.stats.max_hp(1) == max0 + 20.0, "GRIT untouched by HUNGER's respec")
+	# the sheet survives the save
+	host.save_game()
+	var host3: GameHost = load("res://scenes/main.tscn").instantiate()
+	host3.skip_autoload = true
+	host3.save_path = host.save_path
+	add_child(host3)
+	await get_tree().physics_frame
+	host3.load_game()
+	check(host3.abilities.score(1, "virtue-grit") == 3, "the Tally survives the save")
+	check(host3.stats.max_hp(1) == host.stats.max_hp(1), "and the body still follows it")
+	host3.queue_free()
+
 	# --- Anna keeps a day ------------------------------------------------------
 	var center := Vector2(GameHost.WORLD.x * GameHost.TILE / 2.0, GameHost.WORLD.y * GameHost.TILE / 2.0)
 	host.survivor.position = center  # settled

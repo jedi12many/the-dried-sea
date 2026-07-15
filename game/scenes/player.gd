@@ -33,10 +33,16 @@ func _ready() -> void:
 func _physics_process(_delta: float) -> void:
 	var host := get_parent() as GameHost
 	if host != null and host.petrify_frames > 0:
+		# (host checked again below for speed mods)
 		velocity = Vector2.ZERO   # rooted — the pillar does not walk
 		return
 	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	if dir != Vector2.ZERO:
 		facing = dir.normalized()
-	velocity = dir * SPEED
+	var speed := SPEED
+	if host != null:
+		speed *= host.abilities.mod_mult(GameHost.LOCAL_PLAYER, "move-speed-mult")
+		if host.clock.is_night():
+			speed *= host.abilities.mod_mult(GameHost.LOCAL_PLAYER, "night-speed-mult")
+	velocity = dir * speed
 	move_and_slide()

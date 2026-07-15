@@ -38,11 +38,12 @@ func eat(actor_id: Variant, food_hp: float, food_stamina: float, seconds: float)
 	if not actors.has(actor_id):
 		return false
 	var a: Dictionary = actors[actor_id]
-	if (a.foods as Array).size() >= FOOD_SLOTS:
+	if (a.foods as Array).size() >= int(a.get("food_slots", FOOD_SLOTS)):
 		return false
 	a.foods.append({"hp": food_hp, "stamina": food_stamina, "seconds": seconds})
-	a.hp = minf(float(a.hp) + food_hp, max_hp(actor_id))
-	a.stamina = minf(float(a.stamina) + food_stamina, max_stamina(actor_id))
+	var restore_mult := float(a.get("eat_mult", 1.0))   # Waste Nothing eats completely
+	a.hp = minf(float(a.hp) + food_hp * restore_mult, max_hp(actor_id))
+	a.stamina = minf(float(a.stamina) + food_stamina * restore_mult, max_stamina(actor_id))
 	changed.emit(actor_id)
 	return true
 
@@ -102,4 +103,5 @@ func tick(delta: float) -> void:
 				changed.emit(id)
 		var ms := max_stamina(id)
 		if ms > 0.0 and float(a.stamina) < ms:
-			a.stamina = minf(float(a.stamina) + STAMINA_REGEN_PER_SEC * delta, ms)
+			var regen := STAMINA_REGEN_PER_SEC * float(a.get("regen_mult", 1.0))
+			a.stamina = minf(float(a.stamina) + regen * delta, ms)
