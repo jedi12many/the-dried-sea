@@ -51,6 +51,11 @@ var save_path := "user://dried-sea-save.json"
 var skip_autoload := false        # tests and --fresh runs start clean
 var harvested_indices: Array = [] # which resource nodes are gone
 var boss_dead := false
+var node_defs: Array = []         # deterministic layout: storms respawn from this
+
+# the great storm (every 4th day; Maren's country)
+const STORM_GLASS_IDX_BASE := 1000  # ephemeral nodes: never persisted
+var storm_flash := 0.0
 
 # STYLE-BIBLE salt-shallows palette (placeholder blocks, right colors)
 const ITEM_COLORS := {
@@ -180,6 +185,9 @@ func _physics_process(delta: float) -> void:
 			player.modulate = Color.WHITE
 			message = "The salt lets you go. Halor's strength is spent — worship gives it back."
 			_refresh_hud()
+	if storm_flash > 0.0:
+		storm_flash = maxf(storm_flash - delta * 2.0, 0.0)
+		daynight.color = daynight.color.lerp(Color(1.6, 1.6, 1.7), storm_flash)
 	_update_prompt()
 	_update_boss_bar()
 	_refresh_bars()
@@ -317,6 +325,10 @@ func intent_cast(invocation_id: String = "inv-pillar-of-salt") -> bool:
 		return false
 	for effect: Dictionary in inv.get("effects", []):
 		_apply_effect(effect)
+	# during the great storm, Maren's magic costs half — she is everywhere today
+	var found2 := devotion._find_invocation(invocation_id)
+	if is_storm_day() and found2.get("god_id", "") == "god-maren":
+		devotion._restore(LOCAL_PLAYER, "god-maren", float(found2.inv.vigorCost) * devotion.max_vigor("god-maren") * 0.5)
 	message = str(inv.text)
 	_refresh_hud()
 	return true
@@ -649,32 +661,35 @@ func _build_ground() -> void:
 func _spawn_resource_nodes() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
-	var node_sprites := {
-		"item-driftwood": "driftwood", "item-wreck-timber": "timber",
-		"item-ship-cloth": "cloth", "item-salt": "salt_mound", "item-bronze-salvage": "bronze",
-		"item-rope": "rope",
-	}
 	var biome := registry.get_entity("biome-salt-shallows")
 	var idx := 0
 	for item_id: String in biome.get("resourceItemIds", []):
 		for i in 8:
-			var node := Area2D.new()
-			node.position = Vector2(rng.randi_range(2, WORLD.x - 2) * TILE, rng.randi_range(2, WORLD.y - 2) * TILE)
-			node.set_meta("item_id", item_id)
-			node.set_meta("qty", 2)
-			node.set_meta("idx", idx)
+			var pos := Vector2(rng.randi_range(2, WORLD.x - 2) * TILE, rng.randi_range(2, WORLD.y - 2) * TILE)
+			node_defs.append({"item_id": item_id, "pos": pos, "idx": idx})
+			_spawn_one_node(item_id, pos, idx)
 			idx += 1
-			var visual := SpriteKit.sprite(node_sprites.get(item_id, "none"),
-				Vector2(16, 16), ITEM_COLORS.get(item_id, Color.MAGENTA))
-			if item_id == "item-salt" and SpriteKit.texture("salt_mound") == null:
-				var glint := ColorRect.new()   # fallback-only: white-on-white needs help
-				glint.size = Vector2(18, 18)
-				glint.position = Vector2(-9, -9)
-				glint.color = Color("aebfc9")
-				node.add_child(glint)
-			node.add_child(visual)
-			add_child(node)
-			resource_nodes.append(node)
+
+const NODE_SPRITES := {
+	"item-driftwood": "driftwood", "item-wreck-timber": "timber",
+	"item-ship-cloth": "cloth", "item-salt": "salt_mound", "item-bronze-salvage": "bronze",
+	"item-rope": "rope", "item-storm-glass": "bronze",
+}
+
+func _spawn_one_node(item_id: String, pos: Vector2, idx: int) -> Area2D:
+	var node := Area2D.new()
+	node.position = pos
+	node.set_meta("item_id", item_id)
+	node.set_meta("qty", 2)
+	node.set_meta("idx", idx)
+	var visual := SpriteKit.sprite(NODE_SPRITES.get(item_id, "none"),
+		Vector2(16, 16), ITEM_COLORS.get(item_id, Color("c9a648")))
+	if item_id == "item-storm-glass":
+		visual.modulate = Color(1.3, 1.25, 0.7)   # fused sand, still warm from the sky
+	node.add_child(visual)
+	add_child(node)
+	resource_nodes.append(node)
+	return node
 
 func _spawn_shrines() -> void:
 	# Halor waits in the north; Maren on the east edge, where the weather comes from.
@@ -718,8 +733,38 @@ func _on_sim_day(_day: int) -> void:
 		village.drift_day(id, conditions)
 	devotion.villager_trickle_day(LOCAL_PLAYER, "god-halor", village.devout_count("god-halor"))
 	village.end_of_day()
+	_storm_dawn()
 	if not skip_autoload:
 		save_game()  # each dawn, the flats remember
+
+## --- the great storm: every 4th day the sea's weather comes home -----------------
+func is_storm_day() -> bool:
+	return clock.day % 4 == 3
+
+func _storm_dawn() -> void:
+	# yesterday's storm-glass sinks back into the flats
+	for node in resource_nodes.duplicate():
+		if is_instance_valid(node) and int(node.get_meta("idx", -1)) >= STORM_GLASS_IDX_BASE:
+			resource_nodes.erase(node)
+			node.queue_free()
+	if not is_storm_day():
+		return
+	# the seabed shifts: some of what was taken is uncovered again
+	var respawned := 0
+	for def: Dictionary in node_defs:
+		if respawned >= 8:
+			break
+		if int(def.idx) in harvested_indices:
+			harvested_indices.erase(int(def.idx))
+			_spawn_one_node(str(def.item_id), def.pos, int(def.idx))
+			respawned += 1
+	# and the sky leaves gifts: storm-glass, today only
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 100 + clock.day
+	for i in 3:
+		var pos := Vector2(rng.randi_range(3, WORLD.x - 3) * TILE, rng.randi_range(3, WORLD.y - 3) * TILE)
+		_spawn_one_node("item-storm-glass", pos, STORM_GLASS_IDX_BASE + i)
+	message = "THE GREAT STORM. The seabed shifts — old salvage uncovered, and storm-glass smokes on the flats.\nGather it before the sky takes it back. Maren is EVERYWHERE today: her magic costs half."
 
 func _spawn_enemies() -> void:
 	var rng := RandomNumberGenerator.new()
@@ -754,7 +799,12 @@ func _on_sim_minute(_m: int) -> void:
 	if _minutes_since_hour >= 60:
 		_minutes_since_hour = 0
 		works.favor_hour()
-	daynight.color = _tint_for_minute(clock.minute_of_day)
+	var tint := _tint_for_minute(clock.minute_of_day)
+	if is_storm_day():
+		tint = tint * Color(0.72, 0.76, 0.86)   # storm-gray over everything
+		if clock.minute_of_day % 47 == 0:
+			storm_flash = 0.65                   # lightning somewhere over the flats
+	daynight.color = tint
 	_refresh_hud()
 
 ## Gradual light: night -> warm dawn -> blinding day -> gold dusk -> night.
@@ -878,8 +928,13 @@ func _refresh_hud() -> void:
 	for item_id: String in inventory._inv(LOCAL_PLAYER):
 		inv += "%s ×%d   " % [str(registry.get_entity(item_id).get("name", item_id)), inventory.count(LOCAL_PLAYER, item_id)]
 	var fed: int = (stats.actors.get(LOCAL_PLAYER, {}).get("foods", []) as Array).size()
-	hud.text = "Day %d, %02d:%02d%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [SPACE] attack%s\n%s" % [
-		clock.day + 1, clock.minute_of_day / 60, clock.minute_of_day % 60,
+	var weather := ""
+	if is_storm_day():
+		weather = "  — THE GREAT STORM"
+	elif "god-maren" in attuned_gods and (clock.day + 1) % 4 == 3:
+		weather = "  — Maren whispers: storm tomorrow"
+	hud.text = "Day %d, %02d:%02d%s%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [SPACE] attack%s\n%s" % [
+		clock.day + 1, clock.minute_of_day / 60, clock.minute_of_day % 60, weather,
 		"  — night. NIGHT BELONGS TO THE HOUNDS." if clock.is_night() else "",
 		"  |  fed ×%d" % fed if fed > 0 else "", _direction_hints(),
 		inv if inv != "" else "(empty hands)",

@@ -311,6 +311,25 @@ func _ready() -> void:
 	check(absf(float(host2.verdict.god_world_strength["god-halor"]) - float(host.verdict.god_world_strength["god-halor"])) < 0.01, "the world remembers what you consumed")
 	host2.queue_free()
 
+	# --- the great storm ------------------------------------------------------
+	var taken_before := host.harvested_indices.size()
+	check(taken_before > 0, "some salvage is gone (we took it)")
+	host.clock.day = 3
+	host._on_sim_day(3)
+	check(host.is_storm_day(), "day 4 is the storm's day")
+	check(host.harvested_indices.size() < taken_before, "the seabed shifts — old salvage uncovered")
+	check(_node_of(host, "item-storm-glass") != null, "storm-glass smokes on the flats")
+	host.devotion.state[1]["god-maren"].vigor = 100.0
+	host.devotion.state[1]["god-maren"].dormant = false
+	host.player.position = Vector2(-5000, -5000)  # cast at nothing, cheaply
+	check(host.intent_cast("inv-call-squall"), "call the squall INTO the storm")
+	var after_cast: float = host.devotion.state[1]["god-maren"].vigor
+	check(after_cast > 60.0, "she is everywhere today — half cost (vigor %.0f)" % after_cast)
+	host.clock.day = 4
+	host._on_sim_day(4)
+	check(not host.is_storm_day(), "the sky clears")
+	check(_node_of(host, "item-storm-glass") == null, "and takes its glass back")
+
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)
 

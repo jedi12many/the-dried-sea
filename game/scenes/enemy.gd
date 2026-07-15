@@ -77,10 +77,10 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return   # knocked flat by the squall
 	_cooldown = maxf(_cooldown - delta, 0.0)
-	# night belongs to the hounds: they smell farther and run harder
-	var night := host.clock.is_night()
-	var aggro := AGGRO_RADIUS * (2.4 if night else 1.0)
-	var run_speed := speed * (1.35 if night else 1.0)
+	# night belongs to the hounds — and the storm belongs to no one
+	var bold := host.clock.is_night() or host.is_storm_day()
+	var aggro := AGGRO_RADIUS * (2.4 if bold else 1.0)
+	var run_speed := speed * (1.35 if bold else 1.0)
 	if is_boss:
 		aggro = 240.0   # he guards his hoard; he does not hunt
 		run_speed = speed
