@@ -26,6 +26,7 @@ var enemy_net_ids: Dictionary = {}   # DSEnemy -> int (server)
 var _next_enemy_net_id := 1
 var _pos_timer := 0.0
 var work_visuals: Dictionary = {}    # works.placed id -> visual Node2D
+var sound: SoundKit
 var drag_work_id := -1               # click-and-drag: which work is in hand
 
 var registry := Registry.new()
@@ -129,6 +130,8 @@ func _ready() -> void:
 	daynight = CanvasModulate.new()
 	add_child(daynight)
 	_build_hud()
+	sound = SoundKit.new()
+	add_child(sound)
 	clock.sim_minute.connect(_on_sim_minute)
 	_refresh_hud()
 
@@ -380,6 +383,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("craft"):
 		intent_craft_first()
 	elif event.is_action_pressed("build"):
+		sfx("ui")
 		_toggle_build_menu(not menu_open)
 	elif event.is_action_pressed("eat"):
 		intent_eat()
@@ -392,6 +396,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("consume"):
 		intent_consume_remnant()
 	elif event.is_action_pressed("sheet"):
+		sfx("ui")
 		_toggle_sheet(not sheet_open)
 	elif event.is_action_pressed("save"):
 		save_game()
@@ -442,6 +447,7 @@ func intent_kneel(god_id: String) -> bool:
 	message = "You kneel at the fallen shrine. %s: '%s'\n%s is with you — %s Their strength is not endless." % [
 		str(god.voice.tone).split(";")[0], str(god.voice.sampleLine),
 		str(god.name).to_upper(), str(KNEEL_HINTS.get(god_id, ""))]
+	sfx("kneel")
 	if god_id == "god-maren":
 		inventory.add(acting_pid, "item-harpoon-verse", 1)
 		message += "\nTucked in the shrine-stones: a VERSE OF THE HARPOON-SONG. Whalers say there are three."
@@ -483,6 +489,7 @@ func intent_cast(invocation_id: String = "inv-pillar-of-salt") -> bool:
 func _apply_effect(effect: Dictionary) -> void:
 	match str(effect.get("type", "")):
 		"petrify-invulnerable":
+			sfx("cast_pillar")
 			petrify[acting_pid] = int(float(effect.get("duration", 6)) * 60.0 * abilities.mod_mult(acting_pid, "petrify-mult"))
 			if acting_pid == my_pid:
 				petrify_frames = int(petrify[acting_pid])
@@ -502,6 +509,7 @@ func _apply_effect(effect: Dictionary) -> void:
 			for i in mini(strikes, in_range.size()):
 				var target: DSEnemy = in_range[i]
 				_flash_bolt(target.position)
+				sfx("bolt", target.position)
 				target.on_hit()
 				if stats.damage(target, 25.0):
 					_on_enemy_killed(target)
@@ -530,6 +538,7 @@ func intent_rite(god_id: String) -> bool:
 		_refresh_hud()
 		return false
 	rites_done_today[god_id] = true
+	sfx("rite")
 	devotion.rite_day(acting_pid, god_id, "chapel", 1)
 	message = "You lead the rite at %s's chapel. The shrine-light steadies a little." % str(registry.get_entity(god_id).name)
 	_refresh_hud()
@@ -547,6 +556,7 @@ func intent_harvest() -> bool:
 			nearest = node
 	if nearest == null:
 		return false
+	sfx("harvest", nearest.position)
 	inventory.add(acting_pid, nearest.get_meta("item_id"),
 		int(nearest.get_meta("qty")) + int(abilities.mod_add(acting_pid, "harvest-bonus-qty")))
 	if str(nearest.get_meta("item_id")) == "item-storm-glass" and inventory.count(acting_pid, "item-harpoon-verse") == 2:
@@ -573,6 +583,7 @@ func intent_eat() -> bool:
 			_refresh_hud()
 			return false
 		inventory.pay(acting_pid, [{"itemId": item_id, "qty": 1}])
+		sfx("eat")
 		message = "%s. You feel it in your arms — food is preparation here, not maintenance." % str(item.name)
 		_refresh_hud()
 		return true
@@ -626,6 +637,7 @@ func intent_craft(recipe_id: String) -> bool:
 		return true
 	var ok := inventory.craft(acting_pid, recipe_id, works)
 	if ok:
+		sfx("craft")
 		var recipe := registry.get_entity(recipe_id)
 		if recipe.get("track", "") == "legend":
 			var item := registry.get_entity(str(recipe.output.itemId))
@@ -666,10 +678,13 @@ func intent_attack() -> bool:
 		_refresh_hud()
 		return false
 	_flash_swing(target.position)
+	sfx("swing")
+	sfx("hit", target.position)
 	target.on_hit()
 	if inventory.count(acting_pid, "item-marens-own-harpoon") > 0 \
 			or abilities.talent_active(acting_pid, "talent-bolt-marked"):
 		_flash_bolt(target.position)   # strike true and the bolt comes down on your mark
+		sfx("bolt", target.position)
 	if stats.damage(target, attack_damage()):
 		_on_enemy_killed(target)
 	return true
@@ -723,12 +738,18 @@ func damage_player(amount: float, pid: int = -1) -> void:
 		cheat_death_used[pid] = true
 		stats.actors[pid].hp = 1.0
 		if pid == my_pid:
+			sfx("rite")
+		if pid == my_pid:
 			message = "The tide takes you out — and brings you back. Once a day, Neris keeps that promise."
 			_refresh_hud()
 		_net_push_state(pid)
 		_refresh_bars()
 		return
+	if pid == my_pid:
+		sfx("grunt")
 	if stats.damage(pid, amount):
+		if pid == my_pid:
+			sfx("death")
 		# Death penalty is an open design question (GAME-SPEC); M1 placeholder:
 		# wake at the village center, hurt pride only.
 		if net_mode == "server":
@@ -749,6 +770,7 @@ func _net_push_state(pid: int) -> void:
 			return
 
 func _on_enemy_killed(enemy: DSEnemy) -> void:
+	sfx("kill", enemy.position)
 	var creature := registry.get_entity(enemy.creature_id)
 	for drop: Dictionary in creature.get("drops", []):
 		var qty := int(drop.qty)
@@ -788,6 +810,7 @@ func intent_consume_remnant() -> bool:
 			continue
 		var god_id: String = item.get("remnantOf", "god-halor")
 		inventory.pay(acting_pid, [{"itemId": item_id, "qty": 1}])
+		sfx("consume")
 		consumed_hp[acting_pid] = float(consumed_hp.get(acting_pid, 0.0)) + 15.0 + abilities.mod_add(acting_pid, "consume-bonus-hp")
 		_recompute_vitals()
 		verdict.remnant_consume(acting_pid, god_id)
@@ -819,6 +842,7 @@ func intent_build(work_id: String) -> bool:
 		return false
 	var pos := acting_pos() + Vector2(40, 0)
 	var inst_id := works.place(work_id, acting_pid, pos)
+	sfx("build", pos)
 	if work_id == "work-chapel":
 		# dedicate to the first attuned god who lacks one
 		for god_id: String in attuned_for(acting_pid):
@@ -854,6 +878,11 @@ func _toggle_sheet(open: bool) -> void:
 			var lit := s >= int(talent.threshold)
 			lines.append("    %s %s (%d) — %s" % ["■" if lit else "□", str(talent.name), int(talent.threshold), str(talent.text)])
 	sheet_label.text = "\n".join(lines)
+
+## One-shot audio, guarded for the headless server.
+func sfx(name: String, at := Vector2.INF, base_db := 0.0) -> void:
+	if net_mode != "server" and sound != null:
+		sound.play(name, at, player.position if at != Vector2.INF else Vector2.INF, base_db)
 
 ## Move a placed work (drag-drop commit). Server/offline authority.
 func _move_work(inst_id: int, pos: Vector2) -> void:
@@ -920,6 +949,7 @@ func _check_village_keys() -> void:
 			var rec: Dictionary = village.tribesmen[id]
 			if rec.key == WORK_KEYS[work_id] and not rec.key_met:
 				village.meet_key(id)
+				sfx("bloom")
 				message = "%s has what they needed — watch them work now." % str(rec.name)
 				if survivor != null and survivor.tribesman_id == id:
 					survivor.modulate = Color(1.12, 1.04, 0.92)  # bloomed: a touch warmer
@@ -1148,7 +1178,10 @@ func _on_sim_minute(_m: int) -> void:
 		tint = tint * Color(0.72, 0.76, 0.86)   # storm-gray over everything
 		if clock.minute_of_day % 47 == 0:
 			storm_flash = 0.65                   # lightning somewhere over the flats
+			sfx("thunder")
 	daynight.color = tint
+	if net_mode != "server" and sound != null:
+		sound.ambience("amb_storm" if is_storm_day() else ("amb_night" if clock.is_night() else "amb_day"))
 	if net_mode == "server" and clock.minute_of_day % 5 == 0:
 		rpc("cl_world_sync", _world_sync())
 	_refresh_hud()

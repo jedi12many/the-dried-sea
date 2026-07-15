@@ -19,6 +19,7 @@ var is_boss := false
 var spawn_pos := Vector2.ZERO   # bosses guard their ground and leash back to it
 var _cooldown := 0.0
 var _stun := 0.0
+var _chasing := false
 var _visual: Node2D
 var _hp_bar: ColorRect
 
@@ -113,7 +114,11 @@ func _physics_process(delta: float) -> void:
 				_cooldown *= host.abilities.mod_mult(target_pid, "hound-cooldown-mult")  # Herd-Sense
 			host.damage_player(attack_damage, target_pid)
 	elif dist <= aggro:
+		if not _chasing and creature_id == "creature-salt-hound":
+			host.sfx("growl", position)   # you have been noticed
+		_chasing = true
 		velocity = to_player.normalized() * run_speed
 	else:
+		_chasing = false
 		velocity = Vector2.ZERO
 	move_and_slide()
