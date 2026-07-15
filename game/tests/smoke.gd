@@ -95,7 +95,7 @@ func _ready() -> void:
 
 	# death is survivable (M1 placeholder: wake at center, whole)
 	host.damage_player(1000.0)
-	check(host.stats.hp(1) == 100.0, "death returns you to the center, whole")
+	check(host.stats.hp(1) == host.stats.max_hp(1), "death returns you to the center, whole")
 
 	# --- the soul, playable -------------------------------------------------
 	# night makes the hounds bold: same distance, day vs night
@@ -158,6 +158,41 @@ func _ready() -> void:
 	host._on_sim_day(1)
 	check(host.devotion.state[1]["god-halor"].vigor > v_before_days, "her prayers feed Halor daily")
 
+	# --- hunger: hunt, eat, smoke, feast (after kneeling — Halor's works are open) ---
+	var crab := _enemy_of(host, "creature-scuttle-crab")
+	check(crab != null and crab.peaceful, "crabs have nowhere to be and no quarrel with you")
+	var base_max := host.stats.max_hp(1)
+	host.player.position = crab.position
+	host.stats.actors[1].stamina = 60.0
+	var n0 := host.enemies.size()
+	while host.enemies.size() == n0:
+		host.intent_attack()
+		for i in 6:
+			await get_tree().physics_frame
+	check(host.inventory.count(1, "item-crab-meat") >= 2, "the crab was excellent soup")
+	check(host.intent_eat(), "eat raw crab")
+	check(host.stats.max_hp(1) > base_max, "food raises the ceiling — preparation, not maintenance")
+
+	# smoke the rest: build the smokehouse, cook, eat the good stuff
+	host.inventory.add(1, "item-wreck-timber", 8)
+	host.inventory.add(1, "item-salt", 13)
+	check("work-smokehouse" in host.menu_works(), "Halor's smokehouse is on the build menu (you knelt)")
+	check(host.intent_build("work-smokehouse"), "smokehouse raised")
+	var crab2 := _enemy_of(host, "creature-scuttle-crab")
+	host.player.position = crab2.position
+	host.stats.actors[1].stamina = 60.0
+	var n1 := host.enemies.size()
+	while host.enemies.size() == n1:
+		host.intent_attack()
+		for i in 6:
+			await get_tree().physics_frame
+	check(host.intent_craft("recipe-smoked-crab"), "the brinewife's answer: smoked crab")
+	check(host.intent_eat(), "second slot filled")
+	check(not host.intent_eat(), "a full belly refuses")
+	var fed_max := host.stats.max_hp(1)
+	host.stats.tick(3600.0)
+	check(host.stats.max_hp(1) < fed_max, "meals wear off with the hours")
+
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)
 
@@ -165,4 +200,10 @@ func _node_of(host: GameHost, item_id: String) -> Area2D:
 	for n in host.resource_nodes:
 		if is_instance_valid(n) and str(n.get_meta("item_id")) == item_id:
 			return n
+	return null
+
+func _enemy_of(host: GameHost, creature_id: String) -> DSEnemy:
+	for e in host.enemies:
+		if is_instance_valid(e) and e.creature_id == creature_id:
+			return e
 	return null

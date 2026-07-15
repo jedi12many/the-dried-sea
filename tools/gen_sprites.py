@@ -413,6 +413,63 @@ def gen_rope() -> Image.Image:
     return img
 
 
+def gen_crab() -> Image.Image:
+    """A scuttle-crab: low, wide, mostly legs and attitude."""
+    w, h = 16, 11
+    img = new_canvas(w, h)
+    rect(img, 4, 3, 11, 7, PALETTE["SKIN_VILLAGER"])       # carapace
+    hline(img, 5, 10, 3, PALETTE["SKIN_SURVIVOR"])          # shell highlight
+    for lx in (2, 3, 12, 13):                                # legs
+        px(img, lx, 6, PALETTE["WOOD_DARK"]); px(img, lx, 7, PALETTE["WOOD_DARK"])
+    px(img, 3, 4, PALETTE["SKIN_VILLAGER"]); px(img, 12, 4, PALETTE["SKIN_VILLAGER"])  # claws
+    px(img, 6, 4, PALETTE["HAIR_DARK"]); px(img, 9, 4, PALETTE["HAIR_DARK"])           # eyes
+    add_outline(img, PALETTE["WOOD_DARK"])
+    return img
+
+
+def gen_wall() -> Image.Image:
+    """A driftwood palisade segment: mismatched planks, rope lashings."""
+    w, h = 32, 20
+    img = new_canvas(w, h)
+    heights = [4, 2, 5, 3, 4, 2, 5, 3]  # ragged plank tops
+    for i, top in enumerate(heights):
+        x0 = 1 + i * 4 - (1 if i else 0)
+        rect(img, 1 + i * 4, top, 3 + i * 4, 17, PALETTE["WOOD_TAN"] if i % 2 == 0 else PALETTE["WOOD_LIGHT"])
+    hline(img, 1, 30, 8, PALETTE["WOOD_LIGHT"])   # rope lashing rows
+    hline(img, 1, 30, 14, PALETTE["WOOD_LIGHT"])
+    add_outline(img, PALETTE["WOOD_DARK"])
+    return img
+
+
+def gen_smokehouse() -> Image.Image:
+    """Halor's smokehouse: a squat dark hut with a live smoke wisp."""
+    w, h = 30, 30
+    img = new_canvas(w, h)
+    rect(img, 4, 14, 25, 27, PALETTE["WOOD_MED"])            # body
+    rect(img, 6, 10, 23, 13, PALETTE["WOOD_DARK"])           # eave band
+    for x0 in range(5, 24, 4):                                # shingle marks
+        px(img, x0, 16, PALETTE["WOOD_DARK"])
+    rect(img, 12, 20, 17, 27, PALETTE["WOOD_DARK"])          # door
+    rect(img, 13, 6, 16, 9, PALETTE["WOOD_DARK"])            # chimney
+    px(img, 14, 4, PALETTE["CLOTH"]); px(img, 16, 2, PALETTE["CLOTH"])  # smoke wisp
+    px(img, 15, 3, PALETTE["CLOTH"])
+    add_outline(img, PALETTE["WOOD_DARK"])
+    return img
+
+
+def gen_hearth() -> Image.Image:
+    """The great hearth: a salt-stone ring with a live gold fire."""
+    w, h = 22, 16
+    img = new_canvas(w, h)
+    rect(img, 3, 8, 18, 13, PALETTE["SALT_SHADE"])           # stone ring
+    hline(img, 4, 17, 8, PALETTE["SALT_WHITE"])              # rim highlight
+    rect(img, 8, 4, 13, 9, PALETTE["GOLD"])                  # flame
+    px(img, 10, 2, PALETTE["GOLD"]); px(img, 11, 3, PALETTE["GOLD"])
+    px(img, 9, 6, PALETTE["RED"]); px(img, 12, 7, PALETTE["RED"])  # embers
+    add_outline(img, PALETTE["WOOD_DARK"])
+    return img
+
+
 SPRITES = [
     ("ground.png", lambda: gen_ground(seed=1)),
     ("ground2.png", lambda: gen_ground(seed=2)),
@@ -430,6 +487,10 @@ SPRITES = [
     ("workbench.png", gen_workbench),
     ("brine_pool.png", gen_brine_pool),
     ("rope.png", gen_rope),
+    ("crab.png", gen_crab),
+    ("wall.png", gen_wall),
+    ("smokehouse.png", gen_smokehouse),
+    ("hearth.png", gen_hearth),
 ]
 
 

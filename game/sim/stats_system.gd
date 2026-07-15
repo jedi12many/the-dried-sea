@@ -5,14 +5,46 @@ extends RefCounted
 ## fighting, and fleeing (GAME-SPEC pillar). Server-authoritative.
 
 const STAMINA_REGEN_PER_SEC := 12.0
+const FOOD_SLOTS := 2
 
-var actors: Dictionary = {}   # actor_id -> {hp, max_hp, stamina, max_stamina}
+## Valheim's food model (spec): eating is not survival maintenance, it's
+## PREPARATION — food raises your maximums for a while. An unfed survivor is
+## weak, not dying. base_* are the unfed floor; foods stack on top.
+var actors: Dictionary = {}   # actor_id -> {hp, stamina, base_hp, base_stamina, foods: [{hp, stamina, seconds}]}
 
 signal died(actor_id: Variant)
 signal changed(actor_id: Variant)
 
-func register(actor_id: Variant, max_hp: float, max_stamina: float = 0.0) -> void:
-	actors[actor_id] = {"hp": max_hp, "max_hp": max_hp, "stamina": max_stamina, "max_stamina": max_stamina}
+func register(actor_id: Variant, base_hp: float, base_stamina: float = 0.0) -> void:
+	actors[actor_id] = {"hp": base_hp, "base_hp": base_hp, "stamina": base_stamina, "base_stamina": base_stamina, "foods": []}
+
+func max_hp(actor_id: Variant) -> float:
+	var a: Dictionary = actors.get(actor_id, {})
+	var m := float(a.get("base_hp", 0.0))
+	for f: Dictionary in a.get("foods", []):
+		m += float(f.hp)
+	return m
+
+func max_stamina(actor_id: Variant) -> float:
+	var a: Dictionary = actors.get(actor_id, {})
+	var m := float(a.get("base_stamina", 0.0))
+	for f: Dictionary in a.get("foods", []):
+		m += float(f.stamina)
+	return m
+
+## Eat: raises maximums for `seconds`, and the meal itself restores that much.
+## Two slots — a full belly refuses (come back when one wears off).
+func eat(actor_id: Variant, food_hp: float, food_stamina: float, seconds: float) -> bool:
+	if not actors.has(actor_id):
+		return false
+	var a: Dictionary = actors[actor_id]
+	if (a.foods as Array).size() >= FOOD_SLOTS:
+		return false
+	a.foods.append({"hp": food_hp, "stamina": food_stamina, "seconds": seconds})
+	a.hp = minf(float(a.hp) + food_hp, max_hp(actor_id))
+	a.stamina = minf(float(a.stamina) + food_stamina, max_stamina(actor_id))
+	changed.emit(actor_id)
+	return true
 
 func unregister(actor_id: Variant) -> void:
 	actors.erase(actor_id)
@@ -39,8 +71,8 @@ func heal_full(actor_id: Variant) -> void:
 	if not actors.has(actor_id):
 		return
 	var a: Dictionary = actors[actor_id]
-	a.hp = a.max_hp
-	a.stamina = a.max_stamina
+	a.hp = max_hp(actor_id)
+	a.stamina = max_stamina(actor_id)
 	changed.emit(actor_id)
 
 ## Returns false (and spends nothing) if the actor is too tired.
@@ -54,9 +86,20 @@ func spend_stamina(actor_id: Variant, amount: float) -> bool:
 	changed.emit(actor_id)
 	return true
 
-## Frame tick: stamina recovers; HP does not (food's job, later).
+## Frame tick: stamina recovers toward the fed maximum; food wears off.
 func tick(delta: float) -> void:
 	for id: Variant in actors:
 		var a: Dictionary = actors[id]
-		if float(a.max_stamina) > 0.0 and float(a.stamina) < float(a.max_stamina):
-			a.stamina = minf(float(a.stamina) + STAMINA_REGEN_PER_SEC * delta, float(a.max_stamina))
+		var foods: Array = a.foods
+		if foods.size() > 0:
+			for f: Dictionary in foods:
+				f.seconds = float(f.seconds) - delta
+			var before := foods.size()
+			a.foods = foods.filter(func(f: Dictionary) -> bool: return float(f.seconds) > 0.0)
+			if (a.foods as Array).size() != before:
+				a.hp = minf(float(a.hp), max_hp(id))
+				a.stamina = minf(float(a.stamina), max_stamina(id))
+				changed.emit(id)
+		var ms := max_stamina(id)
+		if ms > 0.0 and float(a.stamina) < ms:
+			a.stamina = minf(float(a.stamina) + STAMINA_REGEN_PER_SEC * delta, ms)

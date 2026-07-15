@@ -238,6 +238,18 @@ func _test_stats() -> void:
 	stats.tick(100.0)
 	check(stats.stamina("hero") == 100.0, "stamina caps at max")
 
+	# food is preparation: it raises the ceiling, then wears off
+	check(stats.max_hp("hero") == 100.0, "unfed floor")
+	check(stats.eat("hero", 20.0, 15.0, 30.0), "first meal")
+	check(stats.eat("hero", 10.0, 10.0, 60.0), "second meal")
+	check(not stats.eat("hero", 10.0, 10.0, 60.0), "a full belly refuses the third")
+	check(stats.max_hp("hero") == 130.0 and stats.max_stamina("hero") == 125.0, "fed ceiling")
+	stats.tick(31.0)
+	check(stats.max_hp("hero") == 110.0, "the first meal wears off")
+	check(stats.hp("hero") <= stats.max_hp("hero"), "hp clamps down with the ceiling")
+	stats.tick(60.0)
+	check(stats.max_hp("hero") == 100.0, "unfed again")
+
 func _test_golden_run() -> void:
 	## 30 sim-days, all systems ticking together, mid-game setup.
 	## The WORLD-SPEC tuning laws asserted as an integration outcome.

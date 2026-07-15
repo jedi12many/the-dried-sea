@@ -1,6 +1,8 @@
 [
   { "id": "recipe-rope", "track": "tree", "output": { "itemId": "item-rope", "qty": 2 }, "inputs": [{ "itemId": "item-ship-cloth", "qty": 1 }], "unlock": { "byItems": ["item-ship-cloth"] } },
   { "id": "recipe-salt-harvest", "track": "tree", "output": { "itemId": "item-salt", "qty": 5 }, "inputs": [{ "itemId": "item-driftwood", "qty": 1 }], "stationWorkId": "work-workbench", "unlock": { "byTier": 0 } },
+  { "id": "recipe-smoked-crab", "track": "tree", "output": { "itemId": "item-smoked-crab", "qty": 1 }, "inputs": [{ "itemId": "item-crab-meat", "qty": 2 }, { "itemId": "item-salt", "qty": 1 }], "stationWorkId": "work-smokehouse", "unlock": { "byItems": ["item-crab-meat"] } },
+  { "id": "recipe-smoked-eel", "track": "tree", "output": { "itemId": "item-smoked-eel", "qty": 1 }, "inputs": [{ "itemId": "item-eel-meat", "qty": 2 }, { "itemId": "item-salt", "qty": 1 }], "stationWorkId": "work-smokehouse", "unlock": { "byItems": ["item-eel-meat"] } },
   {
     "id": "recipe-marens-own-harpoon", "track": "legend",
     "output": { "itemId": "item-marens-own-harpoon", "qty": 1 },

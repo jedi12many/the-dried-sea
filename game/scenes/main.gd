@@ -40,6 +40,8 @@ var attuned := false
 var rite_done_today := false
 var petrify_frames := 0
 var message := "Something pale stands in the north flats. It looks like it is waiting."
+var menu_label: Label
+var menu_open := false
 
 # STYLE-BIBLE salt-shallows palette (placeholder blocks, right colors)
 const ITEM_COLORS := {
@@ -60,7 +62,7 @@ func _ready() -> void:
 	verdict = VerdictSystem.new(registry)
 	inventory = InventorySystem.new(registry)
 	stats = StatsSystem.new()
-	stats.register(LOCAL_PLAYER, 100.0, 100.0)
+	stats.register(LOCAL_PLAYER, 60.0, 60.0)   # unfed floor — food raises the ceiling
 	devotion.ledger_event.connect(func(p: int, l: String, a: float, n: String) -> void: verdict.record(p, l, a, n, clock.day))
 	village.ledger_event.connect(func(l: String, a: float, n: String) -> void: verdict.record(LOCAL_PLAYER, l, a, n, clock.day))
 
@@ -94,14 +96,26 @@ func _physics_process(delta: float) -> void:
 	_refresh_bars()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if menu_open and event is InputEventKey and event.pressed:
+		var key := (event as InputEventKey).physical_keycode
+		if key >= KEY_1 and key <= KEY_9:
+			var idx := int(key - KEY_1)
+			var options := menu_works()
+			if idx < options.size():
+				intent_build(str(options[idx]))
+			_toggle_build_menu(false)
+			return
+		if key == KEY_ESCAPE or key == KEY_B:
+			_toggle_build_menu(false)
+			return
 	if event.is_action_pressed("interact"):
 		intent_interact()
 	elif event.is_action_pressed("craft"):
 		intent_craft_first()
 	elif event.is_action_pressed("build"):
-		intent_build("work-workbench")
-	elif event.is_action_pressed("build_chapel"):
-		intent_build("work-chapel")
+		_toggle_build_menu(not menu_open)
+	elif event.is_action_pressed("eat"):
+		intent_eat()
 	elif event.is_action_pressed("attack"):
 		intent_attack()
 	elif event.is_action_pressed("cast"):
@@ -175,6 +189,59 @@ func intent_harvest() -> bool:
 	_refresh_hud()
 	return true
 
+## F eats the first food in your pack. Two slots; a full belly refuses.
+func intent_eat() -> bool:
+	for item_id: String in inventory._inv(LOCAL_PLAYER).keys():
+		var item := registry.get_entity(item_id)
+		var fstats: Dictionary = item.get("stats", {})
+		if not fstats.has("foodHp"):
+			continue
+		if not stats.eat(LOCAL_PLAYER, float(fstats.foodHp), float(fstats.foodStamina), float(fstats.get("foodMinutes", 8)) * 60.0):
+			message = "You're full. Come back to the rest of it when this wears off."
+			_refresh_hud()
+			return false
+		inventory.pay(LOCAL_PLAYER, [{"itemId": item_id, "qty": 1}])
+		message = "%s. You feel it in your arms — food is preparation here, not maintenance." % str(item.name)
+		_refresh_hud()
+		return true
+	message = "Nothing to eat. The crabs are mostly harmless and excellent soup."
+	_refresh_hud()
+	return false
+
+## The build menu: what you can raise, grouped by whose it is. A god's works
+## appear once you're attuned — recipes arrive with faith.
+func menu_works() -> Array:
+	var order := ["neutral", "god-halor", "god-maren", "god-neris", "god-vessa", "god-ghal"]
+	var attuned_gods := ["neutral"]
+	if attuned:
+		attuned_gods.append("god-halor")
+	var out: Array = []
+	for god_id: String in order:
+		if god_id not in attuned_gods:
+			continue
+		for work: Dictionary in registry.all_of("work"):
+			if work.get("godId", "") == god_id and not work.get("grim", false):
+				out.append(str(work.id))
+	return out
+
+func _toggle_build_menu(open: bool) -> void:
+	menu_open = open
+	if menu_label == null:
+		return
+	menu_label.visible = open
+	if not open:
+		return
+	var lines := ["BUILD — press a number, [B] to close"]
+	var options := menu_works()
+	for i in options.size():
+		var work := registry.get_entity(str(options[i]))
+		var cost_bits: Array[String] = []
+		for c: Dictionary in work.get("buildCost", []):
+			cost_bits.append("%s×%d" % [str(registry.get_entity(str(c.itemId)).get("name", c.itemId)), int(c.qty)])
+		var afford := inventory.can_afford(LOCAL_PLAYER, work.get("buildCost", []))
+		lines.append("%d. %s%s — %s" % [i + 1, str(work.name), "" if afford else "  (can't afford)", ", ".join(cost_bits)])
+	menu_label.text = "\n".join(lines)
+
 func intent_craft(recipe_id: String) -> bool:
 	var ok := inventory.craft(LOCAL_PLAYER, recipe_id, works)
 	_refresh_hud()
@@ -228,7 +295,10 @@ func intent_build(work_id: String) -> bool:
 		_refresh_hud()
 		return false
 	works.place(work_id, LOCAL_PLAYER)
-	var work_sprites := {"work-workbench": "workbench", "work-chapel": "chapel"}
+	var work_sprites := {
+		"work-workbench": "workbench", "work-chapel": "chapel", "work-smokehouse": "smokehouse",
+		"work-hearth": "hearth", "work-driftwood-wall": "wall",
+	}
 	var fallback := Color("6e5138") if not work.get("grim", false) else Color("5b3a6e")
 	if work_id == "work-chapel":
 		fallback = Color("f2efe8")
@@ -337,9 +407,15 @@ func _spawn_enemies() -> void:
 		while pos.distance_to(center) < 350.0:  # never spawn on the player's doorstep
 			pos = Vector2(rng.randi_range(2, WORLD.x - 2) * TILE, rng.randi_range(2, WORLD.y - 2) * TILE)
 		hound.position = pos
-		add_child(hound)
 		hound.setup(self, "creature-salt-hound")
+		add_child(hound)
 		enemies.append(hound)
+	for i in 8:  # scuttle-crabs: mostly harmless, excellent soup
+		var crab := DSEnemy.new()
+		crab.position = Vector2(rng.randi_range(2, WORLD.x - 2) * TILE, rng.randi_range(2, WORLD.y - 2) * TILE)
+		crab.setup(self, "creature-scuttle-crab")
+		add_child(crab)
+		enemies.append(crab)
 
 ## --- day/night + HUD ---------------------------------------------------------------
 func _on_sim_minute(_m: int) -> void:
@@ -390,12 +466,18 @@ func _build_hud() -> void:
 	vigor_bar.size = Vector2(0, 8)
 	vigor_bar.color = Color("5da8a0")   # the votive flame, placeholder-shaped
 	layer.add_child(vigor_bar)
+	menu_label = Label.new()
+	menu_label.position = Vector2(12, 200)
+	menu_label.add_theme_color_override("font_color", Color("3b3428"))
+	menu_label.add_theme_font_size_override("font_size", 14)
+	menu_label.visible = false
+	layer.add_child(menu_label)
 
 func _refresh_bars() -> void:
 	if hp_bar == null:
 		return
-	hp_bar.size.x = 158.0 * stats.hp(LOCAL_PLAYER) / 100.0
-	stamina_bar.size.x = 158.0 * stats.stamina(LOCAL_PLAYER) / 100.0
+	hp_bar.size.x = 158.0 * stats.hp(LOCAL_PLAYER) / maxf(stats.max_hp(LOCAL_PLAYER), 1.0)
+	stamina_bar.size.x = 158.0 * stats.stamina(LOCAL_PLAYER) / maxf(stats.max_stamina(LOCAL_PLAYER), 1.0)
 	if attuned:
 		var s: Dictionary = devotion.state.get(LOCAL_PLAYER, {}).get("god-halor", {})
 		vigor_bar.size.x = 158.0 * float(s.get("vigor", 0)) / devotion.max_vigor("god-halor")
@@ -408,9 +490,11 @@ func _refresh_hud() -> void:
 	var inv := ""
 	for item_id: String in inventory._inv(LOCAL_PLAYER):
 		inv += "%s ×%d   " % [str(registry.get_entity(item_id).get("name", item_id)), inventory.count(LOCAL_PLAYER, item_id)]
-	hud.text = "Day %d, %02d:%02d%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] workbench  [N] chapel  [SPACE] attack%s\n%s" % [
+	var fed: int = (stats.actors.get(LOCAL_PLAYER, {}).get("foods", []) as Array).size()
+	hud.text = "Day %d, %02d:%02d%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [SPACE] attack%s\n%s" % [
 		clock.day + 1, clock.minute_of_day / 60, clock.minute_of_day % 60,
 		"  — night. NIGHT BELONGS TO THE HOUNDS." if clock.is_night() else "",
+		"  |  fed ×%d" % fed if fed > 0 else "",
 		inv if inv != "" else "(empty hands)",
 		"  [Q] Pillar of Salt" if attuned else "", message]
 
@@ -419,8 +503,8 @@ static func _setup_input() -> void:
 	var keys := {
 		"move_left": [KEY_A, KEY_LEFT], "move_right": [KEY_D, KEY_RIGHT],
 		"move_up": [KEY_W, KEY_UP], "move_down": [KEY_S, KEY_DOWN],
-		"interact": [KEY_E], "craft": [KEY_C], "build": [KEY_B],
-		"build_chapel": [KEY_N], "attack": [KEY_SPACE, KEY_J], "cast": [KEY_Q],
+		"interact": [KEY_E], "craft": [KEY_C], "build": [KEY_B], "eat": [KEY_F],
+		"attack": [KEY_SPACE, KEY_J], "cast": [KEY_Q],
 	}
 	for action: String in keys:
 		if InputMap.has_action(action):

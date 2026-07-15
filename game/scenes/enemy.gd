@@ -7,10 +7,13 @@ const AGGRO_RADIUS := 170.0
 const ATTACK_RANGE := 30.0
 const ATTACK_COOLDOWN := 1.1
 
+const CREATURE_SPRITES := {"creature-salt-hound": "hound", "creature-scuttle-crab": "crab"}
+
 var host: GameHost
 var creature_id: String
 var speed := 60.0
 var attack_damage := 8.0
+var peaceful := false   # ambient archetypes never chase or bite
 var _cooldown := 0.0
 
 func setup(game_host: GameHost, id: String) -> void:
@@ -20,10 +23,11 @@ func setup(game_host: GameHost, id: String) -> void:
 	var stats: Dictionary = creature.get("stats", {})
 	speed = float(stats.get("speed", 1.0)) * 70.0
 	attack_damage = float(stats.get("damage", 5))
+	peaceful = creature.get("archetype", "") == "ambient"
 	host.stats.register(self, float(stats.get("hp", 20)))
 
 func _ready() -> void:
-	add_child(SpriteKit.sprite("hound", Vector2(20, 16), Color("cfc9ba")))
+	add_child(SpriteKit.sprite(CREATURE_SPRITES.get(creature_id, "hound"), Vector2(20, 16), Color("cfc9ba")))
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(16, 12)
@@ -33,6 +37,8 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if host == null or host.player == null:
 		return
+	if peaceful:
+		return   # crabs have nowhere to be
 	_cooldown = maxf(_cooldown - delta, 0.0)
 	# night belongs to the hounds: they smell farther and run harder
 	var night := host.clock.is_night()
