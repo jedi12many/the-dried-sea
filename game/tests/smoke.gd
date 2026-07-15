@@ -280,6 +280,47 @@ func _ready() -> void:
 	host.intent_talk(talker)
 	check(host.village.tribesmen[talker_id].bloomed, "hearing them out blooms them")
 
+	# --- THE TAKEN: subdue a raider, break or unbind ------------------------
+	var raider = _enemy_of(host, "creature-raider")
+	check(raider != null and raider.subduable, "raiders roam the flats, and they can be subdued")
+	host.stats.actors[1].stamina = 60.0
+	host.player.position = raider.position + Vector2(20, 0)
+	var rtries := 0
+	while not raider.surrendered and rtries < 30:
+		host.stats.actors[1].stamina = 60.0
+		host.intent_attack()
+		rtries += 1
+		await get_tree().physics_frame
+	check(raider.surrendered, "beaten low, the raider surrenders instead of dying")
+	var vcount := host.village.tribesmen.size()
+	host.player.position = raider.position
+	check(host.intent_interact(), "bind the surrendered raider")
+	check(host.village.tribesmen.size() == vcount + 1, "they become a captive of the village")
+	var cap = host.villagers.filter(func(v): return v.is_captive)[0]
+	check(host.village.tribesmen[cap.tribesman_id].origin == "taken", "origin: taken — grievance and susceptibility maxed")
+	check("work-salt-wheel" in host.menu_works(), "the Salt-Wheel's recipe whispers now you hold a captive")
+	# the KIND path: hold them well, then Unbind — they stay free
+	cap.days_held = 3
+	host.player.position = cap.position
+	host.intent_hold_captive(cap)
+	check(not cap.is_captive and host.village.tribesmen[cap.tribesman_id].origin == "rescued", "held well and Unbound — they stay free")
+	# the GRIM path: a fresh captive, broken at the Salt-Wheel
+	var uid := host.village.add_tribesman("Doomed", "class-salvager", "taken", ["trait-bitter"], "")
+	var doomed = DSVillager.new(); doomed.host = host; doomed.tribesman_id = uid
+	doomed.is_captive = true; doomed.rescued = true; doomed.position = host.village_heart()
+	host.add_child(doomed); host.villagers.append(doomed)
+	host.inventory.add(1, "item-wreck-timber", 15); host.inventory.add(1, "item-bronze-salvage", 8); host.inventory.add(1, "item-rope", 8)
+	host.player.position = host.village_heart() + Vector2(120, 0)
+	check(host.intent_build("work-salt-wheel"), "raise the Salt-Wheel")
+	var wheel_inst := -1
+	for iid: Variant in host.works.placed:
+		if str(host.works.placed[iid].work_id) == "work-salt-wheel":
+			wheel_inst = int(iid)
+	var urnoth0: float = float(host.devotion.state.get(1, {}).get("god-ur-noth", {}).get("favor", 0.0))
+	host.intent_salt_wheel(wheel_inst)
+	check(host.village.tribesmen[uid].origin == "broken", "the Wheel turns: broken, obedient, empty")
+	check(float(host.devotion.state[1]["god-ur-noth"].favor) > urnoth0, "and Ur-Noth is fed")
+
 	# the village survives a save/load
 	host.save_game()
 

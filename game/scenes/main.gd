@@ -11,7 +11,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.4.0"
+const GAME_VERSION := "0.4.1"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -189,6 +189,22 @@ func _ready() -> void:
 		attuned_for(acting_pid).append("god-halor")
 		_toggle_menu(true, "build")
 		_screenshot_and_quit()
+	elif "--screenshot-taken" in OS.get_cmdline_user_args():
+		var raider: DSEnemy = null
+		for e in enemies:
+			if is_instance_valid(e) and e.creature_id == "creature-raider":
+				raider = e
+				break
+		if raider != null:
+			raider.surrender()
+			player.position = raider.position
+			intent_capture(raider)
+			player.position = camp_center if camp_center != Vector2.INF else Vector2(WORLD.x*TILE/2, WORLD.y*TILE/2)
+			for v: DSVillager in villagers:
+				if v.is_captive:
+					v.position = player.position + Vector2(50, 0)
+		_toggle_village(true)
+		_screenshot_and_quit()
 	elif "--screenshot-village" in OS.get_cmdline_user_args():
 		inventory.add(acting_pid, "item-wreck-timber", 20)
 		inventory.add(acting_pid, "item-salt", 20)
@@ -266,7 +282,10 @@ func save_game() -> void:
 			"pos": [survivor.position.x, survivor.position.y] if survivor != null else [0, 0]},
 		"pool": villagers.map(func(v: DSVillager) -> Dictionary:
 			return {"nid": int(v.get_meta("nid", 0)), "rescued": v.rescued, "tid": v.tribesman_id,
-				"cls": v.def_class, "job": v.job_work_id, "x": v.position.x, "y": v.position.y}),
+				"cls": v.def_class, "job": v.job_work_id, "x": v.position.x, "y": v.position.y,
+				"name": v.display_name, "traits": v.def_traits, "patron": v.def_patron,
+				"captive": v.is_captive, "held": v.days_held}),
+		"villager_nid": _villager_nid,
 		"village_stock": village_stock.duplicate(),
 		"message": message,
 	}
@@ -332,21 +351,35 @@ func load_game() -> void:
 		survivor.set_label_name()
 		var sp: Array = sv.get("pos", [0, 0])
 		survivor.position = Vector2(float(sp[0]), float(sp[1]))
-	# restore the rescued pool (bodies were respawned by _spawn_stranded_pool in _ready)
+	# restore the roster: pool bodies exist from _ready; captured captives are recreated
 	village_stock = g.get("village_stock", {})
+	_villager_nid = maxi(_villager_nid, int(g.get("villager_nid", _villager_nid)))
 	for pd: Dictionary in g.get("pool", []):
-		for v: DSVillager in villagers:
-			if int(v.get_meta("nid", -1)) == int(pd.nid):
-				v.def_class = str(pd.get("cls", v.def_class))
-				v.job_work_id = str(pd.get("job", ""))
-				v.position = Vector2(float(pd.x), float(pd.y))
-				if bool(pd.rescued):
-					v.rescued = true
-					v.tribesman_id = int(pd.get("tid", -1))
-					var rec: Dictionary = village.tribesmen.get(v.tribesman_id, {})
-					v.set_mood(str(rec.get("expression", "steady")))
-				v.set_label_name()
+		var v: DSVillager = null
+		for w: DSVillager in villagers:
+			if int(w.get_meta("nid", -1)) == int(pd.nid):
+				v = w
 				break
+		if v == null:                       # a captured/dynamic villager — recreate the body
+			v = DSVillager.new()
+			v.host = self
+			v.set_meta("nid", int(pd.nid))
+			v.display_name = str(pd.get("name", "someone"))
+			v.def_traits = pd.get("traits", [])
+			add_child(v)
+			villagers.append(v)
+		v.def_class = str(pd.get("cls", v.def_class))
+		v.def_patron = str(pd.get("patron", "god-halor"))
+		v.job_work_id = str(pd.get("job", ""))
+		v.position = Vector2(float(pd.x), float(pd.y))
+		v.is_captive = bool(pd.get("captive", false))
+		v.days_held = int(pd.get("held", 0))
+		if bool(pd.rescued):
+			v.rescued = true
+			v.tribesman_id = int(pd.get("tid", -1))
+			var rec: Dictionary = village.tribesmen.get(v.tribesman_id, {})
+			v.set_mood(str(rec.get("expression", "steady")))
+		v.set_label_name()
 	_refresh_hud()
 
 ## Where the first instance of a work stands (villager duty posts).
@@ -592,11 +625,17 @@ func intent_interact() -> bool:
 			if _carrying_remnant():
 				return intent_enshrine(god_id)
 			return intent_rite(god_id)
+	# a beaten raider on their knees — bind them for the yoke
+	for e in enemies:
+		if is_instance_valid(e) and e.surrendered and acting_pos().distance_to(e.position) < interact_range():
+			return intent_capture(e)
 	if survivor != null and not survivor.rescued and acting_pos().distance_to(survivor.position) < interact_range():
 		return intent_rescue()
 	# a stranded stranger to rescue, or a villager to hear out
 	for v: DSVillager in all_villagers():
 		if acting_pos().distance_to(v.position) < interact_range():
+			if v.is_captive:
+				return intent_hold_captive(v)
 			if not v.rescued:
 				return intent_rescue_villager(v)
 			return intent_talk(v)
@@ -604,6 +643,52 @@ func intent_interact() -> bool:
 	if near_work >= 0:
 		return intent_tend(near_work)
 	return intent_harvest()
+
+## The Taken: bind a surrendered raider. They become a captive (origin "taken")
+## — grievance and susceptibility maxed, Ur-Noth's easiest tinder — held at your
+## yoke-post until you break them or unbind them.
+func intent_capture(raider: DSEnemy) -> bool:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = _villager_nid
+	var v := DSVillager.new()
+	v.host = self
+	_villager_nid += 1
+	v.set_meta("nid", _villager_nid)
+	v.display_name = NAME_POOL[rng.randi() % NAME_POOL.size()]
+	v.def_class = CLASS_POOL[rng.randi() % CLASS_POOL.size()]
+	v.def_traits = ["trait-bitter"]
+	v.def_patron = ""
+	v.position = raider.position
+	v.rescued = true
+	v.is_captive = true
+	v.tribesman_id = village.add_tribesman(v.display_name, v.def_class, "taken", ["trait-bitter"], "")
+	add_child(v)
+	villagers.append(v)
+	stats.unregister(raider)
+	enemies.erase(raider)
+	raider.queue_free()
+	sfx("build")
+	message = "You bind %s and march them home. A captive is fast labor and slow poison — the yoke-post holds them.\nBreak them at the Salt-Wheel, or hold them well and Unbind them free." % v.display_name
+	_refresh_hud()
+	return true
+
+## Interact with a held captive at the yoke-post: Unbind (kind, after patience)
+## if no Salt-Wheel, else offer the choice via the panel.
+func intent_hold_captive(v: DSVillager) -> bool:
+	if works.count_of("work-salt-wheel") > 0 and v.days_held < 3:
+		message = "%s glares. Break them at the Salt-Wheel [tend it], or keep them fed and warded %d more day(s) to Unbind them." % [v.display_name, 3 - v.days_held]
+	elif v.days_held >= 3:
+		village.unbind(v.tribesman_id)
+		v.is_captive = false
+		v.def_patron = "god-halor"
+		assign_job(v)
+		v.set_mood("content")
+		sfx("bloom")
+		message = "You strike the bindings from %s. They stand slowly — and stay, of their own will. The gods mark it." % v.display_name
+	else:
+		message = "%s is bound (day %d). Fed and warded, they'll come round in %d more day(s) — then Unbind them." % [v.display_name, v.days_held, 3 - v.days_held]
+	_refresh_hud()
+	return true
 
 ## Rescue a stranded survivor (not Anna — the pool strangers).
 func intent_rescue_villager(v: DSVillager) -> bool:
@@ -708,6 +793,9 @@ func nearest_work(from: Vector2) -> int:
 func intent_tend(inst_id: int) -> bool:
 	var inst: Dictionary = works.placed[inst_id]
 	var work := registry.get_entity(str(inst.work_id))
+	# the Salt-Wheel grinds a captive into the Broken — the grim shortcut
+	if str(inst.work_id) == "work-salt-wheel":
+		return intent_salt_wheel(inst_id)
 	var god_id: String = work.get("godId", "neutral")
 	var god_line := ""
 	if god_id != "neutral":
@@ -719,6 +807,30 @@ func intent_tend(inst_id: int) -> bool:
 		message = "You tend the %s — WORKING until dawn.%s\n%s" % [str(work.name).to_lower(), god_line, what]
 	else:
 		message = "The %s is working.%s\n%s" % [str(work.name).to_lower(), god_line, what]
+	_refresh_hud()
+	return true
+
+## The Salt-Wheel: grind the nearest held captive into the Broken. Fast, dark,
+## and the flats will know — priests mutter, Ur-Noth warms.
+func intent_salt_wheel(inst_id: int) -> bool:
+	var captive: DSVillager = null
+	for v: DSVillager in all_villagers():
+		if v.is_captive:
+			captive = v
+			break
+	if captive == null:
+		message = "The Salt-Wheel stands ready and hungry. It wants a captive; you have none."
+		_refresh_hud()
+		return true
+	works.set_in_use(inst_id, true)
+	village.break_captive(captive.tribesman_id)
+	captive.is_captive = false
+	captive.def_patron = ""
+	assign_job(captive)
+	captive.set_mood("steady")
+	devotion.work_favor_hour(acting_pid, "god-ur-noth", 8.0)
+	sfx("consume")
+	message = "The Salt-Wheel turns. %s goes in bitter and comes out Broken — obedient, tireless, empty. A warm voice, pleased.\nYour people will not meet your eye today." % captive.display_name
 	_refresh_hud()
 	return true
 
@@ -898,7 +1010,16 @@ func menu_works() -> Array:
 		for work: Dictionary in registry.all_of("work"):
 			if work.get("godId", "") == god_id and not work.get("grim", false):
 				out.append(str(work.id))
+	# grim works whisper when you hold a captive — the Salt-Wheel wants a customer
+	if _has_captive():
+		out.append("work-salt-wheel")
 	return out
+
+func _has_captive() -> bool:
+	for v: DSVillager in all_villagers():
+		if v.is_captive:
+			return true
+	return false
 
 func _toggle_build_menu(open: bool) -> void:
 	_toggle_menu(open, "build")
@@ -1035,6 +1156,15 @@ func intent_attack() -> bool:
 			or abilities.talent_active(acting_pid, "talent-bolt-marked"):
 		_flash_bolt(target.position)   # strike true and the bolt comes down on your mark
 		sfx("bolt", target.position)
+	# a raider beaten low SURRENDERS instead of dying — subdue, don't slay
+	if target.subduable and not target.surrendered:
+		var max_hp := float(registry.get_entity(target.creature_id).get("stats", {}).get("hp", 60))
+		if stats.hp(target) - attack_damage() <= max_hp * 0.25:
+			stats.actors[target].hp = max_hp * 0.25
+			target.surrender()
+			message = "The raider drops to their knees, spent. [E] to bind them for the yoke — or walk away."
+			_refresh_hud()
+			return true
 	if stats.damage(target, attack_damage()):
 		_on_enemy_killed(target)
 	return true
@@ -1361,6 +1491,11 @@ func _toggle_village(open: bool) -> void:
 		for v: DSVillager in roster:
 			var rec: Dictionary = village.tribesmen.get(v.tribesman_id, {})
 			var cls := str(registry.get_entity(v.def_class).get("name", "?"))
+			if v.is_captive:
+				var covered := bool(rec.get("warden_covered", true))
+				var need := "break at the Salt-Wheel, or Unbind in %d day(s)" % maxi(0, 3 - v.days_held)
+				lines.append("%-10s %-11s %-13s %s" % [v.display_name.left(10), "CAPTIVE", ("warded" if covered else "UNWATCHED"), need])
+				continue
 			var moodw := "content" if bool(rec.get("bloomed", false)) else v._mood_word()
 			var need := _villager_need(v, rec)
 			lines.append("%-10s %-11s %-13s %s" % [v.display_name.left(10), cls.left(11), moodw.left(13), need])
@@ -1706,11 +1841,24 @@ func _stock_take_one_food() -> bool:
 func _village_dawn() -> void:
 	var rite_led := rites_done_today.values().any(func(v: bool) -> bool: return v)
 	rites_done_today.clear()
+	# 0. THE TAKEN: assign warden coverage; captives age a day
+	var warden_cap := 0
+	for v: DSVillager in all_villagers():
+		if v.rescued and not v.is_captive and v.def_class == "class-warden":
+			warden_cap += 3   # tune: takenPerWarden
+	var covered := 0
+	for v: DSVillager in all_villagers():
+		if v.is_captive and v.tribesman_id >= 0:
+			v.days_held += 1
+			var rec2: Dictionary = village.tribesmen.get(v.tribesman_id, {})
+			if not rec2.is_empty():
+				rec2.warden_covered = covered < warden_cap
+				covered += 1
 	# 1. WORK: settled villagers with a job produce — food to the stores, materials to you
 	var produced: Array[String] = []
 	for v: DSVillager in all_villagers():
-		if not v.rescued or v.tribesman_id < 0:
-			continue
+		if not v.rescued or v.tribesman_id < 0 or v.is_captive:
+			continue   # captives are held, not working
 		if v.position.distance_to(village_heart()) > DSVillager.SETTLE_RADIUS + 80.0:
 			continue   # too far out to have worked today
 		var job: Array = JOBS.get(v.def_class, [])
@@ -1874,6 +2022,15 @@ func _spawn_enemies() -> void:
 		crab.setup(self, "creature-scuttle-crab")
 		add_child(crab)
 		enemies.append(crab)
+	for i in 3:  # flats raiders — beat them down and they surrender; subdue for the yoke
+		var raider := DSEnemy.new()
+		var rp := center
+		while rp.distance_to(center) < 300.0:
+			rp = Vector2(rng.randi_range(3, WORLD.x - 3) * TILE, rng.randi_range(3, WORLD.y - 3) * TILE)
+		raider.position = rp
+		raider.setup(self, "creature-raider")
+		add_child(raider)
+		enemies.append(raider)
 	# Old Shellback guards the northwest wreck-ring. The first name you learn to fear.
 	var boss := DSEnemy.new()
 	boss.position = Vector2(TILE * 5.0, TILE * 5.0)
@@ -2286,7 +2443,7 @@ func _world_sync() -> Dictionary:
 	for e in enemies:
 		if is_instance_valid(e):
 			enemy_list.append({"nid": _enemy_nid(e), "creature": e.creature_id,
-				"x": e.position.x, "y": e.position.y, "hp": stats.hp(e)})
+				"x": e.position.x, "y": e.position.y, "hp": stats.hp(e), "surr": e.surrendered})
 	var specials := []
 	var extra_defs := []
 	for n in resource_nodes:
@@ -2304,7 +2461,8 @@ func _world_sync() -> Dictionary:
 		"villager": {"rescued": survivor.rescued, "x": survivor.position.x, "y": survivor.position.y},
 		"pool": villagers.map(func(v: DSVillager) -> Dictionary:
 			return {"nid": int(v.get_meta("nid", 0)), "name": v.display_name, "cls": v.def_class,
-				"x": v.position.x, "y": v.position.y, "rescued": v.rescued, "mood": v.mood, "job": v.job_work_id}),
+				"x": v.position.x, "y": v.position.y, "rescued": v.rescued, "mood": v.mood, "job": v.job_work_id,
+				"captive": v.is_captive, "held": v.days_held}),
 		"stock": village_stock,
 	}
 
@@ -2427,6 +2585,8 @@ func cl_world_sync(w: Dictionary) -> void:
 		want[nid] = true
 		if have.has(nid):
 			(have[nid] as DSEnemy).position = Vector2(float(ed.x), float(ed.y))
+			if bool(ed.get("surr", false)) and not (have[nid] as DSEnemy).surrendered:
+				(have[nid] as DSEnemy).surrender()
 		else:
 			var m := DSEnemy.new()
 			m.mirror = true
@@ -2468,6 +2628,8 @@ func cl_world_sync(w: Dictionary) -> void:
 			villagers.append(body)
 		body.position = body.position.lerp(Vector2(float(pd.x), float(pd.y)), 0.5)
 		body.job_work_id = str(pd.get("job", ""))
+		body.is_captive = bool(pd.get("captive", false))
+		body.days_held = int(pd.get("held", 0))
 		if bool(pd.rescued) and not body.rescued:
 			body.rescued = true
 		if body.rescued:

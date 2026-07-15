@@ -16,6 +16,8 @@ var attack_damage := 8.0
 var peaceful := false   # ambient archetypes never chase or bite
 var mirror := false     # NET client: a visual echo — the server owns the brain
 var is_boss := false
+var subduable := false  # raiders: at low HP they surrender instead of dying
+var surrendered := false
 var spawn_pos := Vector2.ZERO   # bosses guard their ground and leash back to it
 var _cooldown := 0.0
 var _stun := 0.0
@@ -57,6 +59,7 @@ func setup(game_host: GameHost, id: String) -> void:
 	attack_damage = float(stats.get("damage", 5))
 	peaceful = creature.get("archetype", "") == "ambient"
 	is_boss = creature.get("archetype", "") == "boss"
+	subduable = creature.get("archetype", "") == "raider-human"
 	spawn_pos = position
 	host.stats.register(self, float(stats.get("hp", 20)))
 
@@ -70,11 +73,16 @@ func _ready() -> void:
 	shape.shape = rect
 	add_child(shape)
 
+func surrender() -> void:
+	surrendered = true
+	if _visual != null:
+		_visual.modulate = Color(0.7, 0.66, 0.6)   # beaten, kneeling
+
 func _physics_process(delta: float) -> void:
 	if host == null or host.player == null or mirror:
 		return   # mirrors move by the server's word alone
-	if peaceful:
-		return   # crabs have nowhere to be
+	if peaceful or surrendered:
+		return   # crabs have nowhere to be; a surrendered raider waits
 	if _stun > 0.0:
 		_stun -= delta
 		velocity = Vector2.ZERO

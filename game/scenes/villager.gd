@@ -20,6 +20,8 @@ var def_traits: Array = ["trait-devout", "trait-storyteller"]
 var def_patron := "god-halor"
 var job_work_id := ""       # the station this villager tends
 var mood := "steady"
+var is_captive := false     # a bound raider (origin "taken") — held, not free
+var days_held := 0
 var _wander_target := Vector2.ZERO
 var _rng := RandomNumberGenerator.new()
 var _label: Label
@@ -73,6 +75,9 @@ func _refresh_label() -> void:
 	if not rescued:
 		_label.text = "%s, stranded" % display_name
 		return
+	if is_captive:
+		_label.text = "%s (bound · day %d)" % [display_name, days_held]
+		return
 	var job := ""
 	if job_work_id != "" and host != null:
 		job = " · " + str(host.registry.get_entity(job_work_id).get("name", "")).to_lower()
@@ -119,6 +124,9 @@ func _physics_process(_delta: float) -> void:
 ## Where their day wants them: at their job by day, their god's chapel at dusk,
 ## home at night.
 func _daily_target(center: Vector2) -> Vector2:
+	if is_captive:
+		var yoke := host.work_pos("work-yoke-post")
+		return yoke if yoke != Vector2.INF else center   # bound to the post, or milling
 	var hour := host.clock.minute_of_day / 60
 	if hour >= 6 and hour < 17:
 		if job_work_id != "":

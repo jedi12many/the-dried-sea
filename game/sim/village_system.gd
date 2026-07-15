@@ -154,6 +154,22 @@ func punish(id: int, kind: String, has_evidence: bool) -> void:
 		tribesmen.erase(id)
 
 ## --- the Unbinding (the kind door for the Taken) ----------------------------------------------
+## The Salt-Wheel: break a captive fast into the Broken — obedient, productive,
+## faithless, forever susceptible. The grim shortcut. Weighs on the ledger.
+func break_captive(id: int) -> void:
+	var rec: Dictionary = tribesmen[id]
+	if rec.origin != "taken":
+		return
+	var prof: Dictionary = tune.get("startProfiles", {}).get("broken", {})
+	rec.origin = "broken"
+	rec.faith = float(prof.get("faith", 0))
+	rec.grievance = float(prof.get("grievance", 40))
+	rec.susceptibility = float(prof.get("susceptibility", 100))
+	rec.bloomed = false
+	rec.key_met = false
+	ledger_event.emit("shepherd", -12.0, "the Salt-Wheel broke %s" % rec.name)
+	_update_expression(id)
+
 func unbind(id: int) -> void:
 	var rec: Dictionary = tribesmen[id]
 	if rec.origin != "taken":
