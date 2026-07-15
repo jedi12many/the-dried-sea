@@ -249,6 +249,40 @@ func _ready() -> void:
 	host._on_sim_day(1)
 	check(host.devotion.state[1]["god-halor"].vigor > v_before_days, "her prayers feed Halor daily")
 
+	# --- the village lives: rescue, jobs, production, mood, feeding ----------
+	var stranded := host.villagers.filter(func(v): return not v.rescued)
+	check(stranded.size() >= 3, "strangers are stranded out on the flats (%d)" % stranded.size())
+	# force a known worker: make the first stranger a salvager and rescue them
+	var worker = stranded[0]
+	worker.def_class = "class-salvager"
+	# a workbench already stands from earlier; put the worker at home and rescue
+	host.player.position = worker.position
+	check(host.intent_interact(), "rescue the stranger")
+	check(worker.rescued and worker.tribesman_id >= 0, "they join the village")
+	check(worker.job_work_id == "work-workbench", "and take the workbench job (they are a salvager)")
+	worker.position = host.village_heart()   # settle them at home so they work
+	var salt_b2 := host.inventory.count(1, "item-salt")
+	host._on_sim_day(2)
+	check(host.inventory.count(1, "item-salt") > salt_b2, "at dawn the salvager produced salt into your pack")
+	# feeding: pool food, and a fed villager doesn't go hungry
+	host.inventory.add(1, "item-smoked-crab", 5)
+	host.intent_give_food()
+	check(host._stock_food_total() >= 5, "you stocked the village larder")
+	host._on_sim_day(3)
+	check(host._stock_food_total() < 5, "your people ate from the stores")
+	# talk-to-bloom: a grievance-heard villager blooms when you hear them
+	var talker_id := host.village.add_tribesman("Test", "class-reef-runner", "rescued", ["trait-bitter"], "god-halor")
+	var talker = DSVillager.new(); talker.host = host; talker.tribesman_id = talker_id
+	talker.def_traits = ["trait-bitter"]; talker.rescued = true
+	talker.position = host.village_heart(); host.add_child(talker); host.villagers.append(talker)
+	check(host.village.tribesmen[talker_id].key == "grievance-heard", "the bitter one wants to be heard")
+	host.player.position = talker.position
+	host.intent_talk(talker)
+	check(host.village.tribesmen[talker_id].bloomed, "hearing them out blooms them")
+
+	# the village survives a save/load
+	host.save_game()
+
 	# readability: her need already stands built (the chapel) — she blooms on arrival
 	check(host.village.tribesmen[host.survivor.tribesman_id].bloomed, "Anna's Key was waiting: the chapel — she blooms")
 

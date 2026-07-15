@@ -22,6 +22,8 @@ on a **shared server** with the other testers. Thanks for helping.
 | C | CRAFT MENU — every recipe, its cost, and where to make it |
 | B | BUILD MENU — every building and what it does |
 | I | your PACK & paper doll — equip weapons and armor |
+| V | THE VILLAGE — your people, their jobs, moods, and needs |
+| G | pool your food into the village stores |
 | T | character sheet (the Tally) |
 | Q / R | miracles, once you've knelt to the right god |
 | X | consume a god-remnant (think first) |
@@ -31,8 +33,7 @@ on a **shared server** with the other testers. Thanks for helping.
 
 ## What to do out there
 Follow the HUD bearings: kneel at the pale shrines, eat crabs, get home
-before dark (the hounds own the night), raise a chapel, rescue the woman by
-the southwest wrecks, survive to Day 4 for the great storm, chase the
+before dark (the hounds own the night), raise a chapel, rescue the woman by the southwest wrecks (and the strangers stranded further out — each has a trade), survive to Day 4 for the great storm, chase the
 harpoon-song, and — when you're ready — walk northwest and meet Old Shellback.
 
 ## When it breaks or feels wrong

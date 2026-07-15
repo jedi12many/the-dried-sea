@@ -11,7 +11,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.3.0"
+const GAME_VERSION := "0.4.0"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -67,7 +67,26 @@ var _minutes_since_hour := 0
 # the soul, playable
 const INTERACT_RANGE := 56.0
 var shrines: Array[Node2D] = []
-var survivor: DSVillager
+var survivor: DSVillager               # Anna, the first (kept for compat + tutorial)
+var villagers: Array[DSVillager] = []  # additional rescued/stranded survivors
+var village_stock: Dictionary = {}     # the shared storehouse: item_id -> qty
+var village_panel: Label
+var village_panel_open := false
+var _villager_nid := 100
+
+# what each class does at work: [station ("" = forager), product, qty, to_village_stock?]
+const JOBS := {
+	"class-brinewife": ["work-smokehouse", "item-smoked-crab", 2, true],
+	"class-salvager": ["work-workbench", "item-salt", 3, false],
+	"class-smith": ["work-workbench", "item-bronze-salvage", 2, false],
+	"class-reef-runner": ["", "item-driftwood", 2, false],
+	"class-warden": ["work-yoke-post", "", 0, false],
+}
+const NAME_POOL := ["Bex", "Corin", "Del", "Enna", "Fisk", "Goro", "Hale", "Isa",
+	"Joss", "Kael", "Lorn", "Mira", "Nils", "Orla", "Perr", "Renn", "Sable", "Tovin"]
+const CLASS_POOL := ["class-brinewife", "class-salvager", "class-smith", "class-reef-runner", "class-warden"]
+const TRAIT_POOL := ["trait-devout", "trait-agnostic", "trait-industrious", "trait-idle",
+	"trait-storyteller", "trait-surly", "trait-night-owl", "trait-bitter", "trait-keen-eyes", "trait-forge-sense"]
 var chapels: Dictionary = {}          # god_id -> position
 var attuned: Dictionary = {}          # pid -> Array[String]
 var rites_done_today: Dictionary = {} # god_id -> bool
@@ -170,6 +189,22 @@ func _ready() -> void:
 		attuned_for(acting_pid).append("god-halor")
 		_toggle_menu(true, "build")
 		_screenshot_and_quit()
+	elif "--screenshot-village" in OS.get_cmdline_user_args():
+		inventory.add(acting_pid, "item-wreck-timber", 20)
+		inventory.add(acting_pid, "item-salt", 20)
+		intent_build("work-workbench")
+		intent_build("work-smokehouse")
+		survivor.rescue()
+		survivor.position = village_heart()
+		for v: DSVillager in villagers:
+			v.def_class = ["class-salvager", "class-brinewife", "class-smith", "class-reef-runner"][villagers.find(v) % 4]
+			v.rescue()
+			v.position = village_heart()
+		village_stock["item-smoked-crab"] = 4
+		village.tribesmen[survivor.tribesman_id].bloomed = true
+		_on_sim_day(1)
+		_toggle_village(true)
+		_screenshot_and_quit()
 	elif "--screenshot-doll" in OS.get_cmdline_user_args():
 		inventory.add(acting_pid, "item-bronze-knife", 1)
 		inventory.add(acting_pid, "item-salt-cloak", 1)
@@ -229,6 +264,10 @@ func save_game() -> void:
 		"survivor": {"rescued": survivor.rescued if survivor != null else false,
 			"tribesman_id": survivor.tribesman_id if survivor != null else -1,
 			"pos": [survivor.position.x, survivor.position.y] if survivor != null else [0, 0]},
+		"pool": villagers.map(func(v: DSVillager) -> Dictionary:
+			return {"nid": int(v.get_meta("nid", 0)), "rescued": v.rescued, "tid": v.tribesman_id,
+				"cls": v.def_class, "job": v.job_work_id, "x": v.position.x, "y": v.position.y}),
+		"village_stock": village_stock.duplicate(),
 		"message": message,
 	}
 	SaveSystem.write_file(save_path, s)
@@ -293,6 +332,21 @@ func load_game() -> void:
 		survivor.set_label_name()
 		var sp: Array = sv.get("pos", [0, 0])
 		survivor.position = Vector2(float(sp[0]), float(sp[1]))
+	# restore the rescued pool (bodies were respawned by _spawn_stranded_pool in _ready)
+	village_stock = g.get("village_stock", {})
+	for pd: Dictionary in g.get("pool", []):
+		for v: DSVillager in villagers:
+			if int(v.get_meta("nid", -1)) == int(pd.nid):
+				v.def_class = str(pd.get("cls", v.def_class))
+				v.job_work_id = str(pd.get("job", ""))
+				v.position = Vector2(float(pd.x), float(pd.y))
+				if bool(pd.rescued):
+					v.rescued = true
+					v.tribesman_id = int(pd.get("tid", -1))
+					var rec: Dictionary = village.tribesmen.get(v.tribesman_id, {})
+					v.set_mood(str(rec.get("expression", "steady")))
+				v.set_label_name()
+				break
 	_refresh_hud()
 
 ## Where the first instance of a work stands (villager duty posts).
@@ -428,6 +482,17 @@ func _unhandled_input(event: InputEvent) -> void:
 					_rotate_work(int(inst_id))
 				break
 		return
+	if village_panel_open and event is InputEventKey and event.pressed:
+		var vkey := (event as InputEventKey).physical_keycode
+		if vkey == KEY_ESCAPE or vkey == KEY_V:
+			_toggle_village(false)
+			return
+		if vkey == KEY_G:
+			if net_mode == "client":
+				rpc_id(1, "srv_intent", "give_food", [])
+			else:
+				intent_give_food()
+			return
 	if doll_open and event is InputEventKey and event.pressed:
 		var dkey := (event as InputEventKey).physical_keycode
 		if dkey >= KEY_1 and dkey <= KEY_9:
@@ -492,6 +557,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("inventory"):
 		sfx("ui")
 		_toggle_doll(not doll_open)
+	elif event.is_action_pressed("village"):
+		sfx("ui")
+		_toggle_village(not village_panel_open)
+	elif event.is_action_pressed("give_food"):
+		if net_mode == "client":
+			rpc_id(1, "srv_intent", "give_food", [])
+		else:
+			intent_give_food()
 	elif event.is_action_pressed("save"):
 		save_game()
 		message = "The flats will remember. (saved)"
@@ -513,17 +586,58 @@ func intent_interact() -> bool:
 		var god_id: String = s.get_meta("god_id")
 		if acting_pos().distance_to(s.position) < interact_range() and god_id not in attuned_for(acting_pid):
 			return intent_kneel(god_id)
-	if survivor != null and not survivor.rescued and acting_pos().distance_to(survivor.position) < interact_range():
-		return intent_rescue()
+	# what you're standing ON wins: a chapel's rite before a nearby stranger
 	for god_id: String in chapels:
 		if acting_pos().distance_to(chapels[god_id]) < interact_range():
 			if _carrying_remnant():
 				return intent_enshrine(god_id)
 			return intent_rite(god_id)
+	if survivor != null and not survivor.rescued and acting_pos().distance_to(survivor.position) < interact_range():
+		return intent_rescue()
+	# a stranded stranger to rescue, or a villager to hear out
+	for v: DSVillager in all_villagers():
+		if acting_pos().distance_to(v.position) < interact_range():
+			if not v.rescued:
+				return intent_rescue_villager(v)
+			return intent_talk(v)
 	var near_work := nearest_work(acting_pos())
 	if near_work >= 0:
 		return intent_tend(near_work)
 	return intent_harvest()
+
+## Rescue a stranded survivor (not Anna — the pool strangers).
+func intent_rescue_villager(v: DSVillager) -> bool:
+	v.rescue()
+	abilities.earn(acting_pid, 1)
+	var cls := str(registry.get_entity(v.def_class).get("name", "survivor")).to_lower()
+	message = "%s, a %s, follows you home. Give them work and a full belly and they'll keep the flats at bay." % [v.display_name, cls]
+	_refresh_hud()
+	return true
+
+## Talk to a villager: hear them, and — if their door is a heard grievance —
+## opening up IS meeting their Key. They bloom.
+func intent_talk(v: DSVillager) -> bool:
+	var rec: Dictionary = village.tribesmen.get(v.tribesman_id, {})
+	if rec.is_empty():
+		return false
+	var key := str(rec.get("key", ""))
+	if not bool(rec.get("key_met", false)) and (key == "grievance-heard" or key.begins_with("respect") or key == "confided-in" or key == "audience-kept" or key == "left-alone" or key == "trusted-with-stores"):
+		village.meet_key(v.tribesman_id)
+		v.set_mood("content")
+		sfx("bloom")
+		message = "%s talks, and something loosens. They bloom — you'll see it in their work." % v.display_name
+	else:
+		var m := str(rec.get("expression", "steady"))
+		var line := "'The flats are quiet today. That's the most you can ask of them.'"
+		if m == "poorFood" or _stock_food_total() == 0:
+			line = "'There's not much in the stores. A person works better fed.'"
+		elif m in ["slacking", "spreadingDoubt", "pettyTheft"]:
+			line = "'I don't know why I stay, some days. ...but I stay.'"
+		elif bool(rec.get("bloomed", false)):
+			line = "'Good to have somewhere to be. Thank you for that.'"
+		message = "%s: %s" % [v.display_name, line]
+	_refresh_hud()
+	return true
 
 ## Where HOME is: the hearth if one burns, else a chapel, else the workbench,
 ## else the world's center. Anna settles here; so will everyone after her.
@@ -1130,6 +1244,7 @@ func intent_build(work_id: String) -> bool:
 				message = "A chapel to %s, raised from wreck-timber. Hold rites here [E] — their strength returns through worship." % str(registry.get_entity(god_id).name)
 				break
 	_spawn_work_visual(inst_id, work_id, pos, {})
+	_reassign_all_jobs()
 	_check_village_keys()
 	_refresh_hud()
 	return true
@@ -1227,6 +1342,69 @@ func intent_equip_index(i: int) -> void:
 		equip_toggle(acting_pid, item_id)
 	if doll_open:
 		_toggle_doll(true)
+
+## --- the village panel ------------------------------------------------------
+func _toggle_village(open: bool) -> void:
+	village_panel_open = open
+	if village_panel == null:
+		return
+	village_panel.visible = open
+	(village_panel.get_meta("back") as ColorRect).visible = open
+	if not open:
+		return
+	var lines := ["THE VILLAGE — [G] pool your food into the stores, [V] to close", ""]
+	var roster := all_villagers().filter(func(v: DSVillager) -> bool: return v.rescued and v.tribesman_id >= 0)
+	if roster.is_empty():
+		lines.append("No one has joined you yet. Strangers are stranded out on the flats — find them.")
+	else:
+		lines.append("%-10s %-11s %-13s %s" % ["NAME", "TRADE", "MOOD", "NEEDS"])
+		for v: DSVillager in roster:
+			var rec: Dictionary = village.tribesmen.get(v.tribesman_id, {})
+			var cls := str(registry.get_entity(v.def_class).get("name", "?"))
+			var moodw := "content" if bool(rec.get("bloomed", false)) else v._mood_word()
+			var need := _villager_need(v, rec)
+			lines.append("%-10s %-11s %-13s %s" % [v.display_name.left(10), cls.left(11), moodw.left(13), need])
+	lines.append("")
+	var food := _stock_food_total()
+	var stores: Array[String] = []
+	for item_id: String in village_stock:
+		stores.append("%d %s" % [int(village_stock[item_id]), str(registry.get_entity(item_id).name)])
+	lines.append("STORES: %s" % (", ".join(stores) if stores.size() > 0 else "empty"))
+	lines.append("Your people eat %d food a day; the stores hold %d. Feed them, or they sour." % [roster.size(), food])
+	village_panel.text = "\n".join(lines)
+
+func _villager_need(v: DSVillager, rec: Dictionary) -> String:
+	if rec.is_empty():
+		return ""
+	if bool(rec.get("bloomed", false)):
+		return "nothing — thriving"
+	var key := str(rec.get("key", ""))
+	if key == "grievance-heard" or key == "confided-in" or key == "audience-kept":
+		return "wants to be heard — talk to them [E]"
+	if key.begins_with("shrine-access"):
+		return "a chapel to their god"
+	if key == "schedule-night":
+		return "night work"
+	if key == "right-job" or key == "promoted":
+		return "the right work"
+	if key == "left-alone":
+		return "to be left be — don't fuss"
+	return "attention — a good day or two"
+
+## Pool the player's food into the shared stores (feed the village).
+func intent_give_food() -> void:
+	var given := 0
+	for item_id: String in inventory._inv(acting_pid).keys():
+		if str(registry.get_entity(item_id).get("category", "")) == "food":
+			var n := inventory.count(acting_pid, item_id)
+			village_stock[item_id] = int(village_stock.get(item_id, 0)) + n
+			inventory.pay(acting_pid, [{"itemId": item_id, "qty": n}])
+			given += n
+	sfx("build")
+	message = "You set %d food in the village stores. A fed camp is a loyal one." % given
+	if village_panel_open:
+		_toggle_village(true)
+	_refresh_hud()
 
 ## One-shot audio, guarded for the headless server.
 func sfx(name: String, at := Vector2.INF, base_db := 0.0) -> void:
@@ -1475,14 +1653,133 @@ func _spawn_survivor() -> void:
 	survivor.host = self
 	survivor.position = Vector2(TILE * 6.0, WORLD.y * TILE - TILE * 5.0)  # far southwest, by the wrecks
 	add_child(survivor)
+	if net_mode != "client":
+		_spawn_stranded_pool()
+
+## Scatter a handful of stranded coast-folk to find and bring home. Deterministic
+## (seeded) so the server and every client agree on who is where.
+func _spawn_stranded_pool() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 424242
+	var spots := [Vector2(TILE * 44, TILE * 20), Vector2(TILE * 6, TILE * 18),
+		Vector2(TILE * 40, TILE * 28), Vector2(TILE * 16, TILE * 27)]
+	for i in spots.size():
+		var v := DSVillager.new()
+		v.host = self
+		v.tribesman_id = -1
+		_villager_nid += 1
+		v.set_meta("nid", _villager_nid)
+		v.display_name = NAME_POOL[rng.randi() % NAME_POOL.size()]
+		v.def_class = CLASS_POOL[rng.randi() % CLASS_POOL.size()]
+		var t1: String = TRAIT_POOL[rng.randi() % TRAIT_POOL.size()]
+		var t2: String = TRAIT_POOL[rng.randi() % TRAIT_POOL.size()]
+		v.def_traits = [t1] if t1 == t2 else [t1, t2]
+		v.def_patron = "god-halor"
+		v.position = spots[i]
+		add_child(v)
+		villagers.append(v)
+
+func all_villagers() -> Array:
+	var out: Array = []
+	if survivor != null:
+		out.append(survivor)
+	out.append_array(villagers)
+	return out
+
+func _stock_food_total() -> int:
+	var n := 0
+	for item_id: String in village_stock:
+		if str(registry.get_entity(item_id).get("category", "")) == "food":
+			n += int(village_stock[item_id])
+	return n
+
+func _stock_take_one_food() -> bool:
+	for item_id: String in village_stock:
+		if str(registry.get_entity(item_id).get("category", "")) == "food" and int(village_stock[item_id]) > 0:
+			village_stock[item_id] = int(village_stock[item_id]) - 1
+			if village_stock[item_id] <= 0:
+				village_stock.erase(item_id)
+			return true
+	return false
+
+## The village lives once a day: everyone works, eats, and their mood shifts.
+func _village_dawn() -> void:
+	var rite_led := rites_done_today.values().any(func(v: bool) -> bool: return v)
+	rites_done_today.clear()
+	# 1. WORK: settled villagers with a job produce — food to the stores, materials to you
+	var produced: Array[String] = []
+	for v: DSVillager in all_villagers():
+		if not v.rescued or v.tribesman_id < 0:
+			continue
+		if v.position.distance_to(village_heart()) > DSVillager.SETTLE_RADIUS + 80.0:
+			continue   # too far out to have worked today
+		var job: Array = JOBS.get(v.def_class, [])
+		if job.is_empty() or str(job[1]) == "":
+			continue
+		var station: String = job[0]
+		if station != "" and works.count_of(station) == 0:
+			continue   # their building isn't built
+		if station != "":
+			# their labor keeps the station fed to its god
+			for inst_id: Variant in works.placed:
+				if str(works.placed[inst_id].work_id) == station:
+					works.set_in_use(int(inst_id), true)
+					break
+		var qty := int(round(float(job[2]) * village.output_per_hour(v.tribesman_id)))
+		if qty <= 0:
+			continue
+		var item_id := str(job[1])
+		if bool(job[3]):
+			village_stock[item_id] = int(village_stock.get(item_id, 0)) + qty
+		else:
+			inventory.add(acting_pid, item_id, qty)
+		produced.append("%s %s" % [qty, str(registry.get_entity(item_id).name)])
+	# 2. EAT + MOOD: each villager eats from the stores; hunger and neglect sour them
+	var deserters: Array[DSVillager] = []
+	for v: DSVillager in all_villagers():
+		if not v.rescued or v.tribesman_id < 0:
+			continue
+		var conditions: Array = ["rested"]
+		if rite_led:
+			conditions.append("riteAttended")
+		if not _stock_take_one_food():
+			conditions.append("poorFood")   # hungry
+		if str(v.def_patron) != "" and not chapels.has(v.def_patron):
+			conditions.append("noShrineAccess")
+		village.drift_day(v.tribesman_id, conditions)
+		var rec: Dictionary = village.tribesmen.get(v.tribesman_id, {})
+		v.set_mood(str(rec.get("expression", "steady")))
+		if str(rec.get("expression", "")) == "desertion":
+			deserters.append(v)
+	# 3. CONSEQUENCE: the truly neglected walk off into the flats
+	for v: DSVillager in deserters:
+		message = "%s has left the village. The flats keep what a poor camp cannot." % v.display_name
+		village.tribesmen.erase(v.tribesman_id)
+		villagers.erase(v)
+		if v == survivor:
+			survivor.rescued = false
+		v.queue_free()
+	if produced.size() > 0 and net_mode != "client":
+		message = "Dawn. Your people worked: %s." % ", ".join(produced)
+	if village_panel_open:
+		_toggle_village(true)
+
+## Assign the nearest matching station as this villager's job (or forager/idle).
+func assign_job(v: DSVillager) -> void:
+	var job: Array = JOBS.get(v.def_class, [])
+	if job.is_empty():
+		return
+	var station: String = job[0]
+	if station == "" or works.count_of(station) > 0:
+		v.job_work_id = station   # "" = forager (needs no building)
+
+func _reassign_all_jobs() -> void:
+	for v: DSVillager in all_villagers():
+		if v.rescued and v.job_work_id == "":
+			assign_job(v)
 
 func _on_sim_day(_day: int) -> void:
-	var conditions: Array = ["rested"]
-	if rites_done_today.values().any(func(v: bool) -> bool: return v):
-		conditions.append("riteAttended")
-	rites_done_today.clear()
-	for id: int in village.tribesmen:
-		village.drift_day(id, conditions)
+	_village_dawn()
 	devotion.villager_trickle_day(acting_pid, "god-halor", village.devout_count("god-halor"))
 	for inst_id: Variant in works.placed:
 		works.placed[inst_id].in_use = false   # dawn: works rest until tended
@@ -1733,6 +2030,21 @@ func _build_hud() -> void:
 	doll_label.add_theme_font_size_override("font_size", 13)
 	doll_label.visible = false
 	layer.add_child(doll_label)
+	var vp_back := ColorRect.new()
+	vp_back.position = Vector2(330, 96)
+	vp_back.size = Vector2(620, 540)
+	vp_back.color = Color(0.949, 0.937, 0.910, 0.95)
+	vp_back.visible = false
+	vp_back.name = "VillageBack"
+	layer.add_child(vp_back)
+	village_panel = Label.new()
+	village_panel.position = Vector2(346, 108)
+	village_panel.custom_minimum_size = Vector2(588, 0)
+	village_panel.add_theme_color_override("font_color", Color("3b3428"))
+	village_panel.add_theme_font_size_override("font_size", 13)
+	village_panel.visible = false
+	village_panel.set_meta("back", vp_back)
+	layer.add_child(village_panel)
 
 func _refresh_bars() -> void:
 	if hp_bar == null:
@@ -1763,7 +2075,7 @@ func _refresh_hud() -> void:
 		weather = "  — THE GREAT STORM"
 	elif "god-maren" in attuned_for(my_pid) and (clock.day + 1) % 4 == 3:
 		weather = "  — Maren whispers: storm tomorrow"
-	hud.text = "Day %d, %02d:%02d%s%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [I] pack  [T] tally  [SPACE] attack  [drag] move  [R-click] turn  [Shift+R-click] reclaim%s\n%s" % [
+	hud.text = "Day %d, %02d:%02d%s%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [I] pack  [V] village  [T] tally  [SPACE] attack  [drag] move  [R-click] turn  [Shift+R-click] reclaim%s\n%s" % [
 		clock.day + 1, clock.minute_of_day / 60, clock.minute_of_day % 60, weather,
 		"  — night. NIGHT BELONGS TO THE HOUNDS." if clock.is_night() else "",
 		"  |  fed ×%d" % fed if fed > 0 else "", _direction_hints(),
@@ -1796,7 +2108,7 @@ static func _setup_input() -> void:
 		"move_up": [KEY_W, KEY_UP], "move_down": [KEY_S, KEY_DOWN],
 		"interact": [KEY_E], "craft": [KEY_C], "build": [KEY_B], "eat": [KEY_F],
 		"attack": [KEY_SPACE, KEY_J], "cast": [KEY_Q], "cast_2": [KEY_R], "consume": [KEY_X],
-		"save": [KEY_F5], "sheet": [KEY_T], "inventory": [KEY_I],
+		"save": [KEY_F5], "sheet": [KEY_T], "inventory": [KEY_I], "village": [KEY_V], "give_food": [KEY_G],
 	}
 	for action: String in keys:
 		if InputMap.has_action(action):
@@ -1933,6 +2245,7 @@ func srv_intent(kind: String, args: Array) -> void:
 		"allocate": abilities.allocate(acting_pid, str(args[0]))
 		"deallocate": abilities.deallocate(acting_pid, str(args[0]))
 		"equip": equip_toggle(acting_pid, str(args[0]))
+		"give_food": intent_give_food()
 		"move_work": _move_work(int(args[0]), Vector2(float(args[1]), float(args[2])))
 		"rotate_work": _rotate_work(int(args[0]))
 		"demolish_work": _demolish_work(int(args[0]))
@@ -1989,6 +2302,10 @@ func _world_sync() -> Dictionary:
 		"camp": [camp_center.x, camp_center.y] if camp_center != Vector2.INF else null,
 		"boss_dead": boss_dead, "enemies": enemy_list, "specials": specials,
 		"villager": {"rescued": survivor.rescued, "x": survivor.position.x, "y": survivor.position.y},
+		"pool": villagers.map(func(v: DSVillager) -> Dictionary:
+			return {"nid": int(v.get_meta("nid", 0)), "name": v.display_name, "cls": v.def_class,
+				"x": v.position.x, "y": v.position.y, "rescued": v.rescued, "mood": v.mood, "job": v.job_work_id}),
+		"stock": village_stock,
 	}
 
 func _players_snapshot() -> Array:
@@ -2130,6 +2447,38 @@ func cl_world_sync(w: Dictionary) -> void:
 		if bool(w.villager.rescued) and not survivor.rescued:
 			survivor.rescued = true
 			survivor.set_label_name()
+	# the rest of the roster (client mirrors, keyed by nid)
+	village_stock = w.get("stock", {})
+	var seen := {}
+	for pd: Dictionary in w.get("pool", []):
+		var nid := int(pd.nid)
+		seen[nid] = true
+		var body: DSVillager = null
+		for v: DSVillager in villagers:
+			if int(v.get_meta("nid", -1)) == nid:
+				body = v
+				break
+		if body == null:
+			body = DSVillager.new()
+			body.host = self
+			body.set_meta("nid", nid)
+			body.display_name = str(pd.name)
+			body.def_class = str(pd.cls)
+			add_child(body)
+			villagers.append(body)
+		body.position = body.position.lerp(Vector2(float(pd.x), float(pd.y)), 0.5)
+		body.job_work_id = str(pd.get("job", ""))
+		if bool(pd.rescued) and not body.rescued:
+			body.rescued = true
+		if body.rescued:
+			body.set_mood(str(pd.get("mood", "steady")))
+		body._refresh_label()
+	for v: DSVillager in villagers.duplicate():
+		if not seen.has(int(v.get_meta("nid", -1))):
+			villagers.erase(v)
+			v.queue_free()
+	if village_panel_open:
+		_toggle_village(true)
 	_refresh_hud()
 
 @rpc("authority", "unreliable_ordered")
