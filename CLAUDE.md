@@ -19,6 +19,11 @@ stop — it belongs in data. A future Unreal build must be able to consume
   small commits, one system per commit.
 - Godot 4.7 is installed via winget WITHOUT a PATH alias. The exe:
   `$LOCALAPPDATA/Microsoft/WinGet/Packages/GodotEngine.GodotEngine_Microsoft.Winget.Source_8wekyb3d8bbwe/Godot_v4.7-stable_win64_console.exe`
+- FAST compile check (~2s, run this FIRST after any .gd edit before the full suite):
+  `"$GODOT" --headless --path game --quit-after 2`  — boots the scene, prints any
+  parse/type error, exits. Catches 90% of mistakes without a 4-minute smoke run.
+- Warnings are NOT treated as errors (project.godot [debug]) — so `:=` on a
+  Dictionary access no longer halts the compile. Don't re-enable it.
 - Run sim tests (after any sim/ or data/ change):
   `"$GODOT" --headless --path game --script res://tests/run_tests.gd`
 - If tests fail with "Identifier not declared" parse errors after adding a

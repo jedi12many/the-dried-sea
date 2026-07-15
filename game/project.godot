@@ -10,6 +10,12 @@ config/name="The Dried Sea"
 config/features=PackedStringArray("4.3")
 run/main_scene="res://scenes/main.tscn"
 
+[debug]
+
+gdscript/warnings/treat_warnings_as_errors=false
+gdscript/warnings/inference_on_variant=0
+gdscript/warnings/untyped_declaration=0
+
 [rendering]
 
 renderer/rendering_method="mobile"

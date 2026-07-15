@@ -11,7 +11,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.4.3"
+const GAME_VERSION := "0.5.0"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -73,6 +73,14 @@ var village_stock: Dictionary = {}     # the shared storehouse: item_id -> qty
 var village_panel: Label
 var village_panel_open := false
 var _villager_nid := 100
+
+# CALLINGS — the per-player quest journal
+var callings: Dictionary = {}        # pid -> Array of {id, step}
+var callings_done: Dictionary = {}   # pid -> Array of calling ids
+var journal: Label
+var journal_back: ColorRect
+var journal_open := false
+var _calling_drawn_today := false
 
 # what each class does at work: [station ("" = forager), product, qty, to_village_stock?]
 const JOBS := {
@@ -184,6 +192,8 @@ func _ready() -> void:
 		_start_server()
 	elif net_mode == "client":
 		_start_client()
+	elif _active_callings(acting_pid).is_empty() and _done_callings(acting_pid).is_empty():
+		_draw_calling(acting_pid)   # a first calling, to show the journal exists
 	if "--screenshot-sheet" in OS.get_cmdline_user_args():
 		abilities.earn(acting_pid, 6)
 		for i in 4:
@@ -201,6 +211,11 @@ func _ready() -> void:
 	elif "--screenshot-build" in OS.get_cmdline_user_args():
 		attuned_for(acting_pid).append("god-halor")
 		_toggle_menu(true, "build")
+		_screenshot_and_quit()
+	elif "--screenshot-journal" in OS.get_cmdline_user_args():
+		attuned_for(acting_pid).append("god-halor")
+		_active_callings(acting_pid).append({"id": "calling-the-letter-still-walking", "step": "s3"})
+		_toggle_journal(true)
 		_screenshot_and_quit()
 	elif "--screenshot-taken" in OS.get_cmdline_user_args():
 		var raider: DSEnemy = null
@@ -300,6 +315,8 @@ func save_game() -> void:
 				"captive": v.is_captive, "held": v.days_held, "task": v.task, "help": v.needs_help}),
 		"villager_nid": _villager_nid,
 		"village_stock": village_stock.duplicate(),
+		"callings": callings.duplicate(true),
+		"callings_done": callings_done.duplicate(true),
 		"message": message,
 	}
 	SaveSystem.write_file(save_path, s)
@@ -366,6 +383,8 @@ func load_game() -> void:
 		survivor.position = Vector2(float(sp[0]), float(sp[1]))
 	# restore the roster: pool bodies exist from _ready; captured captives are recreated
 	village_stock = g.get("village_stock", {})
+	callings = SaveSystem._int_keys(g.get("callings", {}))
+	callings_done = SaveSystem._int_keys(g.get("callings_done", {}))
 	_villager_nid = maxi(_villager_nid, int(g.get("villager_nid", _villager_nid)))
 	for pd: Dictionary in g.get("pool", []):
 		var v: DSVillager = null
@@ -529,6 +548,17 @@ func _unhandled_input(event: InputEvent) -> void:
 					_rotate_work(int(inst_id))
 				break
 		return
+	if journal_open and event is InputEventKey and event.pressed:
+		var jkey := (event as InputEventKey).physical_keycode
+		if jkey == KEY_ESCAPE or jkey == KEY_J:
+			_toggle_journal(false)
+			return
+		if jkey >= KEY_1 and jkey <= KEY_9:
+			if net_mode == "client":
+				rpc_id(1, "srv_intent", "journal", [int(jkey - KEY_1)])
+			else:
+				journal_interact(acting_pid, int(jkey - KEY_1))
+			return
 	if village_panel_open and event is InputEventKey and event.pressed:
 		var vkey := (event as InputEventKey).physical_keycode
 		if vkey == KEY_ESCAPE or vkey == KEY_V:
@@ -607,6 +637,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("village"):
 		sfx("ui")
 		_toggle_village(not village_panel_open)
+	elif event.is_action_pressed("journal"):
+		sfx("ui")
+		_toggle_journal(not journal_open)
 	elif event.is_action_pressed("give_food"):
 		if net_mode == "client":
 			rpc_id(1, "srv_intent", "give_food", [])
@@ -1568,7 +1601,156 @@ func intent_give_food() -> void:
 		_toggle_village(true)
 	_refresh_hud()
 
-## One-shot audio, guarded for the headless server.
+## --- CALLINGS: the per-player journal ---------------------------------------
+func _active_callings(pid: int) -> Array:
+	if not callings.has(pid):
+		callings[pid] = []
+	return callings[pid]
+
+func _done_callings(pid: int) -> Array:
+	if not callings_done.has(pid):
+		callings_done[pid] = []
+	return callings_done[pid]
+
+func _calling_step(calling: Dictionary, step_id: String) -> Dictionary:
+	for st: Dictionary in calling.get("steps", []):
+		if str(st.get("id", "")) == step_id:
+			return st
+	return {}
+
+## Is this calling eligible to arrive for this player right now?
+func _calling_eligible(pid: int, c: Dictionary) -> bool:
+	var cid := str(c.id)
+	for e: Dictionary in _active_callings(pid):
+		if str(e.id) == cid:
+			return false
+	if cid in _done_callings(pid):
+		return false
+	var src := str(c.get("source", ""))
+	if src == "god-dream" and str(c.get("sourceGodId", "")) not in attuned_for(pid):
+		return false
+	if src == "tribesman" and all_villagers().filter(func(v: DSVillager) -> bool: return v.rescued).is_empty():
+		return false
+	return true
+
+## Draw weight from the calling's drawWeights against this player's state.
+func _calling_weight(pid: int, c: Dictionary) -> float:
+	var w := 1.0
+	var dw: Dictionary = c.get("drawWeights", {})
+	for god_id: String in attuned_for(pid):
+		w *= float(dw.get("devotion", {}).get(god_id, 1.0))
+	w *= float(dw.get("biome", {}).get("biome-salt-shallows", 1.0))
+	return w
+
+## A calling finds the player: pick a weighted-random eligible one and open it.
+func _draw_calling(pid: int) -> bool:
+	var pool: Array = []
+	var weights: Array = []
+	var total := 0.0
+	for c: Dictionary in registry.all_of("calling"):
+		if _calling_eligible(pid, c):
+			var w := _calling_weight(pid, c)
+			pool.append(c)
+			weights.append(w)
+			total += w
+	if pool.is_empty() or total <= 0.0:
+		return false
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 900 + clock.day * 7 + pid
+	var roll := rng.randf() * total
+	var pick: Dictionary = pool[0]
+	for i in pool.size():
+		roll -= float(weights[i])
+		if roll <= 0.0:
+			pick = pool[i]
+			break
+	_active_callings(pid).append({"id": str(pick.id), "step": str(pick.steps[0].id)})
+	var how := {"god-dream": "A dream comes to you", "dead-letter": "You find a letter on the flats",
+		"tribesman": "One of your people asks something of you", "rumor": "A rumor reaches you",
+		"chart": "An old sea-chart leads somewhere"}.get(str(pick.get("source", "")), "Something calls")
+	if pid == my_pid:
+		message = "%s — \"%s\". [J] to open your journal." % [how, str(pick.title)]
+		sfx("kneel")
+	return true
+
+## Act on the focused (first active) calling: choose option i, or continue (i=0).
+func journal_interact(pid: int, i: int) -> void:
+	var active := _active_callings(pid)
+	if active.is_empty():
+		return
+	var entry: Dictionary = active[0]
+	var calling := registry.get_entity(str(entry.id))
+	var step := _calling_step(calling, str(entry.step))
+	if step.is_empty():
+		return
+	var options: Array = step.get("options", [])
+	var next_id := ""
+	if options.size() > 0:
+		if i < 0 or i >= options.size():
+			return
+		var opt: Dictionary = options[i]
+		for led: Dictionary in opt.get("ledger", []):
+			verdict.record(pid, str(led.ledger), float(led.amount), str(led.get("note", "")), clock.day)
+		next_id = str(opt.get("next", ""))
+	else:
+		next_id = str(step.get("next", ""))
+	if next_id == "" or _calling_step(calling, next_id).is_empty():
+		_complete_calling(pid, entry, calling)
+	else:
+		entry.step = next_id
+	if journal_open:
+		_toggle_journal(true)
+	_refresh_hud()
+
+func _complete_calling(pid: int, entry: Dictionary, calling: Dictionary) -> void:
+	var rewards: Dictionary = calling.get("rewards", {})
+	for it: Dictionary in rewards.get("items", []):
+		inventory.add(pid, str(it.itemId), int(it.qty))
+	for god_id: String in rewards.get("favor", {}):
+		devotion.work_favor_hour(pid, god_id, float(rewards.favor[god_id]))
+	_active_callings(pid).erase(entry)
+	_done_callings(pid).append(str(calling.id))
+	if pid == my_pid:
+		sfx("bloom")
+		message = "A calling answered: \"%s\".\n%s" % [str(calling.title), str(calling.get("echo", {}).get("text", ""))]
+
+func _toggle_journal(open: bool) -> void:
+	journal_open = open
+	if journal == null:
+		return
+	journal.visible = open
+	journal_back.visible = open
+	if not open:
+		return
+	var active := _active_callings(my_pid)
+	var lines := ["THE JOURNAL — [1..] choose or continue, [J] to close", ""]
+	if active.is_empty():
+		lines.append("The flats have asked nothing of you yet.")
+		lines.append("Kneel to a god, take in survivors, walk far — and callings will find you.")
+	else:
+		var entry: Dictionary = active[0]
+		var calling := registry.get_entity(str(entry.id))
+		var step := _calling_step(calling, str(entry.step))
+		var giver: Dictionary = calling.get("giver", {})
+		lines.append("» %s" % str(calling.title).to_upper())
+		lines.append("  %s — %s" % [str(giver.get("name", "")), str(giver.get("wound", ""))])
+		lines.append("")
+		lines.append(str(step.get("text", "")))
+		lines.append("")
+		var options: Array = step.get("options", [])
+		if options.size() > 0:
+			for i in options.size():
+				lines.append("  %d. %s" % [i + 1, str(options[i].text)])
+		else:
+			lines.append("  1. continue")
+		if active.size() > 1:
+			lines.append("")
+			lines.append("Also carried:")
+			for k in range(1, active.size()):
+				lines.append("  · %s" % str(registry.get_entity(str(active[k].id)).title))
+	journal.text = "\n".join(lines)
+
+## --- One-shot audio, guarded for the headless server.
 func sfx(name: String, at := Vector2.INF, base_db := 0.0) -> void:
 	if net_mode != "server" and sound != null:
 		sound.play(name, at, player.position if at != Vector2.INF else Vector2.INF, base_db)
@@ -2081,6 +2263,13 @@ func _on_sim_day(_day: int) -> void:
 	for inst_id: Variant in works.placed:
 		works.placed[inst_id].in_use = false   # dawn: works rest until tended
 	village.end_of_day()
+	# a calling may find each player at dawn (they carry at most a few)
+	for pid: Variant in stats.actors:
+		if pid is int and _active_callings(int(pid)).size() < 3:
+			var rng2 := RandomNumberGenerator.new()
+			rng2.seed = 777 + clock.day * 13 + int(pid)
+			if rng2.randf() < 0.6:
+				_draw_calling(int(pid))
 	cheat_death_used.clear()
 	for pid: Variant in stats.actors:
 		if pid is int:
@@ -2351,6 +2540,21 @@ func _build_hud() -> void:
 	village_panel.visible = false
 	village_panel.set_meta("back", vp_back)
 	layer.add_child(village_panel)
+	var jb := ColorRect.new()
+	jb.position = Vector2(300, 90)
+	jb.size = Vector2(680, 560)
+	jb.color = Color(0.949, 0.937, 0.910, 0.96)
+	jb.visible = false
+	layer.add_child(jb)
+	journal_back = jb
+	journal = Label.new()
+	journal.position = Vector2(318, 104)
+	journal.custom_minimum_size = Vector2(648, 0)
+	journal.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	journal.add_theme_color_override("font_color", Color("3b3428"))
+	journal.add_theme_font_size_override("font_size", 13)
+	journal.visible = false
+	layer.add_child(journal)
 
 func _refresh_bars() -> void:
 	if hp_bar == null:
@@ -2381,7 +2585,7 @@ func _refresh_hud() -> void:
 		weather = "  — THE GREAT STORM"
 	elif "god-maren" in attuned_for(my_pid) and (clock.day + 1) % 4 == 3:
 		weather = "  — Maren whispers: storm tomorrow"
-	hud.text = "Day %d, %02d:%02d%s%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [I] pack  [V] village  [T] tally  [SPACE] attack  [drag] move  [R-click] turn  [Shift+R-click] reclaim%s\n%s" % [
+	hud.text = "Day %d, %02d:%02d%s%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [I] pack  [V] village  [J] journal  [T] tally  [SPACE] attack  [drag] move  [R-click] turn  [Shift+R-click] reclaim%s\n%s" % [
 		clock.day + 1, clock.minute_of_day / 60, clock.minute_of_day % 60, weather,
 		"  — night. NIGHT BELONGS TO THE HOUNDS." if clock.is_night() else "",
 		"  |  fed ×%d" % fed if fed > 0 else "", _direction_hints(),
@@ -2413,8 +2617,8 @@ static func _setup_input() -> void:
 		"move_left": [KEY_A, KEY_LEFT], "move_right": [KEY_D, KEY_RIGHT],
 		"move_up": [KEY_W, KEY_UP], "move_down": [KEY_S, KEY_DOWN],
 		"interact": [KEY_E], "craft": [KEY_C], "build": [KEY_B], "eat": [KEY_F],
-		"attack": [KEY_SPACE, KEY_J], "cast": [KEY_Q], "cast_2": [KEY_R], "consume": [KEY_X],
-		"save": [KEY_F5], "sheet": [KEY_T], "inventory": [KEY_I], "village": [KEY_V], "give_food": [KEY_G],
+		"attack": [KEY_SPACE], "cast": [KEY_Q], "cast_2": [KEY_R], "consume": [KEY_X],
+		"save": [KEY_F5], "sheet": [KEY_T], "inventory": [KEY_I], "village": [KEY_V], "give_food": [KEY_G], "journal": [KEY_J],
 	}
 	for action: String in keys:
 		if InputMap.has_action(action):
@@ -2552,6 +2756,7 @@ func srv_intent(kind: String, args: Array) -> void:
 		"deallocate": abilities.deallocate(acting_pid, str(args[0]))
 		"equip": equip_toggle(acting_pid, str(args[0]))
 		"give_food": intent_give_food()
+		"journal": journal_interact(acting_pid, int(args[0]))
 		"move_work": _move_work(int(args[0]), Vector2(float(args[1]), float(args[2])))
 		"rotate_work": _rotate_work(int(args[0]))
 		"demolish_work": _demolish_work(int(args[0]))
@@ -2583,6 +2788,7 @@ func _player_state(pid: int) -> Dictionary:
 		"devotion": devotion.state.get(pid, {}),
 		"attuned": attuned_for(pid),
 		"equipped": equipped.get(pid, {}),
+		"callings": _active_callings(pid),
 		"petrify": int(petrify.get(pid, 0)),
 		"message": message,
 	}
@@ -2651,7 +2857,10 @@ func cl_player_state(p: Dictionary) -> void:
 	devotion.state[my_pid] = p.get("devotion", {})
 	attuned[my_pid] = p.get("attuned", [])
 	equipped[my_pid] = p.get("equipped", {})
+	callings[my_pid] = p.get("callings", [])
 	petrify_frames = int(p.get("petrify", 0))
+	if journal_open:
+		_toggle_journal(true)
 	if doll_open:
 		_toggle_doll(true)
 	if player != null:

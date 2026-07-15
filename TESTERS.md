@@ -26,6 +26,7 @@ on a **shared server** with the other testers. Thanks for helping.
 | — | RAIDERS: beat one low and it surrenders — [E] to bind it for the yoke |
 | — | WARDENS (a villager trade): auto-run to danger and fight — they even subdue raiders for you |
 | G | pool your food into the village stores |
+| J | THE JOURNAL — read your callings and make their choices |
 | T | character sheet (the Tally) |
 | Q / R | miracles, once you've knelt to the right god |
 | X | consume a god-remnant (think first) |

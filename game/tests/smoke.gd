@@ -620,6 +620,23 @@ func _ready() -> void:
 		await get_tree().physics_frame
 	check(host.survivor.position.distance_to(host.chapels["god-halor"]) <= chapel_gap, "evening: she turns toward the chapel")
 
+	# --- CALLINGS: the journal runtime ---------------------------------------
+	host.callings.clear(); host.callings_done.clear()
+	host._active_callings(1).append({"id": "calling-the-letter-still-walking", "step": "s1"})
+	host.journal_interact(1, 0)   # s1 -> s2 (continue)
+	host.journal_interact(1, 0)   # s2 -> s3 (continue, the turn)
+	check(str(host._active_callings(1)[0].step) == "s3", "narrative steps continue; you reach the turn")
+	var shep0: float = float(host.verdict.ledgers.get(1, {}).get("shepherd", 0.0))
+	var bronze0 := host.inventory.count(1, "item-bronze-salvage")
+	host.journal_interact(1, 0)   # choose option 1 (shepherd +8) -> s4-rest epilogue
+	check(float(host.verdict.ledgers[1].get("shepherd", 0.0)) == shep0 + 8.0, "a choice writes the Verdict ledger")
+	host.journal_interact(1, 0)   # continue the epilogue -> terminal, completes
+	check(host._active_callings(1).is_empty() and "calling-the-letter-still-walking" in host._done_callings(1), "the calling is answered and logged")
+	check(host.inventory.count(1, "item-bronze-salvage") == bronze0 + 2, "its reward paid out")
+	host.callings.clear()
+	host._draw_calling(1)   # the draw path runs and never returns a finished calling
+	check(host._active_callings(1).map(func(e): return str(e.id)).find("calling-the-letter-still-walking") == -1, "a finished calling never returns")
+
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)
 
