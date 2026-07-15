@@ -25,10 +25,21 @@ var player: DSPlayer
 var hud: Label
 var hp_bar: ColorRect
 var stamina_bar: ColorRect
+var vigor_bar: ColorRect
 var daynight: CanvasModulate
 var resource_nodes: Array[Area2D] = []
 var enemies: Array[DSEnemy] = []
 var _minutes_since_hour := 0
+
+# the soul, playable
+const INTERACT_RANGE := 56.0
+var shrine: Node2D
+var survivor: DSVillager
+var chapel_pos := Vector2.INF
+var attuned := false
+var rite_done_today := false
+var petrify_frames := 0
+var message := "Something pale stands in the north flats. It looks like it is waiting."
 
 # STYLE-BIBLE salt-shallows palette (placeholder blocks, right colors)
 const ITEM_COLORS := {
@@ -59,6 +70,9 @@ func _ready() -> void:
 	player.position = Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
 	add_child(player)
 	_spawn_enemies()
+	_spawn_shrine()
+	_spawn_survivor()
+	clock.sim_day.connect(_on_sim_day)
 	daynight = CanvasModulate.new()
 	add_child(daynight)
 	_build_hud()
@@ -71,19 +85,78 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	clock.advance(delta)
 	stats.tick(delta)
+	if petrify_frames > 0:
+		petrify_frames -= 1
+		if petrify_frames == 0:
+			player.modulate = Color.WHITE
+			message = "The salt lets you go. Halor's strength is spent — worship gives it back."
+			_refresh_hud()
 	_refresh_bars()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
-		intent_harvest()
+		intent_interact()
 	elif event.is_action_pressed("craft"):
 		intent_craft_first()
 	elif event.is_action_pressed("build"):
 		intent_build("work-workbench")
+	elif event.is_action_pressed("build_chapel"):
+		intent_build("work-chapel")
 	elif event.is_action_pressed("attack"):
 		intent_attack()
+	elif event.is_action_pressed("cast"):
+		intent_cast()
 
 ## --- intents (the only door into the sim from presentation) --------------------
+## E is contextual: kneel at the shrine, rescue the stranded, hold a rite, else harvest.
+func intent_interact() -> bool:
+	if shrine != null and player.position.distance_to(shrine.position) < INTERACT_RANGE and not attuned:
+		return intent_kneel()
+	if survivor != null and not survivor.rescued and player.position.distance_to(survivor.position) < INTERACT_RANGE:
+		return intent_rescue()
+	if chapel_pos != Vector2.INF and player.position.distance_to(chapel_pos) < INTERACT_RANGE:
+		return intent_rite()
+	return intent_harvest()
+
+func intent_kneel() -> bool:
+	if not devotion.attune(LOCAL_PLAYER, "god-halor"):
+		return false
+	attuned = true
+	message = "You kneel at the fallen shrine. A slow, warm voice: 'The sea left. The salt stayed.'\nHALOR is with you — [Q] Pillar of Salt, when the pinch comes. His strength is not endless."
+	_refresh_hud()
+	return true
+
+func intent_cast() -> bool:
+	if not attuned:
+		return false
+	var inv: Dictionary = devotion.cast(LOCAL_PLAYER, "inv-pillar-of-salt")
+	if inv.is_empty():
+		message = "Halor has nothing left to give. Build him a chapel; hold a rite."
+		_refresh_hud()
+		return false
+	petrify_frames = 6 * 60  # rooted and untouchable
+	player.modulate = Color("cfd0ce")
+	message = "You become the thing the sea could never wear down."
+	_refresh_hud()
+	return true
+
+func intent_rescue() -> bool:
+	survivor.rescue()
+	message = "%s, of the drowned coast towns. She follows you home — give her a hearth and she'll keep it.\nShe is devout: her prayers feed Halor a little every day." % survivor.display_name
+	_refresh_hud()
+	return true
+
+func intent_rite() -> bool:
+	if rite_done_today:
+		message = "The rite is held once a day. Halor keeps slow time."
+		_refresh_hud()
+		return false
+	rite_done_today = true
+	devotion.rite_day(LOCAL_PLAYER, "god-halor", "chapel", 1)
+	message = "You lead the evening rite. The shrine-light steadies a little."
+	_refresh_hud()
+	return true
+
 func intent_harvest() -> bool:
 	var nearest: Area2D = null
 	var best := HARVEST_RANGE
@@ -132,6 +205,8 @@ func intent_attack() -> bool:
 	return true
 
 func damage_player(amount: float) -> void:
+	if petrify_frames > 0:
+		return  # the salt holds
 	if stats.damage(LOCAL_PLAYER, amount):
 		# Death penalty is an open design question (GAME-SPEC); M1 placeholder:
 		# wake at the village center, hurt pride only.
@@ -154,9 +229,13 @@ func intent_build(work_id: String) -> bool:
 		return false
 	works.place(work_id, LOCAL_PLAYER)
 	var rect := ColorRect.new()
-	rect.size = Vector2(28, 28)
+	rect.size = Vector2(28, 28) if work_id != "work-chapel" else Vector2(40, 48)
 	rect.position = player.position + Vector2(24, -14)
 	rect.color = Color("6e5138") if not work.get("grim", false) else Color("5b3a6e")
+	if work_id == "work-chapel":
+		rect.color = Color("f2efe8")
+		chapel_pos = rect.position + rect.size / 2.0
+		message = "A chapel to Halor, raised from wreck-timber. Hold rites here [E] — his strength returns through worship."
 	add_child(rect)
 	_refresh_hud()
 	return true
@@ -203,6 +282,38 @@ func _spawn_resource_nodes() -> void:
 			node.add_child(rect)
 			add_child(node)
 			resource_nodes.append(node)
+
+func _spawn_shrine() -> void:
+	shrine = Node2D.new()
+	shrine.position = Vector2(WORLD.x * TILE / 2.0, TILE * 5.0)  # the north flats
+	var glow := ColorRect.new()
+	glow.size = Vector2(44, 44)
+	glow.position = Vector2(-22, -22)
+	glow.color = Color("dce8e4")
+	shrine.add_child(glow)
+	for offset: Vector2 in [Vector2(-12, -6), Vector2(0, -14), Vector2(12, -4)]:
+		var pillar := ColorRect.new()
+		pillar.size = Vector2(8, 24)
+		pillar.position = offset + Vector2(-4, -6)
+		pillar.color = Color("f7f5ee")
+		shrine.add_child(pillar)
+	add_child(shrine)
+
+func _spawn_survivor() -> void:
+	survivor = DSVillager.new()
+	survivor.host = self
+	survivor.position = Vector2(TILE * 6.0, WORLD.y * TILE - TILE * 5.0)  # far southwest, by the wrecks
+	add_child(survivor)
+
+func _on_sim_day(_day: int) -> void:
+	var conditions: Array = ["rested"]
+	if rite_done_today:
+		conditions.append("riteAttended")
+	rite_done_today = false
+	for id: int in village.tribesmen:
+		village.drift_day(id, conditions)
+	devotion.villager_trickle_day(LOCAL_PLAYER, "god-halor", village.devout_count("god-halor"))
+	village.end_of_day()
 
 func _spawn_enemies() -> void:
 	var rng := RandomNumberGenerator.new()
@@ -257,12 +368,27 @@ func _build_hud() -> void:
 	stamina_bar.size = Vector2(158, 8)
 	stamina_bar.color = Color("c9a648")
 	layer.add_child(stamina_bar)
+	var vigor_back := ColorRect.new()
+	vigor_back.position = Vector2(12, 108)
+	vigor_back.size = Vector2(160, 10)
+	vigor_back.color = Color("4a3021")
+	layer.add_child(vigor_back)
+	vigor_bar = ColorRect.new()
+	vigor_bar.position = Vector2(13, 109)
+	vigor_bar.size = Vector2(0, 8)
+	vigor_bar.color = Color("5da8a0")   # the votive flame, placeholder-shaped
+	layer.add_child(vigor_bar)
 
 func _refresh_bars() -> void:
 	if hp_bar == null:
 		return
 	hp_bar.size.x = 158.0 * stats.hp(LOCAL_PLAYER) / 100.0
 	stamina_bar.size.x = 158.0 * stats.stamina(LOCAL_PLAYER) / 100.0
+	if attuned:
+		var s: Dictionary = devotion.state.get(LOCAL_PLAYER, {}).get("god-halor", {})
+		vigor_bar.size.x = 158.0 * float(s.get("vigor", 0)) / devotion.max_vigor("god-halor")
+	else:
+		vigor_bar.size.x = 0.0
 
 func _refresh_hud() -> void:
 	if hud == null:
@@ -270,9 +396,11 @@ func _refresh_hud() -> void:
 	var inv := ""
 	for item_id: String in inventory._inv(LOCAL_PLAYER):
 		inv += "%s ×%d   " % [str(registry.get_entity(item_id).get("name", item_id)), inventory.count(LOCAL_PLAYER, item_id)]
-	hud.text = "Day %d, %02d:%02d%s\n%s\n[WASD] move  [E] harvest  [C] craft  [B] build  [SPACE] attack" % [
+	hud.text = "Day %d, %02d:%02d%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] workbench  [N] chapel  [SPACE] attack%s\n%s" % [
 		clock.day + 1, clock.minute_of_day / 60, clock.minute_of_day % 60,
-		"  — night" if clock.is_night() else "", inv if inv != "" else "(empty hands)"]
+		"  — night. NIGHT BELONGS TO THE HOUNDS." if clock.is_night() else "",
+		inv if inv != "" else "(empty hands)",
+		"  [Q] Pillar of Salt" if attuned else "", message]
 
 ## --- helpers ------------------------------------------------------------------------
 static func _setup_input() -> void:
@@ -280,7 +408,7 @@ static func _setup_input() -> void:
 		"move_left": [KEY_A, KEY_LEFT], "move_right": [KEY_D, KEY_RIGHT],
 		"move_up": [KEY_W, KEY_UP], "move_down": [KEY_S, KEY_DOWN],
 		"interact": [KEY_E], "craft": [KEY_C], "build": [KEY_B],
-		"attack": [KEY_SPACE, KEY_J],
+		"build_chapel": [KEY_N], "attack": [KEY_SPACE, KEY_J], "cast": [KEY_Q],
 	}
 	for action: String in keys:
 		if InputMap.has_action(action):

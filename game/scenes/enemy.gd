@@ -43,6 +43,10 @@ func _physics_process(delta: float) -> void:
 	if host == null or host.player == null:
 		return
 	_cooldown = maxf(_cooldown - delta, 0.0)
+	# night belongs to the hounds: they smell farther and run harder
+	var night := host.clock.is_night()
+	var aggro := AGGRO_RADIUS * (2.4 if night else 1.0)
+	var run_speed := speed * (1.35 if night else 1.0)
 	var to_player := host.player.position - position
 	var dist := to_player.length()
 	if dist <= ATTACK_RANGE:
@@ -50,8 +54,8 @@ func _physics_process(delta: float) -> void:
 		if _cooldown == 0.0:
 			_cooldown = ATTACK_COOLDOWN
 			host.damage_player(attack_damage)
-	elif dist <= AGGRO_RADIUS:
-		velocity = to_player.normalized() * speed
+	elif dist <= aggro:
+		velocity = to_player.normalized() * run_speed
 	else:
 		velocity = Vector2.ZERO
 	move_and_slide()

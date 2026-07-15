@@ -28,6 +28,10 @@ func _ready() -> void:
 	cam.make_current()
 
 func _physics_process(_delta: float) -> void:
+	var host := get_parent() as GameHost
+	if host != null and host.petrify_frames > 0:
+		velocity = Vector2.ZERO   # rooted — the pillar does not walk
+		return
 	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	velocity = dir * SPEED
 	move_and_slide()

@@ -97,6 +97,67 @@ func _ready() -> void:
 	host.damage_player(1000.0)
 	check(host.stats.hp(1) == 100.0, "death returns you to the center, whole")
 
+	# --- the soul, playable -------------------------------------------------
+	# night makes the hounds bold: same distance, day vs night
+	if host.enemies.size() > 0:
+		var far_hound: DSEnemy = host.enemies[0]
+		host.clock.minute_of_day = 12 * 60  # noon
+		host.player.position = far_hound.position + Vector2(300, 0)
+		for i in 5:
+			await get_tree().physics_frame
+		var day_moves := far_hound.velocity.length() > 1.0
+		host.clock.minute_of_day = 23 * 60  # deep night
+		for i in 5:
+			await get_tree().physics_frame
+		var night_moves := far_hound.velocity.length() > 1.0
+		check(not day_moves and night_moves, "300px away: safe at noon, hunted at night")
+		host.player.position = Vector2(9999, 9999)  # step out of its world
+		host.clock.minute_of_day = 12 * 60
+
+	# kneel at the shrine — attunement is a place, not a menu
+	check(not host.intent_cast(), "no god yet, no miracle")
+	host.player.position = host.shrine.position
+	check(host.intent_interact(), "kneel at the fallen shrine")
+	check(host.attuned and host.devotion.state[1]["god-halor"].rank == 1, "Halor is with you")
+
+	# the miracle: Pillar of Salt — untouchable, rooted, and it SPENDS the god
+	var vigor0: float = host.devotion.state[1]["god-halor"].vigor
+	check(host.intent_cast(), "cast in the pinch")
+	check(host.petrify_frames > 0, "rooted and untouchable")
+	var hp_before := host.stats.hp(1)
+	host.damage_player(50.0)
+	check(host.stats.hp(1) == hp_before, "the salt holds — no blood while petrified")
+	check(host.devotion.state[1]["god-halor"].vigor < vigor0, "and Halor paid for it")
+	host.petrify_frames = 1
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	check(host.petrify_frames == 0, "the salt lets go")
+
+	# vigor is precious: spend him dry, the miracle refuses
+	while host.intent_cast():
+		host.petrify_frames = 0
+	check(not host.devotion.can_cast(1, "inv-pillar-of-salt"), "Halor has nothing left")
+
+	# worship gives it back: raise a chapel, hold the rite
+	host.inventory.add(1, "item-wreck-timber", 20)
+	host.inventory.add(1, "item-salt", 10)
+	host.inventory.add(1, "item-bronze-salvage", 4)
+	check(host.intent_build("work-chapel"), "a chapel to Halor rises")
+	var dry: float = host.devotion.state[1]["god-halor"].vigor
+	host.player.position = host.chapel_pos
+	check(host.intent_interact(), "lead the evening rite")
+	check(host.devotion.state[1]["god-halor"].vigor > dry, "worship restores what casting spent")
+	check(not host.intent_rite(), "one rite a day — Halor keeps slow time")
+
+	# the stranded survivor joins the village and prays
+	host.player.position = host.survivor.position
+	check(host.intent_interact(), "rescue Anna of the coast towns")
+	check(host.village.tribesmen.size() == 1, "she is one of yours now")
+	check(host.village.devout_count("god-halor") == 1, "and she prays")
+	var v_before_days: float = host.devotion.state[1]["god-halor"].vigor
+	host._on_sim_day(1)
+	check(host.devotion.state[1]["god-halor"].vigor > v_before_days, "her prayers feed Halor daily")
+
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)
 
