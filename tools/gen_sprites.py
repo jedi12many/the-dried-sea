@@ -496,26 +496,26 @@ def gen_shellback() -> Image.Image:
 
 
 SPRITES = [
-    ("ground.png", lambda: gen_ground(seed=1)),
+    # ground.png: UPGRADED to Gemini art (import_art.py --tile) â€” do not regenerate
     ("ground2.png", lambda: gen_ground(seed=2)),
     ("salt_pillar.png", gen_salt_pillar),
     # survivor.png: UPGRADED to Gemini art (import_art.py) â€” do not regenerate
-    # villager.png: UPGRADED to Gemini art (import_art.py) — do not regenerate
-    # hound.png: UPGRADED to Gemini art (import_art.py) — do not regenerate
+    # villager.png: UPGRADED to Gemini art (import_art.py) ï¿½ do not regenerate
+    # hound.png: UPGRADED to Gemini art (import_art.py) ï¿½ do not regenerate
     ("driftwood.png", gen_driftwood),
     ("timber.png", gen_timber),
     ("cloth.png", gen_cloth),
     ("salt_mound.png", gen_salt_mound),
     ("bronze.png", gen_bronze),
-    # shrine.png: UPGRADED to Gemini art (import_art.py) — do not regenerate
-    # chapel.png: UPGRADED to Gemini art (import_art.py) — do not regenerate
-    ("workbench.png", gen_workbench),
+    # shrine.png: UPGRADED to Gemini art (import_art.py) ï¿½ do not regenerate
+    # chapel.png: UPGRADED to Gemini art (import_art.py) ï¿½ do not regenerate
+    # workbench.png: UPGRADED to Gemini art (import_art.py) — do not regenerate
     ("brine_pool.png", gen_brine_pool),
     ("rope.png", gen_rope),
-    ("crab.png", gen_crab),
+    # crab.png: UPGRADED to Gemini art (import_art.py) — do not regenerate
     ("wall.png", gen_wall),
-    # smokehouse.png: UPGRADED to Gemini art (import_art.py) — do not regenerate
-    ("hearth.png", gen_hearth),
+    # smokehouse.png: UPGRADED to Gemini art (import_art.py) ï¿½ do not regenerate
+    # hearth.png: UPGRADED to Gemini art (import_art.py) — do not regenerate
     # shellback.png: UPGRADED to Gemini art (import_art.py) â€” do not regenerate
 ]
 

@@ -112,22 +112,54 @@ def despeckle(img: Image.Image) -> Image.Image:
     return out
 
 
+def make_tileable(img: Image.Image, blend_px: int = 8) -> Image.Image:
+    """Cross-blend wrapped edges so the tile repeats without visible seams."""
+    w, h = img.size
+    out = img.copy()
+    opx = out.load()
+    px = img.load()
+    for y in range(h):
+        for x in range(blend_px):
+            t = (x + 0.5) / blend_px * 0.5  # 0.5 at the very edge -> 0 inland
+            a = px[x, y]
+            b = px[w - 1 - x, y]
+            opx[x, y] = tuple(round(a[i] * (1 - (0.5 - t)) + b[i] * (0.5 - t)) for i in range(4))
+            opx[w - 1 - x, y] = tuple(round(b[i] * (1 - (0.5 - t)) + a[i] * (0.5 - t)) for i in range(4))
+    for x in range(w):
+        for y in range(blend_px):
+            t = (y + 0.5) / blend_px * 0.5
+            a = opx[x, y]
+            b = opx[x, h - 1 - y]
+            opx[x, y] = tuple(round(a[i] * (1 - (0.5 - t)) + b[i] * (0.5 - t)) for i in range(4))
+            opx[x, h - 1 - y] = tuple(round(b[i] * (1 - (0.5 - t)) + a[i] * (0.5 - t)) for i in range(4))
+    return out
+
+
 def main() -> int:
     if len(sys.argv) < 4:
         print(__doc__)
         return 1
     src, name, target_h = Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
     keep_white = "--keep-white" in sys.argv  # for opaque tiles (ground textures)
+    tile = "--tile" in sys.argv              # opaque + center-crop square + seam blend
 
     img = Image.open(src).convert("RGBA")
-    if not keep_white:
-        img = cut_white_bg(img)
-        img = autocrop(img)
-    scale = target_h / img.height
-    # LANCZOS averages areas (no sampled noise); quantize then snaps to palette
-    img = img.resize((max(1, round(img.width * scale)), target_h), Image.LANCZOS)
-    img = quantize_to_palette(img)
-    img = despeckle(img)
+    if tile:
+        side = min(img.size)
+        img = img.crop(((img.width - side) // 2, (img.height - side) // 2,
+                        (img.width + side) // 2, (img.height + side) // 2))
+        img = img.resize((target_h, target_h), Image.LANCZOS)
+        img = make_tileable(img)
+        img = quantize_to_palette(img)
+    else:
+        if not keep_white:
+            img = cut_white_bg(img)
+            img = autocrop(img)
+        scale = target_h / img.height
+        # LANCZOS averages areas (no sampled noise); quantize then snaps to palette
+        img = img.resize((max(1, round(img.width * scale)), target_h), Image.LANCZOS)
+        img = quantize_to_palette(img)
+        img = despeckle(img)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out = OUT_DIR / f"{name}.png"
