@@ -66,3 +66,15 @@ stop — it belongs in data. A future Unreal build must be able to consume
   SECOND failed attempt at the same problem, not the fifth.
 - Never mark a calling `curated`, change canon (WORLD-SPEC), or bump a save
   version without Jeff's explicit sign-off.
+
+## Gemini art pipeline (proven 2026-07-14)
+Hero assets come from Gemini (Jeff's account, via Chrome MCP or by hand):
+prompt for "16-bit pixel art on a PURE WHITE background, no text, no ground
+shadow, single subject" with palette hexes from docs/STYLE-BIBLE.md, download
+the PNG, then:
+  python tools/import_art.py <downloaded.png> <sprite_name> <target_height_px>
+(flood-fill cut -> LANCZOS downscale -> accent-penalized palette quantize ->
+despeckle -> game/assets/sprites/). SpriteKit picks it up by name automatically.
+Regenerate programmatic sprites with tools/gen_sprites.py — note it OVERWRITES
+by name; Gemini-sourced sprites win by not being in its SPRITES list (remove
+name collisions there when upgrading a sprite to Gemini art).

@@ -84,7 +84,10 @@ func _ready() -> void:
 	clock.sim_minute.connect(_on_sim_minute)
 	_refresh_hud()
 
-	if "--screenshot" in OS.get_cmdline_user_args():
+	if "--screenshot-boss" in OS.get_cmdline_user_args():
+		player.position = Vector2(TILE * 9.0, TILE * 7.0)
+		_screenshot_and_quit()
+	elif "--screenshot" in OS.get_cmdline_user_args():
 		_screenshot_and_quit()
 
 func _physics_process(delta: float) -> void:
