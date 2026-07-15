@@ -1,0 +1,93 @@
+{
+  "id": "calling-reef-remembers",
+  "title": "The Reef's Long Sleep",
+  "tier": "vignette",
+  "source": "rumor",
+  "giver": {
+    "name": "An old song, told three times and written nowhere",
+    "wound": "Before the Withdrawal, the Reefkin sang a song at dawn: the reef was alive and listening. They are still alive but they are petrifying, day by day, and the song is harder to sing. The rumor says: if you can sing it back to them, the sleep stops. If you bring them something that smells of salt and living water, they might hear it one more time."
+  },
+  "drawWeights": {
+    "biome": { "biome-reef-forest": 1.5 },
+    "devotion": { "god-halor": 1.5, "god-neris": 1.0 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "goto",
+      "text": "Reef-Kin huddle in the deep groves, their skin more stone than coral now. You have heard the rumor: the Reefkin are dying of forgetting, petrified by the slow loss of the living sea. But there is a way. In the anemone-graves at the grove's edge, something still moves. A pool. A breath. The Reefkin need to remember it was alive once.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "collect",
+      "text": "The anemone-pool is small and starved. You fill a vessel with water that still moves, still carries the salt-taste of something that was once vast and returning. The anemones pull in when you move, old fear. But they do not flee. They wait.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "talk",
+      "text": "You bring the water to the eldest Reefkin, whose face is already three-quarters stone. She cups it in hands like coral-forks. When the water touches her, she breathes — a sound like wind in a cave. She passes the vessel to the others. What happens next depends on what you choose to say.",
+      "next": "s4"
+    },
+    {
+      "id": "s4",
+      "type": "choice",
+      "text": "The Reefkin are tasting memory. You can speak a kindness or a warning.",
+      "options": [
+        {
+          "text": "Tell them the sea is coming home. That you have seen signs, felt a change. Give them a reason to hold on.",
+          "next": "s5-hope",
+          "ledger": [
+            { "ledger": "shepherd", "amount": 8, "note": "hope to the dying" }
+          ]
+        },
+        {
+          "text": "Tell them the truth: the sea is gone, and you do not know if it will return. But this water is real, and today it is alive, and that is enough.",
+          "next": "s5-truth",
+          "ledger": [
+            { "ledger": "gods", "amount": 4, "note": "Halor honors honesty held close" }
+          ]
+        },
+        {
+          "text": "Say nothing. Let them interpret the water as they need to. Some mercies are in silence.",
+          "next": "s5-silence",
+          "ledger": [
+            { "ledger": "shepherd", "amount": 3, "note": "witness without weight" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s5-hope",
+      "type": "goto",
+      "text": "The eldest Reefkin's stone eyes gain a glimmer. She whispers a fragment of the old dawn-song, broken but real. The others join in, their voices like wind in coral. They will slow their petrification now, you think. They will wait. Hope is a kind of current.",
+      "next": null
+    },
+    {
+      "id": "s5-truth",
+      "type": "goto",
+      "text": "The eldest Reefkin nods slowly. 'Water is enough. Today is enough. Tomorrow we will learn that again.' She does not sing, but she stands straighter. Stone is patient; the Reefkin were patient before the sea, and can be after.",
+      "next": null
+    },
+    {
+      "id": "s5-silence",
+      "type": "goto",
+      "text": "The Reefkin pass the vessel among themselves, each one tasting, remembering in private. No words come, but the fear in the grove lightens. Sometimes an audience is itself a gift — to be witnessed, even in silence, is to be real.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Hope: the Reefkin sing at dusk now, a faded song that makes the anemones move again; pilgrims come to listen. Truth: the petrification slows, and the Reefkin's trade in coralwood and pearl continues, but there is a sadness in it now — they know what they are losing. Silence: the grove grows quieter each day, but no one rushes the Reefkin toward the stone. Visitors report the groves feel less like a dying place and more like a vigil.",
+    "worldFlags": ["reefkin-hope", "reefkin-truth", "reefkin-silence"],
+    "dialogueKeys": ["reefkin-elder-song"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-pearl", "qty": 2 }
+    ],
+    "favor": { "god-halor": 4 }
+  },
+  "status": "draft",
+  "curatorNote": "Turn: three kinds of mercy — false hope, hard truth, or silent witness. Each carries real weight; no single right answer."
+}

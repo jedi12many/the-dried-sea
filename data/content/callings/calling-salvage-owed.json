@@ -1,0 +1,70 @@
+{
+  "id": "calling-salvage-owed",
+  "title": "The Debt to Miran",
+  "tier": "vignette",
+  "source": "tribesman",
+  "giver": {
+    "name": "Taje, salvager",
+    "wound": "Made a pact with Miran before Miran drowned: split the best wreck they found, half-half. Miran died in the Withdrawal; Taje found the wreck five years later, took both halves, and has been waiting for something to balance the scale."
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "goto",
+      "text": "Taje shows you a marked wreck-chart. The ship is deep in the reef-wood, tangled. Taje needs someone to dive and retrieve a chest Miran talked about before the drowning — 'books, maybe, or copper, or prayers.' Miran was not clear. Taje was not listening as hard as she should have.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "collect",
+      "text": "The chest is there, bronze-bound and sealed with wax that has held for three generations. Inside: a merchant's ledger, half-filled with Miran's neat accounting. The last entry: 'Promised Taje. When the tide comes home, I will keep the promise.' No chest of treasure. Just the proof that Miran remembered, and that Taje broke faith.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "choice",
+      "text": "You bring the ledger to Taje. She knows it is Miran's the moment she sees the binding. What do you tell her — or let her discover — about what was inside.",
+      "options": [
+        {
+          "text": "Show her the ledger. Let her see that Miran kept the faith, and what Taje did not.",
+          "next": "s4-truth",
+          "ledger": [
+            { "ledger": "shepherd", "amount": 5, "note": "letting someone carry their own reckoning" }
+          ]
+        },
+        {
+          "text": "Tell her the chest was empty — just old water and wax. Some wrecks give nothing back.",
+          "next": "s4-mercy",
+          "ledger": [
+            { "ledger": "shepherd", "amount": -5, "note": "mercy bought with a lie" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s4-truth",
+      "type": "talk",
+      "text": "Taje reads the ledger in silence. When she looks at you, her eyes are salt-veined. She walks to the shrine of Neris without another word and leaves an offering — not a big one, but steady. She leaves it every day after that, at dawn, without speaking about Miran again.",
+      "next": null
+    },
+    {
+      "id": "s4-mercy",
+      "type": "goto",
+      "text": "Taje nods and thanks you. The relief washes over her face. You see her later at the shrine, leaving a small copper — not penitence, just habit. She never asks about Miran after that, but sometimes you catch her staring at the reef-wood, counting something.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Truth: Taje becomes a regular at Neris's shrine, and her salvage-luck turns almost eerie — she finds what she looks for, as if Neris guides her hand. Mercy: Taje works harder but rests easier; her word becomes reliable again, though she carries a quiet weight. Either way, wrecks found near Taje's marks have fewer bones in them.",
+    "worldFlags": ["taje-truth", "taje-mercy"],
+    "dialogueKeys": ["taje-miran-ledger"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-bronze-salvage", "qty": 2 }
+    ],
+    "favor": { "god-neris": 3 }
+  },
+  "status": "draft",
+  "curatorNote": "Turn: the chest holds not treasure but testimony. Choice is about what to do with truth — show it or hold it."
+}

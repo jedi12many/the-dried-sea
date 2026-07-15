@@ -228,39 +228,56 @@ func intent_build(work_id: String) -> bool:
 		_refresh_hud()
 		return false
 	works.place(work_id, LOCAL_PLAYER)
-	var rect := ColorRect.new()
-	rect.size = Vector2(28, 28) if work_id != "work-chapel" else Vector2(40, 48)
-	rect.position = player.position + Vector2(24, -14)
-	rect.color = Color("6e5138") if not work.get("grim", false) else Color("5b3a6e")
+	var work_sprites := {"work-workbench": "workbench", "work-chapel": "chapel"}
+	var fallback := Color("6e5138") if not work.get("grim", false) else Color("5b3a6e")
 	if work_id == "work-chapel":
-		rect.color = Color("f2efe8")
-		chapel_pos = rect.position + rect.size / 2.0
+		fallback = Color("f2efe8")
+	var visual := SpriteKit.sprite(work_sprites.get(work_id, "none"),
+		Vector2(28, 28) if work_id != "work-chapel" else Vector2(40, 48), fallback)
+	visual.position = player.position + Vector2(40, 0)
+	if work_id == "work-chapel":
+		chapel_pos = visual.position
 		message = "A chapel to Halor, raised from wreck-timber. Hold rites here [E] — his strength returns through worship."
-	add_child(rect)
+	add_child(visual)
 	_refresh_hud()
 	return true
 
 ## --- world (placeholder) ---------------------------------------------------------
 func _build_ground() -> void:
-	var ground := ColorRect.new()
-	ground.size = Vector2(WORLD.x * TILE, WORLD.y * TILE)
-	ground.color = Color("e8e2d4")   # blinding flats, high-key
-	ground.z_index = -10
-	add_child(ground)
+	var ground_tex := SpriteKit.texture("ground")
+	if ground_tex != null:
+		var ground := TextureRect.new()
+		ground.texture = ground_tex
+		ground.stretch_mode = TextureRect.STRETCH_TILE
+		ground.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		ground.size = Vector2(WORLD.x * TILE, WORLD.y * TILE)
+		ground.z_index = -10
+		add_child(ground)
+	else:
+		var flat := ColorRect.new()
+		flat.size = Vector2(WORLD.x * TILE, WORLD.y * TILE)
+		flat.color = Color("e8e2d4")   # blinding flats, high-key
+		flat.z_index = -10
+		add_child(flat)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
-	for i in 40:  # salt pillars + brine stains: the flats aren't flat
-		var deco := ColorRect.new()
+	for i in 40:  # salt pillars + brine pools: the flats aren't flat
 		var pillar := rng.randf() < 0.5
-		deco.size = Vector2(rng.randi_range(8, 20), rng.randi_range(8, 28) if pillar else rng.randi_range(6, 10))
-		deco.color = Color("f7f5ee") if pillar else Color("cfd8d2")
-		deco.position = Vector2(rng.randi_range(0, WORLD.x * TILE), rng.randi_range(0, WORLD.y * TILE))
+		var deco := SpriteKit.sprite("salt_pillar" if pillar else "brine_pool",
+			Vector2(14, 22) if pillar else Vector2(18, 8),
+			Color("f7f5ee") if pillar else Color("cfd8d2"))
+		deco.position = Vector2(rng.randi_range(16, WORLD.x * TILE - 16), rng.randi_range(16, WORLD.y * TILE - 16))
 		deco.z_index = -9
 		add_child(deco)
 
 func _spawn_resource_nodes() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
+	var node_sprites := {
+		"item-driftwood": "driftwood", "item-wreck-timber": "timber",
+		"item-ship-cloth": "cloth", "item-salt": "salt_mound", "item-bronze-salvage": "bronze",
+		"item-rope": "rope",
+	}
 	var biome := registry.get_entity("biome-salt-shallows")
 	for item_id: String in biome.get("resourceItemIds", []):
 		for i in 8:
@@ -268,35 +285,30 @@ func _spawn_resource_nodes() -> void:
 			node.position = Vector2(rng.randi_range(2, WORLD.x - 2) * TILE, rng.randi_range(2, WORLD.y - 2) * TILE)
 			node.set_meta("item_id", item_id)
 			node.set_meta("qty", 2)
-			var rect := ColorRect.new()
-			rect.size = Vector2(16, 16)
-			rect.position = Vector2(-8, -8)
-			rect.color = ITEM_COLORS.get(item_id, Color.MAGENTA)
-			if item_id == "item-salt":  # white-on-white is thematically perfect and practically invisible
-				var glint := ColorRect.new()
+			var visual := SpriteKit.sprite(node_sprites.get(item_id, "none"),
+				Vector2(16, 16), ITEM_COLORS.get(item_id, Color.MAGENTA))
+			if item_id == "item-salt" and SpriteKit.texture("salt_mound") == null:
+				var glint := ColorRect.new()   # fallback-only: white-on-white needs help
 				glint.size = Vector2(18, 18)
 				glint.position = Vector2(-9, -9)
 				glint.color = Color("aebfc9")
 				node.add_child(glint)
-				node.move_child(glint, 0)
-			node.add_child(rect)
+			node.add_child(visual)
 			add_child(node)
 			resource_nodes.append(node)
 
 func _spawn_shrine() -> void:
 	shrine = Node2D.new()
 	shrine.position = Vector2(WORLD.x * TILE / 2.0, TILE * 5.0)  # the north flats
-	var glow := ColorRect.new()
-	glow.size = Vector2(44, 44)
-	glow.position = Vector2(-22, -22)
-	glow.color = Color("dce8e4")
-	shrine.add_child(glow)
-	for offset: Vector2 in [Vector2(-12, -6), Vector2(0, -14), Vector2(12, -4)]:
-		var pillar := ColorRect.new()
-		pillar.size = Vector2(8, 24)
-		pillar.position = offset + Vector2(-4, -6)
-		pillar.color = Color("f7f5ee")
-		shrine.add_child(pillar)
+	var visual := SpriteKit.sprite("shrine", Vector2(44, 44), Color("dce8e4"))
+	shrine.add_child(visual)
+	if SpriteKit.texture("shrine") == null:
+		for offset: Vector2 in [Vector2(-12, -6), Vector2(0, -14), Vector2(12, -4)]:
+			var pillar := ColorRect.new()
+			pillar.size = Vector2(8, 24)
+			pillar.position = offset + Vector2(-4, -6)
+			pillar.color = Color("f7f5ee")
+			shrine.add_child(pillar)
 	add_child(shrine)
 
 func _spawn_survivor() -> void:
@@ -349,32 +361,32 @@ func _build_hud() -> void:
 	hud.add_theme_font_size_override("font_size", 14)
 	layer.add_child(hud)
 	var hp_back := ColorRect.new()
-	hp_back.position = Vector2(12, 80)
+	hp_back.position = Vector2(12, 140)
 	hp_back.size = Vector2(160, 10)
 	hp_back.color = Color("4a3021")
 	layer.add_child(hp_back)
 	hp_bar = ColorRect.new()
-	hp_bar.position = Vector2(13, 81)
+	hp_bar.position = Vector2(13, 141)
 	hp_bar.size = Vector2(158, 8)
 	hp_bar.color = Color("b0483c")
 	layer.add_child(hp_bar)
 	var st_back := ColorRect.new()
-	st_back.position = Vector2(12, 94)
+	st_back.position = Vector2(12, 154)
 	st_back.size = Vector2(160, 10)
 	st_back.color = Color("4a3021")
 	layer.add_child(st_back)
 	stamina_bar = ColorRect.new()
-	stamina_bar.position = Vector2(13, 95)
+	stamina_bar.position = Vector2(13, 155)
 	stamina_bar.size = Vector2(158, 8)
 	stamina_bar.color = Color("c9a648")
 	layer.add_child(stamina_bar)
 	var vigor_back := ColorRect.new()
-	vigor_back.position = Vector2(12, 108)
+	vigor_back.position = Vector2(12, 168)
 	vigor_back.size = Vector2(160, 10)
 	vigor_back.color = Color("4a3021")
 	layer.add_child(vigor_back)
 	vigor_bar = ColorRect.new()
-	vigor_bar.position = Vector2(13, 109)
+	vigor_bar.position = Vector2(13, 169)
 	vigor_bar.size = Vector2(0, 8)
 	vigor_bar.color = Color("5da8a0")   # the votive flame, placeholder-shaped
 	layer.add_child(vigor_bar)

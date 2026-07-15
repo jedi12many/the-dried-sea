@@ -1,0 +1,81 @@
+{
+  "id": "calling-tide-bound",
+  "title": "The Tide-Keeper's Measure",
+  "tier": "vignette",
+  "source": "god-dream",
+  "sourceGodId": "god-neris",
+  "giver": {
+    "name": "Kess, keeper of the reef-bells",
+    "wound": "The tide ran to a rhythm she heard in her bones for forty years. When the Withdrawal came, the rhythm stopped mid-measure. She has been counting the wrong days ever since, waiting for the sea to remember where it was supposed to return."
+  },
+  "drawWeights": {
+    "biome": { "biome-reef-forest": 2.0 },
+    "devotion": { "god-neris": 2.0 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "goto",
+      "text": "Kess sits at the reef's edge where she hung bells from coral once, reading the tide in the wind. She asks you to check the old tide-stones upslope — markers carved in the Withdrawal's first year, meant to record the final pull of water as it left. No one has looked at them since.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "collect",
+      "text": "The stones are there, salt-weathered but legible: tally marks, day-counts, depths. Carved with real care by someone who thought the tide would come back any day and wanted proof it had been there. The same hand wrote their name at the base: Nael, keeper before Kess. Her predecessor. Her master.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "talk",
+      "text": "You bring the count back to Kess. She reads it without speaking, her fingers tracing the marks as if the stone might still ring like a bell. When she looks up, her eyes are very still. 'Neris kept the tide for so long. I think Nael died asking her to remember what day it was.'",
+      "next": "s4"
+    },
+    {
+      "id": "s4",
+      "type": "choice",
+      "text": "Kess asks what should be done with the count. Hang it where the bells were, so the measure stays read aloud until the day it matters again. Or let the stones sink back into the salt, and mark the return a different way, when it comes.",
+      "options": [
+        {
+          "text": "Restore the bells. Hang the count-stone where Nael hung them. Let the measure be kept.",
+          "next": "s5-restore",
+          "ledger": [
+            { "ledger": "gods", "amount": 6, "note": "Neris hears her old measure spoken again" }
+          ]
+        },
+        {
+          "text": "Let the stones rest. When the tide returns, it will know its own way home. The old counts are a weight.",
+          "next": "s5-release",
+          "ledger": [
+            { "ledger": "shepherd", "amount": 4, "note": "mercy to the past" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s5-restore",
+      "type": "build",
+      "text": "You and Kess hang the count-stone on the old bell-frame. The rope is new; the stone is old. When you step back, Kess rings a fist against it — not like a bell, more like a prayer you can hear. The sound is not right, but it is hers.",
+      "next": null
+    },
+    {
+      "id": "s5-release",
+      "type": "goto",
+      "text": "You carry the count-stone down to the deep pools where Brinefolk tend the water-marks. You leave it there without ceremony — a gift, or a rest, or a way of saying: we remember, but we do not need this one small count to know. Kess does not follow. Tomorrow she will be counting something else.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Restore: the reef-bells ring at high water when the wind shifts right, a sound the Reef-Kin tend now and Kess hears like prayer. Release: Kess stops coming to the marker-stones; she is found instead at the Brinefolk pools, learning their reckoning. Either way, Neris's worshippers report lighter dreams.",
+    "worldFlags": ["kess-bells-hung", "kess-tides-released"],
+    "dialogueKeys": ["kess-keeper-measure"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-rope", "qty": 3 }
+    ],
+    "favor": { "god-neris": 5 }
+  },
+  "status": "draft",
+  "curatorNote": "Turn: what to do with time when time no longer moves right. Choice between restoring a measure to the sky or letting the past settle into memory."
+}

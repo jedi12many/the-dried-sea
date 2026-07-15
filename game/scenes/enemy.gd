@@ -23,16 +23,7 @@ func setup(game_host: GameHost, id: String) -> void:
 	host.stats.register(self, float(stats.get("hp", 20)))
 
 func _ready() -> void:
-	var outline := ColorRect.new()
-	outline.size = Vector2(20, 16)
-	outline.position = Vector2(-10, -8)
-	outline.color = Color("7a7468")
-	add_child(outline)
-	var body := ColorRect.new()
-	body.size = Vector2(16, 12)
-	body.position = Vector2(-8, -6)
-	body.color = Color("cfc9ba")   # salt-white coat that isn't fur
-	add_child(body)
+	add_child(SpriteKit.sprite("hound", Vector2(20, 16), Color("cfc9ba")))
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(16, 12)

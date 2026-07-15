@@ -1,0 +1,70 @@
+{
+  "id": "calling-chart-leads-deep",
+  "title": "The Wreck-Finder's Map",
+  "tier": "vignette",
+  "source": "chart",
+  "giver": {
+    "name": "A sea-chart, marked in ink that will not fade",
+    "wound": "Made by someone who sailed the deep-reef before the Withdrawal and never came home. They marked a place in careful script: 'The Still-Fathom — a wreck older than the kingdoms, too heavy to rise, too deep to salvage. Sail to it only if you need what gods keep locked.' The ink is from before the sea left; the marks are still true."
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "goto",
+      "text": "The chart shows an inlet you have walked past a hundred times — you thought it was a dead-water pool, brine and nothing. But the chart marks it different: there is a sounding here, a deep place that does not match the shoals above. Below the symbol for depth, a single word: 'Waiting.'",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "collect",
+      "text": "You dive the inlet at slack tide. There is wreck-timber, ancient and soft. Brass fittings from a ship built in the god-age, before any living person's grandfather was born. And beneath it, something that glints — not bronze, not copper, but a metal that catches light like held breath. The chart was right. Someone wanted this deep enough that they drowned to keep the secret.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "choice",
+      "text": "You hold a god-age artifact in your hands. The chart's final line reads: 'Take it to the priests, or take it to the dark. The choice is why it was left.' What do you do with what the old world hid.",
+      "options": [
+        {
+          "text": "Bring it to your village's church. Let the priests read it, tend it, and decide what its age means now.",
+          "next": "s4-shrine",
+          "ledger": [
+            { "ledger": "gods", "amount": 7, "note": "returning what belongs to the pantheon" }
+          ]
+        },
+        {
+          "text": "Bury it again, deeper than it was. Some things are safer in the dark, and some secrets are kept by letting them rest.",
+          "next": "s4-bury",
+          "ledger": [
+            { "ledger": "shepherd", "amount": 5, "note": "protecting a mystery" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s4-shrine",
+      "type": "talk",
+      "text": "The priests take the artifact without knowing its name. They place it on the altar at the god-age shrine, and that night — this is worth noting — all the candles burn twice as bright. Your god grows stronger. The village feels it. The god-age artifact is not human anymore; it is prayer.",
+      "next": null
+    },
+    {
+      "id": "s4-bury",
+      "type": "goto",
+      "text": "You carry the artifact to the deepest part of the reef and wedge it where the old chart marked 'Waiting.' You mark the spot with a stone that does not match — a signal no one can read but you. It is there. It will still be there when someone else is ready to find it. Some gifts are given to time, not to people.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Shrine: the priests report the artifact responds to certain prayers; miracles cluster around it and Vigor recharges faster in this god's church. Bury: the reef-currents shift over the hidden wreck, and the inlet becomes a place where the water runs clear and cold — sailors report easier passages, as if guided. Either way, no one drowns at that inlet again.",
+    "worldFlags": ["god-artifact-shrine", "god-artifact-buried"],
+    "dialogueKeys": ["priest-god-age"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-ship-cloth", "qty": 2 }
+    ],
+    "favor": { "god-halor": 4 }
+  },
+  "status": "draft",
+  "curatorNote": "Turn: the chart's final choice — does the artifact serve the gods or serve mystery. Shrine strengthens faith; burying keeps balance."
+}

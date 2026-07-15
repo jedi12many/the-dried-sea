@@ -1,0 +1,80 @@
+{
+  "id": "calling-the-brined-seal",
+  "title": "The Fisher's Mark",
+  "tier": "vignette",
+  "source": "dead-letter",
+  "giver": {
+    "name": "Dren, whose seal still holds brine",
+    "wound": "A fisher who marked the deep channels the night the sea left. His seal is wax and copper, meant to last. He stood in the shallows, counting the water as it rushed away, marking where it went. He drowned in the Withdrawal because he could not look away. His seal is still there, still sealed with wax, still waiting to be opened."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 2.0 },
+    "playstyle": { "builder": 1.5 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "collect",
+      "text": "The seal is wedged in a salt-stone on the flats where the Drowned walk at night. Copper, worn smooth by salt and time. The wax is still good — three generations, and it has not cracked. Scratched into the copper: 'DRV' and a date. The night of the Withdrawal. Underneath the date, a depth marker: how deep the water was at the moment Dren stopped counting.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "talk",
+      "text": "You find a salt-reader, a Brinefolk elder who still knows the old measures. She touches the depth-mark and goes very still. 'He was trying to read the last tide. Trying to know where it went.' She tells you what Dren wanted: for someone to bring something back from that depth, from that place, and prove the sea left a mark that lasts.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "choice",
+      "text": "The seal can be opened now. What was inside has waited long enough. Or it can be left for someone else — someone who understands Dren's work in a way you might not.",
+      "options": [
+        {
+          "text": "Break the seal carefully. Dren wanted this opened. Honor the waiting by finishing it.",
+          "next": "s4-open",
+          "ledger": [
+            { "ledger": "shepherd", "amount": 6, "note": "fulfilling a dead man's vigil" }
+          ]
+        },
+        {
+          "text": "Leave the seal unbroken. Carry it instead to the Brinefolk's deep pools. They will know what Dren was marking. Let them open it, if anyone does.",
+          "next": "s4-defer",
+          "ledger": [
+            { "ledger": "gods", "amount": 3, "note": "Neris keeps faith with tides and time" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s4-open",
+      "type": "collect",
+      "text": "Inside the seal: a chart. Copper marked with lines, each one labeled with depths and dates — a record of the Withdrawal as Dren saw it, moment by moment. His last mark: 'It took everything. Even me. But I saw.' You understand: he wanted proof, not for himself, but for the people he left behind. Proof the sea was real and that the leaving was real.",
+      "next": "s4-end"
+    },
+    {
+      "id": "s4-defer",
+      "type": "goto",
+      "text": "The Brinefolk accept the sealed copper as you describe it. They place it on their altar without opening it — a relic, a prayer, a promise made when the world was drowning. They will keep it. Maybe one day they will open it. Maybe the seal itself is enough.",
+      "next": "s4-end"
+    },
+    {
+      "id": "s4-end",
+      "type": "goto",
+      "text": "That night, the Drowned do not walk the flats where Dren's seal was found. They gather instead at the deeper waters, marking time with a sound like tide. Like memory. Like a message finally received.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Open: Dren's chart spreads among fishers and salt-readers; the Withdrawal's first hour is now measured and kept, a history where there was only forgetting. Defer: the Brinefolk tend the sealed copper like a shrine; the deep pools glow faintly on certain tides, as if the sea remembers being marked. Either way, the Drowned cease their restless walking on the flats where Dren kept count.",
+    "worldFlags": ["dren-seal-opened", "dren-seal-kept"],
+    "dialogueKeys": ["brinefolk-elder-dren"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-salt", "qty": 4 }
+    ],
+    "favor": { "god-neris": 6 }
+  },
+  "status": "draft",
+  "curatorNote": "Turn: whether to open a dead man's last message or let others decide its worth. The seal's holding or breaking changes what the Withdrawal means."
+}

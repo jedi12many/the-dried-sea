@@ -6,16 +6,7 @@ extends CharacterBody2D
 const SPEED := 140.0
 
 func _ready() -> void:
-	var outline := ColorRect.new()
-	outline.size = Vector2(22, 30)
-	outline.position = Vector2(-11, -15)
-	outline.color = Color("4a3021")
-	add_child(outline)
-	var body := ColorRect.new()
-	body.size = Vector2(18, 26)
-	body.position = Vector2(-9, -13)
-	body.color = Color("c8865a")   # the warm survivor on the bleached flats
-	add_child(body)
+	add_child(SpriteKit.sprite("survivor", Vector2(22, 30), Color("c8865a")))
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(18, 26)

@@ -18,16 +18,7 @@ var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	_rng.seed = 31
-	var outline := ColorRect.new()
-	outline.size = Vector2(18, 26)
-	outline.position = Vector2(-9, -13)
-	outline.color = Color("4a3021")
-	add_child(outline)
-	var body := ColorRect.new()
-	body.size = Vector2(14, 22)
-	body.position = Vector2(-7, -11)
-	body.color = Color("b0765a")
-	add_child(body)
+	add_child(SpriteKit.sprite("villager", Vector2(18, 26), Color("b0765a")))
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(14, 22)
