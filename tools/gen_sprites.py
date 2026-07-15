@@ -499,7 +499,7 @@ SPRITES = [
     ("ground.png", lambda: gen_ground(seed=1)),
     ("ground2.png", lambda: gen_ground(seed=2)),
     ("salt_pillar.png", gen_salt_pillar),
-    ("survivor.png", gen_survivor),
+    # survivor.png: UPGRADED to Gemini art (import_art.py) — do not regenerate
     ("villager.png", gen_villager),
     ("hound.png", gen_hound),
     ("driftwood.png", gen_driftwood),
@@ -516,7 +516,7 @@ SPRITES = [
     ("wall.png", gen_wall),
     ("smokehouse.png", gen_smokehouse),
     ("hearth.png", gen_hearth),
-    ("shellback.png", gen_shellback),
+    # shellback.png: UPGRADED to Gemini art (import_art.py) — do not regenerate
 ]
 
 
