@@ -8,7 +8,13 @@ config_version=5
 
 config/name="The Dried Sea"
 config/features=PackedStringArray("4.3")
+run/main_scene="res://scenes/main.tscn"
 
 [rendering]
 
 renderer/rendering_method="mobile"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
