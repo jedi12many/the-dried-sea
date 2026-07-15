@@ -686,6 +686,13 @@ func _build_ground() -> void:
 		deco.position = Vector2(rng.randi_range(16, WORLD.x * TILE - 16), rng.randi_range(16, WORLD.y * TILE - 16))
 		deco.z_index = -9
 		add_child(deco)
+	# the dead fleet: beached wrecks, the bones of the coast towns
+	for pos: Vector2 in [Vector2(TILE * 10, TILE * 26), Vector2(TILE * 38, TILE * 8), Vector2(TILE * 30, TILE * 27)]:
+		var wreck := SpriteKit.sprite("wreck", Vector2(60, 40), Color("6e5138"))
+		wreck.position = pos
+		wreck.z_index = -8
+		wreck.modulate = Color(1, 1, 1, 0.96)
+		add_child(wreck)
 
 func _spawn_resource_nodes() -> void:
 	var rng := RandomNumberGenerator.new()
