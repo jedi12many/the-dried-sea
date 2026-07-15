@@ -120,7 +120,7 @@ func _ready() -> void:
 	check(not host.intent_cast(), "no god yet, no miracle")
 	host.player.position = host.shrines[0].position
 	check(host.intent_interact(), "kneel at the fallen shrine")
-	check("god-halor" in host.attuned_gods and host.devotion.state[1]["god-halor"].rank == 1, "Halor is with you")
+	check("god-halor" in host.attuned_for(1) and host.devotion.state[1]["god-halor"].rank == 1, "Halor is with you")
 
 	# the miracle: Pillar of Salt — untouchable, rooted, and it SPENDS the god
 	var vigor0: float = host.devotion.state[1]["god-halor"].vigor
@@ -225,7 +225,7 @@ func _ready() -> void:
 	check(not host.intent_cast("inv-call-squall"), "no storm without the Storm-Mother")
 	host.player.position = host.shrines[1].position
 	check(host.intent_interact(), "kneel at the storm shrine on the east edge")
-	check("god-maren" in host.attuned_gods, "Maren is with you — two gods now")
+	check("god-maren" in host.attuned_for(1), "Maren is with you — two gods now")
 	check("work-lightning-rod" in host.menu_works(), "her storm-craft opens on the build menu")
 
 	# the squall: lightning falls on whatever crowds you
@@ -310,7 +310,7 @@ func _ready() -> void:
 	await get_tree().physics_frame
 	host2.load_game()
 	await get_tree().physics_frame
-	check(host2.attuned_gods == host.attuned_gods, "both gods still know you")
+	check(host2.attuned_for(1) == host.attuned_for(1), "both gods still know you")
 	check(host2.chapels.size() == 2, "both chapels stand where they stood")
 	check(host2.inventory.count(1, "item-rope") == host.inventory.count(1, "item-rope"), "the pack survives")
 	check(host2.village.tribesmen.size() == host.village.tribesmen.size(), "Anna is still yours")

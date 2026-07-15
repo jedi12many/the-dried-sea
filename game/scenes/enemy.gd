@@ -14,6 +14,7 @@ var creature_id: String
 var speed := 60.0
 var attack_damage := 8.0
 var peaceful := false   # ambient archetypes never chase or bite
+var mirror := false     # NET client: a visual echo — the server owns the brain
 var is_boss := false
 var spawn_pos := Vector2.ZERO   # bosses guard their ground and leash back to it
 var _cooldown := 0.0
@@ -59,7 +60,8 @@ func setup(game_host: GameHost, id: String) -> void:
 	host.stats.register(self, float(stats.get("hp", 20)))
 
 func _ready() -> void:
-	_visual = SpriteKit.sprite(CREATURE_SPRITES.get(creature_id, "hound"), Vector2(20, 16), Color("cfc9ba"))
+	var size := Vector2(44, 32) if creature_id == "creature-old-shellback" else Vector2(20, 16)
+	_visual = SpriteKit.sprite(CREATURE_SPRITES.get(creature_id, "hound"), size, Color("cfc9ba"))
 	add_child(_visual)
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
@@ -68,8 +70,8 @@ func _ready() -> void:
 	add_child(shape)
 
 func _physics_process(delta: float) -> void:
-	if host == null or host.player == null:
-		return
+	if host == null or host.player == null or mirror:
+		return   # mirrors move by the server's word alone
 	if peaceful:
 		return   # crabs have nowhere to be
 	if _stun > 0.0:
@@ -78,15 +80,20 @@ func _physics_process(delta: float) -> void:
 		return   # knocked flat by the squall
 	_cooldown = maxf(_cooldown - delta, 0.0)
 	# night belongs to the hounds — and the storm belongs to no one
+	var threat := host.nearest_threat(position)
+	var target_pid := int(threat.pid)
+	if (threat.pos as Vector2) == Vector2.INF:
+		velocity = Vector2.ZERO
+		return   # an empty world (server with no players yet)
 	var bold := host.clock.is_night() or host.is_storm_day()
 	var aggro := AGGRO_RADIUS * (2.4 if bold else 1.0)
 	var run_speed := speed * (1.35 if bold else 1.0)
-	if creature_id == "creature-salt-hound":
-		aggro *= host.abilities.mod_mult(GameHost.LOCAL_PLAYER, "hound-aggro-mult")  # Soft-Step
+	if creature_id == "creature-salt-hound" and target_pid > 0:
+		aggro *= host.abilities.mod_mult(target_pid, "hound-aggro-mult")  # Soft-Step
 	if is_boss:
 		aggro = 240.0   # he guards his hoard; he does not hunt
 		run_speed = speed
-	var to_player := host.player.position - position
+	var to_player: Vector2 = (threat.pos as Vector2) - position
 	var dist := to_player.length()
 	var attack_range := ATTACK_RANGE * (1.6 if is_boss else 1.0)
 	if is_boss and (position.distance_to(spawn_pos) > 380.0 or dist > 480.0):
@@ -102,9 +109,9 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		if _cooldown == 0.0:
 			_cooldown = ATTACK_COOLDOWN * (1.6 if is_boss else 1.0)
-			if creature_id == "creature-salt-hound":
-				_cooldown *= host.abilities.mod_mult(GameHost.LOCAL_PLAYER, "hound-cooldown-mult")  # Herd-Sense
-			host.damage_player(attack_damage)
+			if creature_id == "creature-salt-hound" and target_pid > 0:
+				_cooldown *= host.abilities.mod_mult(target_pid, "hound-cooldown-mult")  # Herd-Sense
+			host.damage_player(attack_damage, target_pid)
 	elif dist <= aggro:
 		velocity = to_player.normalized() * run_speed
 	else:

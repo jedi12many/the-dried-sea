@@ -11,6 +11,21 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
+const GAME_VERSION := "0.2.0"
+const NET_PORT := 7777
+# NET: whose deed is this (server sets per intent), and whose screen is this
+var acting_pid := 1
+var my_pid := 1
+var net_mode := "offline"            # offline | server | client
+var peers: Dictionary = {}           # peer_id -> pid
+var net_players: Dictionary = {}     # username -> pid (persisted)
+var next_pid := 1
+var avatars: Dictionary = {}         # pid -> Vector2 (server truth of player positions)
+var remote_nodes: Dictionary = {}    # pid -> Node2D (client visuals for OTHER players)
+var enemy_net_ids: Dictionary = {}   # DSEnemy -> int (server)
+var _next_enemy_net_id := 1
+var _pos_timer := 0.0
+var _works_spawned_count := 0        # client: how many placed works have visuals
 
 var registry := Registry.new()
 var clock := SimClock.new()
@@ -26,8 +41,8 @@ var abilities: AbilitiesSystem
 var sheet_label: Label
 var sheet_back: ColorRect
 var sheet_open := false
-var consumed_hp_bonus := 0.0       # permanent strength eaten from gods
-var cheat_death_used_today := false
+var consumed_hp: Dictionary = {}   # pid -> permanent strength eaten from gods
+var cheat_death_used: Dictionary = {}  # pid -> bool (resets at dawn)
 
 var player: DSPlayer
 var hud: Label
@@ -47,8 +62,9 @@ const INTERACT_RANGE := 56.0
 var shrines: Array[Node2D] = []
 var survivor: DSVillager
 var chapels: Dictionary = {}          # god_id -> position
-var attuned_gods: Array[String] = []
+var attuned: Dictionary = {}          # pid -> Array[String]
 var rites_done_today: Dictionary = {} # god_id -> bool
+var petrify: Dictionary = {}           # pid -> frames; petrify_frames mirrors MY pid for display
 var petrify_frames := 0
 var message := "Something pale stands in the north flats. It looks like it is waiting."
 var menu_label: Label
@@ -74,6 +90,15 @@ const ITEM_COLORS := {
 
 func _ready() -> void:
 	_setup_input()
+	var args := OS.get_cmdline_user_args()
+	if "--fresh" in args:
+		skip_autoload = true
+	if "--server" in args:
+		net_mode = "server"
+	for a: String in args:
+		if a.begins_with("--connect="):
+			net_mode = "client"
+			_net_connect_addr = a.trim_prefix("--connect=")
 	if not registry.load_all():
 		push_error("registry failed: %s" % ", ".join(registry.load_errors))
 		get_tree().quit(1)
@@ -84,12 +109,12 @@ func _ready() -> void:
 	verdict = VerdictSystem.new(registry)
 	inventory = InventorySystem.new(registry)
 	stats = StatsSystem.new()
-	stats.register(LOCAL_PLAYER, 60.0, 60.0)   # unfed floor — food raises the ceiling
+	stats.register(acting_pid, 60.0, 60.0)   # unfed floor — food raises the ceiling
 	abilities = AbilitiesSystem.new(registry)
-	abilities.earn(LOCAL_PLAYER, 6)            # the flats have already tempered you a little
-	abilities.changed.connect(func(_p: int) -> void: _recompute_vitals())
+	abilities.earn(acting_pid, 6)            # the flats have already tempered you a little
+	abilities.changed.connect(func(p: int) -> void: _recompute_vitals(p))
 	devotion.ledger_event.connect(func(p: int, l: String, a: float, n: String) -> void: verdict.record(p, l, a, n, clock.day))
-	village.ledger_event.connect(func(l: String, a: float, n: String) -> void: verdict.record(LOCAL_PLAYER, l, a, n, clock.day))
+	village.ledger_event.connect(func(l: String, a: float, n: String) -> void: verdict.record(acting_pid, l, a, n, clock.day))
 
 	_build_ground()
 	_spawn_resource_nodes()
@@ -106,16 +131,18 @@ func _ready() -> void:
 	clock.sim_minute.connect(_on_sim_minute)
 	_refresh_hud()
 
-	if "--fresh" in OS.get_cmdline_user_args():
-		skip_autoload = true
-	if not skip_autoload and FileAccess.file_exists(save_path):
+	if not skip_autoload and net_mode != "client" and FileAccess.file_exists(save_path):
 		load_game()
+	if net_mode == "server":
+		_start_server()
+	elif net_mode == "client":
+		_start_client()
 	if "--screenshot-sheet" in OS.get_cmdline_user_args():
-		abilities.earn(LOCAL_PLAYER, 6)
+		abilities.earn(acting_pid, 6)
 		for i in 4:
-			abilities.allocate(LOCAL_PLAYER, "virtue-grit")
+			abilities.allocate(acting_pid, "virtue-grit")
 		for i in 3:
-			abilities.allocate(LOCAL_PLAYER, "virtue-hunger")
+			abilities.allocate(acting_pid, "virtue-hunger")
 		_toggle_sheet(true)
 		_screenshot_and_quit()
 	elif "--screenshot-boss" in OS.get_cmdline_user_args():
@@ -130,19 +157,21 @@ func _notification(what: int) -> void:
 
 ## --- persistence: the flats remember -------------------------------------------
 func save_game() -> void:
+	if net_mode == "client":
+		return  # the server owns the world
 	var s := SaveSystem.to_save(clock, devotion, village, works, verdict)
 	s["game"] = {
 		"inventory": inventory.inventories.duplicate(true),
-		"player_stats": stats.actors.get(LOCAL_PLAYER, {}).duplicate(true),
+		"player_stats": stats.actors.get(acting_pid, {}).duplicate(true),
 		"player_pos": [player.position.x, player.position.y],
-		"attuned_gods": attuned_gods.duplicate(),
+		"attuned": attuned.duplicate(true),
 		"chapels": _chapels_to_dict(),
 		"rites_done_today": rites_done_today.duplicate(),
 		"harvested_indices": harvested_indices.duplicate(),
 		"boss_dead": boss_dead,
 		"abilities": abilities.state.duplicate(true),
-		"consumed_hp_bonus": consumed_hp_bonus,
-		"cheat_death_used_today": cheat_death_used_today,
+		"consumed_hp": consumed_hp.duplicate(true),
+		"net_players": net_players.duplicate(), "next_pid": next_pid,
 		"survivor": {"rescued": survivor.rescued if survivor != null else false,
 			"tribesman_id": survivor.tribesman_id if survivor != null else -1,
 			"pos": [survivor.position.x, survivor.position.y] if survivor != null else [0, 0]},
@@ -158,10 +187,15 @@ func load_game() -> void:
 	var g: Dictionary = s.get("game", {})
 	inventory.inventories = SaveSystem._int_keys(g.get("inventory", {}))
 	if g.has("player_stats"):
-		stats.actors[LOCAL_PLAYER] = g.player_stats
+		stats.actors[acting_pid] = g.player_stats
 	var pp: Array = g.get("player_pos", [WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0])
 	player.position = Vector2(float(pp[0]), float(pp[1]))
-	attuned_gods.assign(g.get("attuned_gods", []))
+	if g.has("attuned"):
+		attuned = SaveSystem._int_keys(g.get("attuned", {}))
+	else:
+		attuned = {1: g.get("attuned_gods", [])}
+	net_players = g.get("net_players", {})
+	next_pid = int(g.get("next_pid", 1))
 	rites_done_today = g.get("rites_done_today", {})
 	message = str(g.get("message", "The flats are as you left them."))
 	# world state: remove harvested nodes, rebuild work visuals, restore the boss & Anna
@@ -181,12 +215,11 @@ func load_game() -> void:
 		abilities.state = SaveSystem._int_keys(g.get("abilities", {}))
 	else:
 		# pre-Tally save: back-pay everything the flats already owe this player
-		var back_pay := 6 + clock.day * 2 + (2 if boss_dead else 0) + attuned_gods.size() \
+		var back_pay := 6 + clock.day * 2 + (2 if boss_dead else 0) + (g.get("attuned_gods", []) as Array).size() \
 			+ (1 if bool(g.get("survivor", {}).get("rescued", false)) else 0)
-		abilities.state[LOCAL_PLAYER] = {"earned": back_pay, "alloc": {}}
+		abilities.state[1] = {"earned": back_pay, "alloc": {}}
 		message += "\nThe flats have been keeping count: %d TEMPER owed. [T] to spend it." % back_pay
-	consumed_hp_bonus = float(g.get("consumed_hp_bonus", 0.0))
-	cheat_death_used_today = bool(g.get("cheat_death_used_today", false))
+	consumed_hp = SaveSystem._int_keys(g.get("consumed_hp", {})) if g.has("consumed_hp") else {1: float(g.get("consumed_hp_bonus", 0.0))}
 	_recompute_vitals()
 	if boss_dead:
 		for e in enemies.duplicate():
@@ -218,8 +251,13 @@ func _chapels_to_dict() -> Dictionary:
 	return out
 
 func _physics_process(delta: float) -> void:
-	clock.advance(delta)
-	stats.tick(delta)
+	_net_tick(delta)
+	if net_mode != "client":
+		clock.advance(delta)
+		stats.tick(delta)
+		for pid: Variant in petrify.keys():
+			if int(petrify[pid]) > 0:
+				petrify[pid] = int(petrify[pid]) - 1
 	if petrify_frames > 0:
 		petrify_frames -= 1
 		if petrify_frames == 0:
@@ -260,12 +298,12 @@ func _update_prompt() -> void:
 
 func current_prompt() -> String:
 	for s in shrines:
-		if player.position.distance_to(s.position) < interact_range() and s.get_meta("god_id") not in attuned_gods:
+		if player.position.distance_to(s.position) < interact_range() and s.get_meta("god_id") not in attuned_for(my_pid):
 			return "[E] Kneel"
 	if survivor != null and not survivor.rescued and player.position.distance_to(survivor.position) < interact_range():
 		return "[E] Rescue her"
 	for god_id: String in chapels:
-		if player.position.distance_to(chapels[god_id]) < interact_range():
+		if acting_pos().distance_to(chapels[god_id]) < interact_range():
 			if _carrying_remnant():
 				return "[E] Enshrine the remnant"
 			return "[E] Hold the rite" if not rites_done_today.get(god_id, false) else "(rite already held today)"
@@ -288,10 +326,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		if skey >= KEY_1 and skey <= KEY_6:
 			var virtues := registry.all_of("virtue")
 			var virtue_id := str(virtues[int(skey - KEY_1)].id)
-			if (event as InputEventKey).shift_pressed:
-				abilities.deallocate(LOCAL_PLAYER, virtue_id)
+			if net_mode == "client":
+				rpc_id(1, "srv_intent", "deallocate" if (event as InputEventKey).shift_pressed else "allocate", [virtue_id])
+			elif (event as InputEventKey).shift_pressed:
+				abilities.deallocate(acting_pid, virtue_id)
 			else:
-				abilities.allocate(LOCAL_PLAYER, virtue_id)
+				abilities.allocate(acting_pid, virtue_id)
 			_toggle_sheet(true)
 			return
 		if skey == KEY_ESCAPE or skey == KEY_T:
@@ -335,27 +375,30 @@ func _unhandled_input(event: InputEvent) -> void:
 ## --- intents (the only door into the sim from presentation) --------------------
 ## E is contextual: kneel at a shrine, rescue the stranded, hold a rite, else harvest.
 func interact_range() -> float:
-	return INTERACT_RANGE + abilities.mod_add(LOCAL_PLAYER, "interact-range")
+	return INTERACT_RANGE + abilities.mod_add(acting_pid, "interact-range")
 
 func harvest_range() -> float:
-	return HARVEST_RANGE + abilities.mod_add(LOCAL_PLAYER, "interact-range")
+	return HARVEST_RANGE + abilities.mod_add(acting_pid, "interact-range")
 
 func intent_interact() -> bool:
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "interact", [])
+		return true
 	for s in shrines:
 		var god_id: String = s.get_meta("god_id")
-		if player.position.distance_to(s.position) < interact_range() and god_id not in attuned_gods:
+		if acting_pos().distance_to(s.position) < interact_range() and god_id not in attuned_for(acting_pid):
 			return intent_kneel(god_id)
-	if survivor != null and not survivor.rescued and player.position.distance_to(survivor.position) < interact_range():
+	if survivor != null and not survivor.rescued and acting_pos().distance_to(survivor.position) < interact_range():
 		return intent_rescue()
 	for god_id: String in chapels:
-		if player.position.distance_to(chapels[god_id]) < interact_range():
+		if acting_pos().distance_to(chapels[god_id]) < interact_range():
 			if _carrying_remnant():
 				return intent_enshrine(god_id)
 			return intent_rite(god_id)
 	return intent_harvest()
 
 func _carrying_remnant() -> bool:
-	for item_id: String in inventory._inv(LOCAL_PLAYER).keys():
+	for item_id: String in inventory._inv(acting_pid).keys():
 		if registry.get_entity(item_id).get("category", "") == "remnant":
 			return true
 	return false
@@ -366,27 +409,30 @@ const KNEEL_HINTS := {
 }
 
 func intent_kneel(god_id: String) -> bool:
-	if not devotion.attune(LOCAL_PLAYER, god_id):
+	if not devotion.attune(acting_pid, god_id):
 		return false
-	attuned_gods.append(god_id)
+	attuned_for(acting_pid).append(god_id)
 	var god := registry.get_entity(god_id)
 	message = "You kneel at the fallen shrine. %s: '%s'\n%s is with you — %s Their strength is not endless." % [
 		str(god.voice.tone).split(";")[0], str(god.voice.sampleLine),
 		str(god.name).to_upper(), str(KNEEL_HINTS.get(god_id, ""))]
 	if god_id == "god-maren":
-		inventory.add(LOCAL_PLAYER, "item-harpoon-verse", 1)
+		inventory.add(acting_pid, "item-harpoon-verse", 1)
 		message += "\nTucked in the shrine-stones: a VERSE OF THE HARPOON-SONG. Whalers say there are three."
-	abilities.earn(LOCAL_PLAYER, 1)   # kneeling to a god tempers you
+	abilities.earn(acting_pid, 1)   # kneeling to a god tempers you
 	_toggle_build_menu(false)
 	_refresh_hud()
 	return true
 
 ## Cast an invocation and hand its data-defined effects to the executor.
 func intent_cast(invocation_id: String = "inv-pillar-of-salt") -> bool:
-	var inv: Dictionary = devotion.cast(LOCAL_PLAYER, invocation_id)
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "cast", [invocation_id])
+		return true
+	var inv: Dictionary = devotion.cast(acting_pid, invocation_id)
 	if inv.is_empty():
 		var found := devotion._find_invocation(invocation_id)
-		if not found.is_empty() and found.god_id in attuned_gods:
+		if not found.is_empty() and found.god_id in attuned_for(acting_pid):
 			message = "%s has nothing left to give. Build them a chapel; hold a rite." % str(registry.get_entity(found.god_id).name)
 			_refresh_hud()
 		return false
@@ -399,9 +445,9 @@ func intent_cast(invocation_id: String = "inv-pillar-of-salt") -> bool:
 		if is_storm_day():
 			relief += 0.5
 		if invocation_id == "inv-call-squall":
-			relief += 1.0 - abilities.mod_mult(LOCAL_PLAYER, "squall-cost-mult")
+			relief += 1.0 - abilities.mod_mult(acting_pid, "squall-cost-mult")
 		if relief > 0.0:
-			devotion._restore(LOCAL_PLAYER, "god-maren",
+			devotion._restore(acting_pid, "god-maren",
 				float(found2.inv.vigorCost) * devotion.max_vigor("god-maren") * minf(relief, 0.9))
 	message = str(inv.text)
 	_refresh_hud()
@@ -411,20 +457,22 @@ func intent_cast(invocation_id: String = "inv-pillar-of-salt") -> bool:
 func _apply_effect(effect: Dictionary) -> void:
 	match str(effect.get("type", "")):
 		"petrify-invulnerable":
-			petrify_frames = int(float(effect.get("duration", 6)) * 60.0 * abilities.mod_mult(LOCAL_PLAYER, "petrify-mult"))
-			player.modulate = Color("cfd0ce")
+			petrify[acting_pid] = int(float(effect.get("duration", 6)) * 60.0 * abilities.mod_mult(acting_pid, "petrify-mult"))
+			if acting_pid == my_pid:
+				petrify_frames = int(petrify[acting_pid])
+				player.modulate = Color("cfd0ce")
 		"aoe-knockdown":
 			var radius := float(effect.get("radius", 8)) * TILE
 			for e in enemies.duplicate():
-				if is_instance_valid(e) and player.position.distance_to(e.position) <= radius:
+				if is_instance_valid(e) and acting_pos().distance_to(e.position) <= radius:
 					e.stun(2.5)
 		"lightning-strikes":
 			var strikes := int(effect.get("magnitude", 3))
 			var radius := float(effect.get("radius", 8)) * TILE
 			var in_range := enemies.filter(func(e: DSEnemy) -> bool:
-				return is_instance_valid(e) and player.position.distance_to(e.position) <= radius)
+				return is_instance_valid(e) and acting_pos().distance_to(e.position) <= radius)
 			in_range.sort_custom(func(a: DSEnemy, b: DSEnemy) -> bool:
-				return player.position.distance_to(a.position) < player.position.distance_to(b.position))
+				return acting_pos().distance_to(a.position) < acting_pos().distance_to(b.position))
 			for i in mini(strikes, in_range.size()):
 				var target: DSEnemy = in_range[i]
 				_flash_bolt(target.position)
@@ -444,7 +492,7 @@ func _flash_bolt(at: Vector2) -> void:
 
 func intent_rescue() -> bool:
 	survivor.rescue()
-	abilities.earn(LOCAL_PLAYER, 1)   # saving someone tempers you differently
+	abilities.earn(acting_pid, 1)   # saving someone tempers you differently
 	message = "%s, of the drowned coast towns. She follows you home — give her a hearth and she'll keep it.\nShe is devout: her prayers feed Halor a little every day." % survivor.display_name
 	_check_village_keys()  # if her need already stands built, she blooms on arrival
 	_refresh_hud()
@@ -456,7 +504,7 @@ func intent_rite(god_id: String) -> bool:
 		_refresh_hud()
 		return false
 	rites_done_today[god_id] = true
-	devotion.rite_day(LOCAL_PLAYER, god_id, "chapel", 1)
+	devotion.rite_day(acting_pid, god_id, "chapel", 1)
 	message = "You lead the rite at %s's chapel. The shrine-light steadies a little." % str(registry.get_entity(god_id).name)
 	_refresh_hud()
 	return true
@@ -467,16 +515,16 @@ func intent_harvest() -> bool:
 	for node in resource_nodes:
 		if not is_instance_valid(node):
 			continue
-		var d := player.position.distance_to(node.position)
+		var d := acting_pos().distance_to(node.position)
 		if d < best:
 			best = d
 			nearest = node
 	if nearest == null:
 		return false
-	inventory.add(LOCAL_PLAYER, nearest.get_meta("item_id"),
-		int(nearest.get_meta("qty")) + int(abilities.mod_add(LOCAL_PLAYER, "harvest-bonus-qty")))
-	if str(nearest.get_meta("item_id")) == "item-storm-glass" and inventory.count(LOCAL_PLAYER, "item-harpoon-verse") == 2:
-		inventory.add(LOCAL_PLAYER, "item-harpoon-verse", 1)
+	inventory.add(acting_pid, nearest.get_meta("item_id"),
+		int(nearest.get_meta("qty")) + int(abilities.mod_add(acting_pid, "harvest-bonus-qty")))
+	if str(nearest.get_meta("item_id")) == "item-storm-glass" and inventory.count(acting_pid, "item-harpoon-verse") == 2:
+		inventory.add(acting_pid, "item-harpoon-verse", 1)
 		message = "Folded inside the storm-glass, impossibly: the LAST VERSE of the harpoon-song.\nYou know the whole making now. It wants a rite at a chapel — bronze, storm-glass, and good timber."
 	harvested_indices.append(int(nearest.get_meta("idx", -1)))
 	resource_nodes.erase(nearest)
@@ -486,16 +534,19 @@ func intent_harvest() -> bool:
 
 ## F eats the first food in your pack. Two slots; a full belly refuses.
 func intent_eat() -> bool:
-	for item_id: String in inventory._inv(LOCAL_PLAYER).keys():
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "eat", [])
+		return true
+	for item_id: String in inventory._inv(acting_pid).keys():
 		var item := registry.get_entity(item_id)
 		var fstats: Dictionary = item.get("stats", {})
 		if not fstats.has("foodHp"):
 			continue
-		if not stats.eat(LOCAL_PLAYER, float(fstats.foodHp), float(fstats.foodStamina), float(fstats.get("foodMinutes", 8)) * 60.0):
+		if not stats.eat(acting_pid, float(fstats.foodHp), float(fstats.foodStamina), float(fstats.get("foodMinutes", 8)) * 60.0):
 			message = "You're full. Come back to the rest of it when this wears off."
 			_refresh_hud()
 			return false
-		inventory.pay(LOCAL_PLAYER, [{"itemId": item_id, "qty": 1}])
+		inventory.pay(acting_pid, [{"itemId": item_id, "qty": 1}])
 		message = "%s. You feel it in your arms — food is preparation here, not maintenance." % str(item.name)
 		_refresh_hud()
 		return true
@@ -508,7 +559,7 @@ func intent_eat() -> bool:
 func menu_works() -> Array:
 	var order := ["neutral", "god-halor", "god-maren", "god-neris", "god-vessa", "god-ghal"]
 	var visible_sets := ["neutral"]
-	visible_sets.append_array(attuned_gods)
+	visible_sets.append_array(attuned_for(my_pid))
 	var out: Array = []
 	for god_id: String in order:
 		if god_id not in visible_sets:
@@ -537,14 +588,17 @@ func _toggle_build_menu(open: bool) -> void:
 		var cost_bits: Array[String] = []
 		for c: Dictionary in work.get("buildCost", []):
 			cost_bits.append("%s×%d" % [str(registry.get_entity(str(c.itemId)).get("name", c.itemId)), int(c.qty)])
-		var afford := inventory.can_afford(LOCAL_PLAYER, work.get("buildCost", []))
+		var afford := inventory.can_afford(acting_pid, work.get("buildCost", []))
 		lines.append("%d. %s%s — %s" % [i + 1, str(work.name), "" if afford else "  (can't afford)", ", ".join(cost_bits)])
-	if attuned_gods.size() < 2:
+	if attuned_for(my_pid).size() < 2:
 		lines.append("· more works open when you kneel at new shrines ·")
 	menu_label.text = "\n".join(lines)
 
 func intent_craft(recipe_id: String) -> bool:
-	var ok := inventory.craft(LOCAL_PLAYER, recipe_id, works)
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "craft", [recipe_id])
+		return true
+	var ok := inventory.craft(acting_pid, recipe_id, works)
 	if ok:
 		var recipe := registry.get_entity(recipe_id)
 		if recipe.get("track", "") == "legend":
@@ -554,6 +608,9 @@ func intent_craft(recipe_id: String) -> bool:
 	return ok
 
 func intent_craft_first() -> void:
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "craft_first", [])
+		return
 	# a known legend always takes precedence — you don't accidentally make rope instead
 	for recipe: Dictionary in registry.all_of("recipe"):
 		if recipe.get("track", "") == "legend" and intent_craft(str(recipe.id)):
@@ -564,25 +621,28 @@ func intent_craft_first() -> void:
 
 ## Swing at the nearest enemy in arc range. Costs stamina — tired arms miss nothing, they just can't.
 func intent_attack() -> bool:
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "attack", [])
+		return true
 	var target: DSEnemy = null
 	var best := ATTACK_RANGE
 	for e in enemies:
 		if not is_instance_valid(e):
 			continue
-		var d := player.position.distance_to(e.position)
+		var d := acting_pos().distance_to(e.position)
 		if d < best:
 			best = d
 			target = e
 	if target == null:
 		return false
-	if not stats.spend_stamina(LOCAL_PLAYER, attack_stamina_cost()):
+	if not stats.spend_stamina(acting_pid, attack_stamina_cost()):
 		message = "Too winded to swing. Breath comes back — or food raises the ceiling."
 		_refresh_hud()
 		return false
 	_flash_swing(target.position)
 	target.on_hit()
-	if inventory.count(LOCAL_PLAYER, "item-marens-own-harpoon") > 0 \
-			or abilities.talent_active(LOCAL_PLAYER, "talent-bolt-marked"):
+	if inventory.count(acting_pid, "item-marens-own-harpoon") > 0 \
+			or abilities.talent_active(acting_pid, "talent-bolt-marked"):
 		_flash_bolt(target.position)   # strike true and the bolt comes down on your mark
 	if stats.damage(target, attack_damage()):
 		_on_enemy_killed(target)
@@ -590,25 +650,27 @@ func intent_attack() -> bool:
 
 func attack_damage() -> float:
 	# the legend in your hands changes what your hands can do — and so do your virtues
-	var dmg := 26.0 if inventory.count(LOCAL_PLAYER, "item-marens-own-harpoon") > 0 else ATTACK_DAMAGE
-	dmg = abilities.mod_add(LOCAL_PLAYER, "melee-damage", dmg)
-	dmg = abilities.mod_add(LOCAL_PLAYER, "bolt-on-swing", dmg)
+	var dmg := 26.0 if inventory.count(acting_pid, "item-marens-own-harpoon") > 0 else ATTACK_DAMAGE
+	dmg = abilities.mod_add(acting_pid, "melee-damage", dmg)
+	dmg = abilities.mod_add(acting_pid, "bolt-on-swing", dmg)
 	return dmg
 
 func attack_stamina_cost() -> float:
-	return maxf(ATTACK_STAMINA - abilities.mod_add(LOCAL_PLAYER, "attack-cost-reduction"), 5.0)
+	return maxf(ATTACK_STAMINA - abilities.mod_add(acting_pid, "attack-cost-reduction"), 5.0)
 
 ## Recompute everything the virtues touch on the body. Called on every
 ## allocation change, load, and remnant consumption.
-func _recompute_vitals() -> void:
-	var a: Dictionary = stats.actors.get(LOCAL_PLAYER, {})
+func _recompute_vitals(pid: int = -1) -> void:
+	if pid < 0:
+		pid = acting_pid
+	var a: Dictionary = stats.actors.get(pid, {})
 	if a.is_empty():
 		return
-	a.base_hp = 60.0 + consumed_hp_bonus + abilities.mod_add(LOCAL_PLAYER, "base-hp")
-	a.food_slots = StatsSystem.FOOD_SLOTS + int(abilities.mod_add(LOCAL_PLAYER, "food-slots"))
-	a.regen_mult = abilities.mod_mult(LOCAL_PLAYER, "stamina-regen-mult")
-	a.eat_mult = abilities.mod_mult(LOCAL_PLAYER, "eat-restore-mult")
-	a.hp = minf(float(a.hp), stats.max_hp(LOCAL_PLAYER))
+	a.base_hp = 60.0 + float(consumed_hp.get(pid, 0.0)) + abilities.mod_add(pid, "base-hp")
+	a.food_slots = StatsSystem.FOOD_SLOTS + int(abilities.mod_add(pid, "food-slots"))
+	a.regen_mult = abilities.mod_mult(pid, "stamina-regen-mult")
+	a.eat_mult = abilities.mod_mult(pid, "eat-restore-mult")
+	a.hp = minf(float(a.hp), stats.max_hp(pid))
 	_refresh_bars()
 	if sheet_open:
 		_toggle_sheet(true)
@@ -624,35 +686,52 @@ func _flash_swing(toward: Vector2) -> void:
 	add_child(slash)
 	get_tree().create_timer(0.1).timeout.connect(slash.queue_free)
 
-func damage_player(amount: float) -> void:
-	if petrify_frames > 0:
+func damage_player(amount: float, pid: int = -1) -> void:
+	if pid < 0:
+		pid = my_pid
+	if int(petrify.get(pid, 0)) > 0:
 		return  # the salt holds
 	# The Returning: what goes out comes back — once a day, even you
-	if abilities.talent_active(LOCAL_PLAYER, "talent-the-returning") and not cheat_death_used_today \
-			and stats.hp(LOCAL_PLAYER) - amount <= 0.0:
-		cheat_death_used_today = true
-		stats.actors[LOCAL_PLAYER].hp = 1.0
-		message = "The tide takes you out — and brings you back. Once a day, Neris keeps that promise."
-		_refresh_hud()
+	if abilities.talent_active(pid, "talent-the-returning") and not cheat_death_used.get(pid, false) \
+			and stats.hp(pid) - amount <= 0.0:
+		cheat_death_used[pid] = true
+		stats.actors[pid].hp = 1.0
+		if pid == my_pid:
+			message = "The tide takes you out — and brings you back. Once a day, Neris keeps that promise."
+			_refresh_hud()
+		_net_push_state(pid)
 		_refresh_bars()
 		return
-	if stats.damage(LOCAL_PLAYER, amount):
+	if stats.damage(pid, amount):
 		# Death penalty is an open design question (GAME-SPEC); M1 placeholder:
 		# wake at the village center, hurt pride only.
-		player.position = Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
-		stats.heal_full(LOCAL_PLAYER)
+		if net_mode == "server":
+			avatars[pid] = Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
+		elif pid == my_pid:
+			player.position = Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
+		stats.heal_full(pid)
+	_net_push_state(pid)
 	_refresh_bars()
+
+## Server: push a player's state to their peer (after damage etc. outside intents).
+func _net_push_state(pid: int) -> void:
+	if net_mode != "server":
+		return
+	for peer_id: Variant in peers:
+		if int(peers[peer_id]) == pid:
+			rpc_id(int(peer_id), "cl_player_state", _player_state(pid))
+			return
 
 func _on_enemy_killed(enemy: DSEnemy) -> void:
 	var creature := registry.get_entity(enemy.creature_id)
 	for drop: Dictionary in creature.get("drops", []):
 		var qty := int(drop.qty)
 		if enemy.creature_id == "creature-scuttle-crab" and str(drop.itemId) == "item-crab-meat":
-			qty += int(abilities.mod_add(LOCAL_PLAYER, "crab-bonus-drop"))  # the respectful way
-		inventory.add(LOCAL_PLAYER, str(drop.itemId), qty)
+			qty += int(abilities.mod_add(acting_pid, "crab-bonus-drop"))  # the respectful way
+		inventory.add(acting_pid, str(drop.itemId), qty)
 	if enemy.is_boss:
 		boss_dead = true
-		abilities.earn(LOCAL_PLAYER, 2)   # nothing tempers like a king
+		abilities.earn(acting_pid, 2)   # nothing tempers like a king
 		# the wreck-ring opens: his hoard becomes salvage ground
 		var hoard_rng := RandomNumberGenerator.new()
 		hoard_rng.seed = 77
@@ -664,7 +743,7 @@ func _on_enemy_killed(enemy: DSEnemy) -> void:
 			_spawn_one_node(item, pos, def_idx)
 	var remnant_id: String = creature.get("remnantItemId", "")
 	if remnant_id != "":
-		inventory.add(LOCAL_PLAYER, remnant_id, 1)
+		inventory.add(acting_pid, remnant_id, 1)
 		message = "%s falls — the oldest sailor left, out of his depth at last. His wreck-ring is yours to salvage.\nSomething divine remains in him. A warm, reasonable voice: 'They'd ask you to feed it to them. I only ever ask you to eat.'\n[E] at a chapel to ENSHRINE it — or [X] to consume it. Some doors only open once." % str(creature.name)
 	stats.unregister(enemy)
 	enemies.erase(enemy)
@@ -674,43 +753,49 @@ func _on_enemy_killed(enemy: DSEnemy) -> void:
 ## The Verdict, in your hands: consume a remnant for permanent strength —
 ## and the god it belonged to dims, for everyone, forever.
 func intent_consume_remnant() -> bool:
-	for item_id: String in inventory._inv(LOCAL_PLAYER).keys():
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "consume", [])
+		return true
+	for item_id: String in inventory._inv(acting_pid).keys():
 		var item := registry.get_entity(item_id)
 		if item.get("category", "") != "remnant":
 			continue
 		var god_id: String = item.get("remnantOf", "god-halor")
-		inventory.pay(LOCAL_PLAYER, [{"itemId": item_id, "qty": 1}])
-		consumed_hp_bonus += 15.0 + abilities.mod_add(LOCAL_PLAYER, "consume-bonus-hp")
+		inventory.pay(acting_pid, [{"itemId": item_id, "qty": 1}])
+		consumed_hp[acting_pid] = float(consumed_hp.get(acting_pid, 0.0)) + 15.0 + abilities.mod_add(acting_pid, "consume-bonus-hp")
 		_recompute_vitals()
-		verdict.remnant_consume(LOCAL_PLAYER, god_id)
+		verdict.remnant_consume(acting_pid, god_id)
 		message = "You eat what was left of a god's strength. You feel MAGNIFICENT.\nSomewhere, %s grows quieter — for everyone, forever. The warm voice sounds pleased." % str(registry.get_entity(god_id).name)
 		_refresh_hud()
 		return true
 	return false
 
 func intent_enshrine(god_id_of_chapel: String) -> bool:
-	for item_id: String in inventory._inv(LOCAL_PLAYER).keys():
+	for item_id: String in inventory._inv(acting_pid).keys():
 		var item := registry.get_entity(item_id)
 		if item.get("category", "") != "remnant":
 			continue
 		var god_id: String = item.get("remnantOf", god_id_of_chapel)
-		inventory.pay(LOCAL_PLAYER, [{"itemId": item_id, "qty": 1}])
-		verdict.remnant_enshrine(LOCAL_PLAYER, god_id)
+		inventory.pay(acting_pid, [{"itemId": item_id, "qty": 1}])
+		verdict.remnant_enshrine(acting_pid, god_id)
 		message = "You set the remnant in the chapel-stone. %s steadies — the whole world's worth of them.\nThe warm voice says nothing at all." % str(registry.get_entity(god_id).name)
 		_refresh_hud()
 		return true
 	return false
 
 func intent_build(work_id: String) -> bool:
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "build", [work_id])
+		return true
 	var work := registry.get_entity(work_id)
-	if work.is_empty() or not inventory.pay(LOCAL_PLAYER, work.get("buildCost", [])):
+	if work.is_empty() or not inventory.pay(acting_pid, work.get("buildCost", [])):
 		_refresh_hud()
 		return false
-	var pos := player.position + Vector2(40, 0)
-	works.place(work_id, LOCAL_PLAYER, pos)
+	var pos := acting_pos() + Vector2(40, 0)
+	works.place(work_id, acting_pid, pos)
 	if work_id == "work-chapel":
 		# dedicate to the first attuned god who lacks one
-		for god_id: String in attuned_gods:
+		for god_id: String in attuned_for(acting_pid):
 			if not chapels.has(god_id):
 				message = "A chapel to %s, raised from wreck-timber. Hold rites here [E] — their strength returns through worship." % str(registry.get_entity(god_id).name)
 				break
@@ -730,11 +815,11 @@ func _toggle_sheet(open: bool) -> void:
 		return
 	var lines := ["THE TALLY — what the sea left in you",
 		"Temper: %d unspent (of %d)   [1-6] +1  [SHIFT+1-6] take back  [T] close" % [
-			abilities.available(LOCAL_PLAYER), abilities.earned(LOCAL_PLAYER)]]
+			abilities.available(acting_pid), abilities.earned(acting_pid)]]
 	var virtues := registry.all_of("virtue")
 	for i in virtues.size():
 		var v: Dictionary = virtues[i]
-		var s := abilities.score(LOCAL_PLAYER, str(v.id))
+		var s := abilities.score(acting_pid, str(v.id))
 		var pips := ""
 		for p in AbilitiesSystem.VIRTUE_CAP:
 			pips += "●" if p < s else "·"
@@ -761,7 +846,7 @@ func _spawn_work_visual(work_id: String, pos: Vector2, chapel_hint: Dictionary) 
 	if work_id == "work-chapel":
 		var god_id := ""
 		if chapel_hint.is_empty():
-			for g: String in attuned_gods:
+			for g: String in attuned_for(acting_pid):
 				if not chapels.has(g):
 					god_id = g
 					break
@@ -907,10 +992,12 @@ func _on_sim_day(_day: int) -> void:
 	rites_done_today.clear()
 	for id: int in village.tribesmen:
 		village.drift_day(id, conditions)
-	devotion.villager_trickle_day(LOCAL_PLAYER, "god-halor", village.devout_count("god-halor"))
+	devotion.villager_trickle_day(acting_pid, "god-halor", village.devout_count("god-halor"))
 	village.end_of_day()
-	cheat_death_used_today = false
-	abilities.earn(LOCAL_PLAYER, 2)   # every survived day tempers you
+	cheat_death_used.clear()
+	for pid: Variant in stats.actors:
+		if pid is int:
+			abilities.earn(int(pid), 2)   # every survived day tempers everyone
 	_storm_dawn()
 	if not skip_autoload:
 		save_game()  # each dawn, the flats remember
@@ -977,6 +1064,8 @@ func _storm_dawn() -> void:
 	message = "THE GREAT STORM. The seabed shifts — old salvage uncovered, and storm-glass smokes on the flats.\nGather it before the sky takes it back. Maren is EVERYWHERE today: her magic costs half."
 
 func _spawn_enemies() -> void:
+	if net_mode == "client":
+		return  # the server's beasts arrive as mirrors
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 23
 	var center := Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
@@ -1015,6 +1104,8 @@ func _on_sim_minute(_m: int) -> void:
 		if clock.minute_of_day % 47 == 0:
 			storm_flash = 0.65                   # lightning somewhere over the flats
 	daynight.color = tint
+	if net_mode == "server" and clock.minute_of_day % 5 == 0:
+		rpc("cl_world_sync", _world_sync())
 	_refresh_hud()
 
 ## Gradual light: night -> warm dawn -> blinding day -> gold dusk -> night.
@@ -1131,16 +1222,16 @@ func _build_hud() -> void:
 func _refresh_bars() -> void:
 	if hp_bar == null:
 		return
-	hp_bar.size.x = 158.0 * stats.hp(LOCAL_PLAYER) / maxf(stats.max_hp(LOCAL_PLAYER), 1.0)
-	stamina_bar.size.x = 158.0 * stats.stamina(LOCAL_PLAYER) / maxf(stats.max_stamina(LOCAL_PLAYER), 1.0)
-	if "god-halor" in attuned_gods:
-		var s: Dictionary = devotion.state.get(LOCAL_PLAYER, {}).get("god-halor", {})
+	hp_bar.size.x = 158.0 * stats.hp(acting_pid) / maxf(stats.max_hp(acting_pid), 1.0)
+	stamina_bar.size.x = 158.0 * stats.stamina(acting_pid) / maxf(stats.max_stamina(acting_pid), 1.0)
+	if "god-halor" in attuned_for(my_pid):
+		var s: Dictionary = devotion.state.get(acting_pid, {}).get("god-halor", {})
 		vigor_bar.size.x = 158.0 * float(s.get("vigor", 0)) / devotion.max_vigor("god-halor")
 	else:
 		vigor_bar.size.x = 0.0
 	if maren_bar != null:
-		if "god-maren" in attuned_gods:
-			var m: Dictionary = devotion.state.get(LOCAL_PLAYER, {}).get("god-maren", {})
+		if "god-maren" in attuned_for(my_pid):
+			var m: Dictionary = devotion.state.get(acting_pid, {}).get("god-maren", {})
 			maren_bar.size.x = 158.0 * float(m.get("vigor", 0)) / devotion.max_vigor("god-maren")
 		else:
 			maren_bar.size.x = 0.0
@@ -1149,30 +1240,30 @@ func _refresh_hud() -> void:
 	if hud == null:
 		return
 	var inv := ""
-	for item_id: String in inventory._inv(LOCAL_PLAYER):
-		inv += "%s ×%d   " % [str(registry.get_entity(item_id).get("name", item_id)), inventory.count(LOCAL_PLAYER, item_id)]
-	var fed: int = (stats.actors.get(LOCAL_PLAYER, {}).get("foods", []) as Array).size()
+	for item_id: String in inventory._inv(acting_pid):
+		inv += "%s ×%d   " % [str(registry.get_entity(item_id).get("name", item_id)), inventory.count(acting_pid, item_id)]
+	var fed: int = (stats.actors.get(acting_pid, {}).get("foods", []) as Array).size()
 	var weather := ""
 	if is_storm_day():
 		weather = "  — THE GREAT STORM"
-	elif "god-maren" in attuned_gods and (clock.day + 1) % 4 == 3:
+	elif "god-maren" in attuned_for(my_pid) and (clock.day + 1) % 4 == 3:
 		weather = "  — Maren whispers: storm tomorrow"
 	hud.text = "Day %d, %02d:%02d%s%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [T] tally  [SPACE] attack%s\n%s" % [
 		clock.day + 1, clock.minute_of_day / 60, clock.minute_of_day % 60, weather,
 		"  — night. NIGHT BELONGS TO THE HOUNDS." if clock.is_night() else "",
 		"  |  fed ×%d" % fed if fed > 0 else "", _direction_hints(),
 		inv if inv != "" else "(empty hands)",
-		("  [Q] Pillar of Salt" if "god-halor" in attuned_gods else "") + ("  [R] Call the Squall" if "god-maren" in attuned_gods else ""), message]
+		("  [Q] Pillar of Salt" if "god-halor" in attuned_for(my_pid) else "") + ("  [R] Call the Squall" if "god-maren" in attuned_for(my_pid) else ""), message]
 
 ## Where the unfinished business is: unvisited shrines, the stranded woman.
 func _direction_hints() -> String:
 	var bits: Array[String] = []
 	for s in shrines:
-		if s.get_meta("god_id") not in attuned_gods:
+		if s.get_meta("god_id") not in attuned_for(my_pid):
 			bits.append("a pale shrine %s" % _bearing(s.position))
 	if survivor != null and not survivor.rescued:
 		bits.append("someone stranded %s" % _bearing(survivor.position))
-	var verses := inventory.count(LOCAL_PLAYER, "item-harpoon-verse")
+	var verses := inventory.count(acting_pid, "item-harpoon-verse")
 	if verses > 0 and verses < 3:
 		bits.append("the harpoon-song: %d/3 verses" % verses)
 	return "  |  " + ";  ".join(bits) if bits.size() > 0 else ""
@@ -1207,3 +1298,349 @@ func _screenshot_and_quit() -> void:
 	img.save_png("user://screenshot.png")
 	print("screenshot saved: ", ProjectSettings.globalize_path("user://screenshot.png"))
 	get_tree().quit(0)
+
+
+## ===========================================================================
+## NET — host-authoritative co-op (ARCHITECTURE.md §6).
+## Server: runs the whole sim headless; clients send INTENTS and positions,
+## receive their per-player state + light world syncs. The world layout is
+## deterministic (seeded), so sync is deltas, not geometry.
+## ===========================================================================
+var _net_connect_addr := ""
+var _username := ""
+
+func attuned_for(pid: int) -> Array:
+	if not attuned.has(pid):
+		attuned[pid] = []
+	return attuned[pid]
+
+## Where the acting player stands (server: last reported avatar position).
+func acting_pos() -> Vector2:
+	if net_mode == "server":
+		return avatars.get(acting_pid, Vector2.INF)
+	return player.position
+
+## Nearest player to a point — what enemies hunt. Returns {pos, pid}.
+func nearest_threat(from: Vector2) -> Dictionary:
+	if net_mode != "server":
+		return {"pos": player.position, "pid": my_pid}
+	var best_d := INF
+	var best := {"pos": Vector2.INF, "pid": -1}
+	for pid: Variant in avatars:
+		var d: float = from.distance_to(avatars[pid])
+		if d < best_d:
+			best_d = d
+			best = {"pos": avatars[pid], "pid": int(pid)}
+	return best
+
+func _start_server() -> void:
+	var peer := ENetMultiplayerPeer.new()
+	var port := NET_PORT
+	for a: String in OS.get_cmdline_user_args():
+		if a.begins_with("--port="):
+			port = int(a.trim_prefix("--port="))
+	peer.create_server(port, 16)
+	multiplayer.multiplayer_peer = peer
+	multiplayer.peer_disconnected.connect(_on_peer_left)
+	player.visible = false   # the server is nobody
+	print("DRIED SEA server v%s on udp/%d - world day %d" % [GAME_VERSION, port, clock.day + 1])
+
+func _start_client() -> void:
+	for a: String in OS.get_cmdline_user_args():
+		if a.begins_with("--name="):
+			_username = a.trim_prefix("--name=")
+	if _username == "":
+		_username = OS.get_environment("USERNAME")
+	if _username == "":
+		_username = "drifter"
+	var parts := _net_connect_addr.split(":")
+	var peer := ENetMultiplayerPeer.new()
+	peer.create_client(parts[0], int(parts[1]) if parts.size() > 1 else NET_PORT)
+	multiplayer.multiplayer_peer = peer
+	multiplayer.connected_to_server.connect(func() -> void:
+		rpc_id(1, "srv_hello", _username, GAME_VERSION))
+	multiplayer.connection_failed.connect(func() -> void:
+		message = "Could not reach the server at %s. The flats are quiet." % _net_connect_addr
+		_refresh_hud())
+	multiplayer.server_disconnected.connect(func() -> void:
+		message = "The server has gone under. Your deeds are saved there."
+		_refresh_hud())
+	message = "Crossing the flats to %s ..." % _net_connect_addr
+	skip_autoload = true
+
+## --- server-side RPCs -------------------------------------------------------
+@rpc("any_peer", "reliable")
+func srv_hello(username: String, version: String) -> void:
+	if net_mode != "server":
+		return
+	var peer_id := multiplayer.get_remote_sender_id()
+	if version != GAME_VERSION:
+		rpc_id(peer_id, "cl_message", "Your build is v%s; the server runs v%s. Grab the new build." % [version, GAME_VERSION])
+		return
+	var pid: int
+	if net_players.has(username):
+		pid = int(net_players[username])
+	else:
+		next_pid += 1
+		pid = next_pid
+		net_players[username] = pid
+		stats.register(pid, 60.0, 60.0)
+		abilities.earn(pid, 6 + clock.day * 2)   # late joiners get the days they missed
+	if not stats.actors.has(pid):
+		stats.register(pid, 60.0, 60.0)
+	peers[peer_id] = pid
+	avatars[pid] = Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
+	acting_pid = pid
+	_recompute_vitals(pid)
+	print("joined: %s (pid %d)" % [username, pid])
+	rpc_id(peer_id, "cl_welcome", pid, _player_state(pid), _world_sync())
+	rpc("cl_players", _players_snapshot())
+	save_game()
+
+@rpc("any_peer", "reliable")
+func srv_intent(kind: String, args: Array) -> void:
+	if net_mode != "server":
+		return
+	var peer_id := multiplayer.get_remote_sender_id()
+	if not peers.has(peer_id):
+		return
+	acting_pid = peers[peer_id]
+	message = ""
+	match kind:
+		"interact": intent_interact()
+		"attack": intent_attack()
+		"cast": intent_cast(str(args[0]))
+		"eat": intent_eat()
+		"craft_first": intent_craft_first()
+		"craft": intent_craft(str(args[0]))
+		"build": intent_build(str(args[0]))
+		"consume": intent_consume_remnant()
+		"allocate": abilities.allocate(acting_pid, str(args[0]))
+		"deallocate": abilities.deallocate(acting_pid, str(args[0]))
+	rpc_id(peer_id, "cl_player_state", _player_state(acting_pid))
+	rpc("cl_world_sync", _world_sync())
+
+@rpc("any_peer", "unreliable_ordered")
+func srv_pos(x: float, y: float) -> void:
+	if net_mode != "server":
+		return
+	var pid: int = peers.get(multiplayer.get_remote_sender_id(), -1)
+	if pid > 0:
+		avatars[pid] = Vector2(x, y)
+
+func _on_peer_left(peer_id: int) -> void:
+	var pid: int = peers.get(peer_id, -1)
+	peers.erase(peer_id)
+	avatars.erase(pid)
+	rpc("cl_players", _players_snapshot())
+	save_game()
+
+## --- payload builders (server) ----------------------------------------------
+func _player_state(pid: int) -> Dictionary:
+	return {
+		"pid": pid,
+		"inventory": inventory.inventories.get(pid, {}),
+		"stats": stats.actors.get(pid, {}),
+		"abilities": abilities.state.get(pid, {}),
+		"devotion": devotion.state.get(pid, {}),
+		"attuned": attuned_for(pid),
+		"petrify": int(petrify.get(pid, 0)),
+		"message": message,
+	}
+
+func _world_sync() -> Dictionary:
+	var enemy_list := []
+	for e in enemies:
+		if is_instance_valid(e):
+			enemy_list.append({"nid": _enemy_nid(e), "creature": e.creature_id,
+				"x": e.position.x, "y": e.position.y, "hp": stats.hp(e)})
+	var specials := []
+	var extra_defs := []
+	for n in resource_nodes:
+		if is_instance_valid(n) and int(n.get_meta("idx", -1)) >= STORM_GLASS_IDX_BASE:
+			specials.append({"item": n.get_meta("item_id"), "x": n.position.x, "y": n.position.y, "idx": n.get_meta("idx")})
+	for i in range(84, node_defs.size()):
+		var d: Dictionary = node_defs[i]
+		extra_defs.append({"item_id": d.item_id, "x": (d.pos as Vector2).x, "y": (d.pos as Vector2).y, "idx": d.idx})
+	return {
+		"day": clock.day, "minute": clock.minute_of_day,
+		"harvested": harvested_indices, "extra_defs": extra_defs,
+		"works": works.placed.values(), "chapels": _chapels_to_dict(),
+		"boss_dead": boss_dead, "enemies": enemy_list, "specials": specials,
+		"villager": {"rescued": survivor.rescued, "x": survivor.position.x, "y": survivor.position.y},
+	}
+
+func _players_snapshot() -> Array:
+	var out := []
+	for username: String in net_players:
+		var pid := int(net_players[username])
+		if avatars.has(pid):
+			var p: Vector2 = avatars[pid]
+			out.append({"pid": pid, "name": username, "x": p.x, "y": p.y})
+	return out
+
+func _enemy_nid(e: DSEnemy) -> int:
+	if not enemy_net_ids.has(e):
+		_next_enemy_net_id += 1
+		enemy_net_ids[e] = _next_enemy_net_id
+	return enemy_net_ids[e]
+
+## --- client-side RPCs ---------------------------------------------------------
+@rpc("authority", "reliable")
+func cl_welcome(pid: int, pstate: Dictionary, wsync: Dictionary) -> void:
+	my_pid = pid
+	acting_pid = pid
+	cl_player_state(pstate)
+	cl_world_sync(wsync)
+	message = "You cross onto the shared flats as %s. Day %d." % [_username, clock.day + 1]
+	_refresh_hud()
+
+@rpc("authority", "reliable")
+func cl_player_state(p: Dictionary) -> void:
+	inventory.inventories[my_pid] = p.get("inventory", {})
+	stats.actors[my_pid] = p.get("stats", {})
+	abilities.state[my_pid] = p.get("abilities", {})
+	devotion.state[my_pid] = p.get("devotion", {})
+	attuned[my_pid] = p.get("attuned", [])
+	petrify_frames = int(p.get("petrify", 0))
+	if player != null:
+		player.modulate = Color("cfd0ce") if petrify_frames > 0 else Color.WHITE
+	if str(p.get("message", "")) != "":
+		message = str(p.message)
+	_refresh_hud()
+	_refresh_bars()
+	if sheet_open:
+		_toggle_sheet(true)
+
+@rpc("authority", "reliable")
+func cl_world_sync(w: Dictionary) -> void:
+	clock.day = int(w.get("day", 0))
+	clock.minute_of_day = int(w.get("minute", 360))
+	daynight.color = _tint_for_minute(clock.minute_of_day)
+	# extra node defs the server minted after world-gen (boss hoard etc.)
+	for d: Dictionary in w.get("extra_defs", []):
+		if int(d.idx) >= node_defs.size():
+			var pos := Vector2(float(d.x), float(d.y))
+			node_defs.append({"item_id": str(d.item_id), "pos": pos, "idx": int(d.idx)})
+			_spawn_one_node(str(d.item_id), pos, int(d.idx))
+	# harvested nodes vanish (deterministic layout means that's the whole diff)
+	harvested_indices = (w.get("harvested", []) as Array).map(func(v: Variant) -> int: return int(v))
+	for node in resource_nodes.duplicate():
+		var idx := int(node.get_meta("idx", -1))
+		if idx < STORM_GLASS_IDX_BASE and idx in harvested_indices:
+			resource_nodes.erase(node)
+			node.queue_free()
+	# storm-glass and other ephemerals
+	var have_specials := {}
+	for node in resource_nodes:
+		if is_instance_valid(node) and int(node.get_meta("idx", -1)) >= STORM_GLASS_IDX_BASE:
+			have_specials[int(node.get_meta("idx"))] = node
+	var want_specials := {}
+	for sp: Dictionary in w.get("specials", []):
+		want_specials[int(sp.idx)] = true
+		if not have_specials.has(int(sp.idx)):
+			_spawn_one_node(str(sp.item), Vector2(float(sp.x), float(sp.y)), int(sp.idx))
+	for idx: int in have_specials:
+		if not want_specials.has(idx):
+			resource_nodes.erase(have_specials[idx])
+			(have_specials[idx] as Node).queue_free()
+	# works: spawn visuals for anything new
+	var placed: Array = w.get("works", [])
+	chapels.clear()
+	var chapel_dict: Dictionary = w.get("chapels", {})
+	while _works_spawned_count < placed.size():
+		var inst: Dictionary = placed[_works_spawned_count]
+		_spawn_work_visual(str(inst.work_id), Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))), chapel_dict)
+		_works_spawned_count += 1
+	for god_id: Variant in chapel_dict:
+		var cp: Array = chapel_dict[god_id]
+		chapels[str(god_id)] = Vector2(float(cp[0]), float(cp[1]))
+	# enemies: reconcile by net id
+	boss_dead = bool(w.get("boss_dead", false))
+	for e in enemies.duplicate():
+		if not is_instance_valid(e):
+			enemies.erase(e)
+	var have := {}
+	for e in enemies:
+		have[int(e.get_meta("nid", -1))] = e
+	var want := {}
+	for ed: Dictionary in w.get("enemies", []):
+		var nid := int(ed.nid)
+		want[nid] = true
+		if have.has(nid):
+			(have[nid] as DSEnemy).position = Vector2(float(ed.x), float(ed.y))
+		else:
+			var m := DSEnemy.new()
+			m.mirror = true
+			m.creature_id = str(ed.creature)
+			m.position = Vector2(float(ed.x), float(ed.y))
+			m.set_meta("nid", nid)
+			m.host = self
+			add_child(m)
+			enemies.append(m)
+	for nid: int in have:
+		if not want.has(nid):
+			var gone: DSEnemy = have[nid]
+			enemies.erase(gone)
+			gone.queue_free()
+	# Anna
+	if survivor != null and w.has("villager"):
+		survivor.position = Vector2(float(w.villager.x), float(w.villager.y))
+		if bool(w.villager.rescued) and not survivor.rescued:
+			survivor.rescued = true
+			survivor.set_label_name()
+	_refresh_hud()
+
+@rpc("authority", "unreliable_ordered")
+func cl_positions(players: Array, enemy_nids: Array, ex: Array, ey: Array) -> void:
+	for pd: Dictionary in players:
+		var pid := int(pd.pid)
+		if pid == my_pid:
+			continue
+		if not remote_nodes.has(pid):
+			var av := Node2D.new()
+			av.add_child(SpriteKit.sprite("villager", Vector2(18, 26), Color("c8865a")))
+			av.add_child(_world_label(str(pd.get("name", "drifter")), Vector2(0, 16)))
+			add_child(av)
+			remote_nodes[pid] = av
+		var node := remote_nodes[pid] as Node2D
+		node.position = node.position.lerp(Vector2(float(pd.x), float(pd.y)), 0.5)
+	for i in enemy_nids.size():
+		for e in enemies:
+			if is_instance_valid(e) and int(e.get_meta("nid", -1)) == int(enemy_nids[i]):
+				e.position = e.position.lerp(Vector2(float(ex[i]), float(ey[i])), 0.5)
+
+@rpc("authority", "reliable")
+func cl_players(players: Array) -> void:
+	var live := {}
+	for pd: Dictionary in players:
+		live[int(pd.pid)] = true
+	for pid: int in remote_nodes.keys():
+		if not live.has(pid) or pid == my_pid:
+			(remote_nodes[pid] as Node).queue_free()
+			remote_nodes.erase(pid)
+
+@rpc("authority", "reliable")
+func cl_message(text: String) -> void:
+	message = text
+	_refresh_hud()
+
+## --- streams ------------------------------------------------------------------
+func _net_tick(delta: float) -> void:
+	_pos_timer += delta
+	if _pos_timer < 0.1:
+		return
+	_pos_timer = 0.0
+	if net_mode == "client" and multiplayer.multiplayer_peer != null \
+			and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+		rpc_id(1, "srv_pos", player.position.x, player.position.y)
+	elif net_mode == "server":
+		var nids: Array = []
+		var ex: Array = []
+		var ey: Array = []
+		for e in enemies:
+			if is_instance_valid(e):
+				nids.append(_enemy_nid(e))
+				ex.append(e.position.x)
+				ey.append(e.position.y)
+		rpc("cl_positions", _players_snapshot(), nids, ex, ey)

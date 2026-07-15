@@ -41,8 +41,8 @@ func _physics_process(_delta: float) -> void:
 		facing = dir.normalized()
 	var speed := SPEED
 	if host != null:
-		speed *= host.abilities.mod_mult(GameHost.LOCAL_PLAYER, "move-speed-mult")
+		speed *= host.abilities.mod_mult(host.my_pid, "move-speed-mult")
 		if host.clock.is_night():
-			speed *= host.abilities.mod_mult(GameHost.LOCAL_PLAYER, "night-speed-mult")
+			speed *= host.abilities.mod_mult(host.my_pid, "night-speed-mult")
 	velocity = dir * speed
 	move_and_slide()

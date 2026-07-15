@@ -54,6 +54,8 @@ func set_label_name() -> void:
 func _physics_process(_delta: float) -> void:
 	if host == null or not rescued:
 		return
+	if host.net_mode == "client":
+		return   # the server walks her; we just watch
 	var center := Vector2(GameHost.WORLD.x * GameHost.TILE / 2.0, GameHost.WORLD.y * GameHost.TILE / 2.0)
 	if position.distance_to(center) > SETTLE_RADIUS:
 		# follow whoever saved you, toward home — at heel, not underfoot
