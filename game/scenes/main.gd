@@ -1494,6 +1494,9 @@ func cl_welcome(pid: int, pstate: Dictionary, wsync: Dictionary) -> void:
 	cl_world_sync(wsync)
 	message = "You cross onto the shared flats as %s. Day %d." % [_username, clock.day + 1]
 	_refresh_hud()
+	if "--probe" in OS.get_cmdline_user_args():
+		print("PROBE OK: joined as pid %d, day %d, %d enemies mirrored" % [pid, clock.day + 1, enemies.size()])
+		get_tree().quit(0)
 
 @rpc("authority", "reliable")
 func cl_player_state(p: Dictionary) -> void:
