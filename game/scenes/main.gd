@@ -11,7 +11,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.2.3"
+const GAME_VERSION := "0.2.4"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -436,6 +436,15 @@ func intent_interact() -> bool:
 	if near_work >= 0:
 		return intent_tend(near_work)
 	return intent_harvest()
+
+## Where HOME is: the hearth if one burns, else a chapel, else the workbench,
+## else the world's center. Anna settles here; so will everyone after her.
+func village_heart() -> Vector2:
+	for wid: String in ["work-hearth", "work-chapel", "work-workbench"]:
+		var pos := work_pos(wid)
+		if pos != Vector2.INF:
+			return pos
+	return Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
 
 ## The nearest placed work in reach that isn't a chapel (chapels have rites).
 func nearest_work(from: Vector2) -> int:
@@ -1736,7 +1745,9 @@ func cl_world_sync(w: Dictionary) -> void:
 	_refresh_hud()
 
 @rpc("authority", "unreliable_ordered")
-func cl_positions(players: Array, enemy_nids: Array, ex: Array, ey: Array) -> void:
+func cl_positions(players: Array, enemy_nids: Array, ex: Array, ey: Array, vx: float, vy: float) -> void:
+	if survivor != null:
+		survivor.position = survivor.position.lerp(Vector2(vx, vy), 0.5)
 	for pd: Dictionary in players:
 		var pid := int(pd.pid)
 		if pid == my_pid:
@@ -1787,4 +1798,4 @@ func _net_tick(delta: float) -> void:
 				nids.append(_enemy_nid(e))
 				ex.append(e.position.x)
 				ey.append(e.position.y)
-		rpc("cl_positions", _players_snapshot(), nids, ex, ey)
+		rpc("cl_positions", _players_snapshot(), nids, ex, ey, survivor.position.x, survivor.position.y)

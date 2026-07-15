@@ -56,10 +56,13 @@ func _physics_process(_delta: float) -> void:
 		return
 	if host.net_mode == "client":
 		return   # the server walks her; we just watch
-	var center := Vector2(GameHost.WORLD.x * GameHost.TILE / 2.0, GameHost.WORLD.y * GameHost.TILE / 2.0)
+	var center := host.village_heart()
 	if position.distance_to(center) > SETTLE_RADIUS:
-		# follow whoever saved you, toward home — at heel, not underfoot
-		var target := host.player.position if host.player.position.distance_to(center) > SETTLE_RADIUS else center
+		# follow the nearest living soul toward home — at heel, not underfoot
+		var guide: Vector2 = host.nearest_threat(position).pos
+		if guide == Vector2.INF:
+			guide = center
+		var target := guide if guide.distance_to(center) > SETTLE_RADIUS else center
 		if position.distance_to(target) <= FOLLOW_STOP:
 			velocity = Vector2.ZERO
 			move_and_slide()
