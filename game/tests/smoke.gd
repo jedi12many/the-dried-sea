@@ -116,9 +116,9 @@ func _ready() -> void:
 
 	# kneel at the shrine — attunement is a place, not a menu
 	check(not host.intent_cast(), "no god yet, no miracle")
-	host.player.position = host.shrine.position
+	host.player.position = host.shrines[0].position
 	check(host.intent_interact(), "kneel at the fallen shrine")
-	check(host.attuned and host.devotion.state[1]["god-halor"].rank == 1, "Halor is with you")
+	check("god-halor" in host.attuned_gods and host.devotion.state[1]["god-halor"].rank == 1, "Halor is with you")
 
 	# the miracle: Pillar of Salt — untouchable, rooted, and it SPENDS the god
 	var vigor0: float = host.devotion.state[1]["god-halor"].vigor
@@ -144,10 +144,10 @@ func _ready() -> void:
 	host.inventory.add(1, "item-bronze-salvage", 4)
 	check(host.intent_build("work-chapel"), "a chapel to Halor rises")
 	var dry: float = host.devotion.state[1]["god-halor"].vigor
-	host.player.position = host.chapel_pos
+	host.player.position = host.chapels["god-halor"]
 	check(host.intent_interact(), "lead the evening rite")
 	check(host.devotion.state[1]["god-halor"].vigor > dry, "worship restores what casting spent")
-	check(not host.intent_rite(), "one rite a day — Halor keeps slow time")
+	check(not host.intent_rite("god-halor"), "one rite a day — Halor keeps slow time")
 
 	# the stranded survivor joins the village and prays
 	host.player.position = host.survivor.position
@@ -192,6 +192,35 @@ func _ready() -> void:
 	var fed_max := host.stats.max_hp(1)
 	host.stats.tick(3600.0)
 	check(host.stats.max_hp(1) < fed_max, "meals wear off with the hours")
+
+	# --- the second god: Maren, the Storm-Mother ----------------------------
+	check(not host.intent_cast("inv-call-squall"), "no storm without the Storm-Mother")
+	host.player.position = host.shrines[1].position
+	check(host.intent_interact(), "kneel at the storm shrine on the east edge")
+	check("god-maren" in host.attuned_gods, "Maren is with you — two gods now")
+	check("work-lightning-rod" in host.menu_works(), "her storm-craft opens on the build menu")
+
+	# the squall: lightning falls on whatever crowds you
+	var prey := _enemy_of(host, "creature-salt-hound")
+	check(prey != null, "a hound remains to learn about weather")
+	host.player.position = prey.position + Vector2(60, 0)
+	var prey_hp := host.stats.hp(prey)
+	var m_vigor: float = host.devotion.state[1]["god-maren"].vigor
+	check(host.intent_cast("inv-call-squall"), "call the squall")
+	check(host.stats.hp(prey) < prey_hp or _enemy_of(host, "creature-salt-hound") != prey, "the bolt came down on the mark")
+	check(host.devotion.state[1]["god-maren"].vigor < m_vigor, "and Maren paid for it")
+
+	# her own chapel, her own rites
+	host.inventory.add(1, "item-wreck-timber", 20)
+	host.inventory.add(1, "item-salt", 10)
+	host.inventory.add(1, "item-bronze-salvage", 4)
+	check(host.intent_build("work-chapel"), "a second chapel rises")
+	check(host.chapels.has("god-maren"), "dedicated to the Storm-Mother")
+	var m_dry: float = host.devotion.state[1]["god-maren"].vigor
+	host.player.position = host.chapels["god-maren"]
+	check(host.intent_interact(), "lead her rite")
+	check(host.devotion.state[1]["god-maren"].vigor > m_dry, "worship restores the storm")
+	check(host.devotion.devotion_spent(1) == 2, "two gods, two devotion points — the budget holds")
 
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)

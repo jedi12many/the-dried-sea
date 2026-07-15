@@ -15,6 +15,10 @@ var speed := 60.0
 var attack_damage := 8.0
 var peaceful := false   # ambient archetypes never chase or bite
 var _cooldown := 0.0
+var _stun := 0.0
+
+func stun(seconds: float) -> void:
+	_stun = maxf(_stun, seconds)
 
 func setup(game_host: GameHost, id: String) -> void:
 	host = game_host
@@ -39,6 +43,10 @@ func _physics_process(delta: float) -> void:
 		return
 	if peaceful:
 		return   # crabs have nowhere to be
+	if _stun > 0.0:
+		_stun -= delta
+		velocity = Vector2.ZERO
+		return   # knocked flat by the squall
 	_cooldown = maxf(_cooldown - delta, 0.0)
 	# night belongs to the hounds: they smell farther and run harder
 	var night := host.clock.is_night()

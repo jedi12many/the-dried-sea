@@ -26,6 +26,7 @@ var hud: Label
 var hp_bar: ColorRect
 var stamina_bar: ColorRect
 var vigor_bar: ColorRect
+var maren_bar: ColorRect
 var daynight: CanvasModulate
 var resource_nodes: Array[Area2D] = []
 var enemies: Array[DSEnemy] = []
@@ -33,11 +34,11 @@ var _minutes_since_hour := 0
 
 # the soul, playable
 const INTERACT_RANGE := 56.0
-var shrine: Node2D
+var shrines: Array[Node2D] = []
 var survivor: DSVillager
-var chapel_pos := Vector2.INF
-var attuned := false
-var rite_done_today := false
+var chapels: Dictionary = {}          # god_id -> position
+var attuned_gods: Array[String] = []
+var rites_done_today: Dictionary = {} # god_id -> bool
 var petrify_frames := 0
 var message := "Something pale stands in the north flats. It looks like it is waiting."
 var menu_label: Label
@@ -72,7 +73,7 @@ func _ready() -> void:
 	player.position = Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
 	add_child(player)
 	_spawn_enemies()
-	_spawn_shrine()
+	_spawn_shrines()
 	_spawn_survivor()
 	clock.sim_day.connect(_on_sim_day)
 	daynight = CanvasModulate.new()
@@ -119,40 +120,89 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("attack"):
 		intent_attack()
 	elif event.is_action_pressed("cast"):
-		intent_cast()
+		intent_cast("inv-pillar-of-salt")
+	elif event.is_action_pressed("cast_2"):
+		intent_cast("inv-call-squall")
 
 ## --- intents (the only door into the sim from presentation) --------------------
-## E is contextual: kneel at the shrine, rescue the stranded, hold a rite, else harvest.
+## E is contextual: kneel at a shrine, rescue the stranded, hold a rite, else harvest.
 func intent_interact() -> bool:
-	if shrine != null and player.position.distance_to(shrine.position) < INTERACT_RANGE and not attuned:
-		return intent_kneel()
+	for s in shrines:
+		var god_id: String = s.get_meta("god_id")
+		if player.position.distance_to(s.position) < INTERACT_RANGE and god_id not in attuned_gods:
+			return intent_kneel(god_id)
 	if survivor != null and not survivor.rescued and player.position.distance_to(survivor.position) < INTERACT_RANGE:
 		return intent_rescue()
-	if chapel_pos != Vector2.INF and player.position.distance_to(chapel_pos) < INTERACT_RANGE:
-		return intent_rite()
+	for god_id: String in chapels:
+		if player.position.distance_to(chapels[god_id]) < INTERACT_RANGE:
+			return intent_rite(god_id)
 	return intent_harvest()
 
-func intent_kneel() -> bool:
-	if not devotion.attune(LOCAL_PLAYER, "god-halor"):
+const KNEEL_HINTS := {
+	"god-halor": "[Q] Pillar of Salt, when the pinch comes.",
+	"god-maren": "[R] Call the Squall, when they crowd you.",
+}
+
+func intent_kneel(god_id: String) -> bool:
+	if not devotion.attune(LOCAL_PLAYER, god_id):
 		return false
-	attuned = true
-	message = "You kneel at the fallen shrine. A slow, warm voice: 'The sea left. The salt stayed.'\nHALOR is with you — [Q] Pillar of Salt, when the pinch comes. His strength is not endless."
+	attuned_gods.append(god_id)
+	var god := registry.get_entity(god_id)
+	message = "You kneel at the fallen shrine. %s: '%s'\n%s is with you — %s Their strength is not endless." % [
+		str(god.voice.tone).split(";")[0], str(god.voice.sampleLine),
+		str(god.name).to_upper(), str(KNEEL_HINTS.get(god_id, ""))]
+	_toggle_build_menu(false)
 	_refresh_hud()
 	return true
 
-func intent_cast() -> bool:
-	if not attuned:
-		return false
-	var inv: Dictionary = devotion.cast(LOCAL_PLAYER, "inv-pillar-of-salt")
+## Cast an invocation and hand its data-defined effects to the executor.
+func intent_cast(invocation_id: String = "inv-pillar-of-salt") -> bool:
+	var inv: Dictionary = devotion.cast(LOCAL_PLAYER, invocation_id)
 	if inv.is_empty():
-		message = "Halor has nothing left to give. Build him a chapel; hold a rite."
-		_refresh_hud()
+		var found := devotion._find_invocation(invocation_id)
+		if not found.is_empty() and found.god_id in attuned_gods:
+			message = "%s has nothing left to give. Build them a chapel; hold a rite." % str(registry.get_entity(found.god_id).name)
+			_refresh_hud()
 		return false
-	petrify_frames = 6 * 60  # rooted and untouchable
-	player.modulate = Color("cfd0ce")
-	message = "You become the thing the sea could never wear down."
+	for effect: Dictionary in inv.get("effects", []):
+		_apply_effect(effect)
+	message = str(inv.text)
 	_refresh_hud()
 	return true
+
+## The effect executor: data-defined invocation effects become world changes.
+func _apply_effect(effect: Dictionary) -> void:
+	match str(effect.get("type", "")):
+		"petrify-invulnerable":
+			petrify_frames = int(float(effect.get("duration", 6)) * 60.0)
+			player.modulate = Color("cfd0ce")
+		"aoe-knockdown":
+			var radius := float(effect.get("radius", 8)) * TILE
+			for e in enemies.duplicate():
+				if is_instance_valid(e) and player.position.distance_to(e.position) <= radius:
+					e.stun(2.5)
+		"lightning-strikes":
+			var strikes := int(effect.get("magnitude", 3))
+			var radius := float(effect.get("radius", 8)) * TILE
+			var in_range := enemies.filter(func(e: DSEnemy) -> bool:
+				return is_instance_valid(e) and player.position.distance_to(e.position) <= radius)
+			in_range.sort_custom(func(a: DSEnemy, b: DSEnemy) -> bool:
+				return player.position.distance_to(a.position) < player.position.distance_to(b.position))
+			for i in mini(strikes, in_range.size()):
+				var target: DSEnemy = in_range[i]
+				_flash_bolt(target.position)
+				if stats.damage(target, 25.0):
+					_on_enemy_killed(target)
+		_:
+			pass  # unimplemented effect types are silently inert at this stage
+
+func _flash_bolt(at: Vector2) -> void:
+	var bolt := ColorRect.new()
+	bolt.size = Vector2(3, 40)
+	bolt.position = at + Vector2(-1, -40)
+	bolt.color = Color("c9a648")
+	add_child(bolt)
+	get_tree().create_timer(0.25).timeout.connect(bolt.queue_free)
 
 func intent_rescue() -> bool:
 	survivor.rescue()
@@ -160,14 +210,14 @@ func intent_rescue() -> bool:
 	_refresh_hud()
 	return true
 
-func intent_rite() -> bool:
-	if rite_done_today:
-		message = "The rite is held once a day. Halor keeps slow time."
+func intent_rite(god_id: String) -> bool:
+	if rites_done_today.get(god_id, false):
+		message = "The rite is held once a day. The gods keep slow time."
 		_refresh_hud()
 		return false
-	rite_done_today = true
-	devotion.rite_day(LOCAL_PLAYER, "god-halor", "chapel", 1)
-	message = "You lead the evening rite. The shrine-light steadies a little."
+	rites_done_today[god_id] = true
+	devotion.rite_day(LOCAL_PLAYER, god_id, "chapel", 1)
+	message = "You lead the rite at %s's chapel. The shrine-light steadies a little." % str(registry.get_entity(god_id).name)
 	_refresh_hud()
 	return true
 
@@ -212,12 +262,11 @@ func intent_eat() -> bool:
 ## appear once you're attuned — recipes arrive with faith.
 func menu_works() -> Array:
 	var order := ["neutral", "god-halor", "god-maren", "god-neris", "god-vessa", "god-ghal"]
-	var attuned_gods := ["neutral"]
-	if attuned:
-		attuned_gods.append("god-halor")
+	var visible_sets := ["neutral"]
+	visible_sets.append_array(attuned_gods)
 	var out: Array = []
 	for god_id: String in order:
-		if god_id not in attuned_gods:
+		if god_id not in visible_sets:
 			continue
 		for work: Dictionary in registry.all_of("work"):
 			if work.get("godId", "") == god_id and not work.get("grim", false):
@@ -306,8 +355,14 @@ func intent_build(work_id: String) -> bool:
 		Vector2(28, 28) if work_id != "work-chapel" else Vector2(40, 48), fallback)
 	visual.position = player.position + Vector2(40, 0)
 	if work_id == "work-chapel":
-		chapel_pos = visual.position
-		message = "A chapel to Halor, raised from wreck-timber. Hold rites here [E] — his strength returns through worship."
+		# dedicate to the first attuned god who lacks one
+		for god_id: String in attuned_gods:
+			if not chapels.has(god_id):
+				chapels[god_id] = visual.position
+				if god_id == "god-maren":
+					visual.modulate = Color(0.82, 0.88, 1.0)
+				message = "A chapel to %s, raised from wreck-timber. Hold rites here [E] — their strength returns through worship." % str(registry.get_entity(god_id).name)
+				break
 	add_child(visual)
 	_refresh_hud()
 	return true
@@ -367,19 +422,20 @@ func _spawn_resource_nodes() -> void:
 			add_child(node)
 			resource_nodes.append(node)
 
-func _spawn_shrine() -> void:
-	shrine = Node2D.new()
-	shrine.position = Vector2(WORLD.x * TILE / 2.0, TILE * 5.0)  # the north flats
+func _spawn_shrines() -> void:
+	# Halor waits in the north; Maren on the east edge, where the weather comes from.
+	_spawn_one_shrine("god-halor", Vector2(WORLD.x * TILE / 2.0, TILE * 5.0), Color.WHITE)
+	_spawn_one_shrine("god-maren", Vector2(WORLD.x * TILE - TILE * 4.0, WORLD.y * TILE / 2.0), Color(0.82, 0.88, 1.0))
+
+func _spawn_one_shrine(god_id: String, pos: Vector2, tint: Color) -> void:
+	var s := Node2D.new()
+	s.position = pos
+	s.set_meta("god_id", god_id)
 	var visual := SpriteKit.sprite("shrine", Vector2(44, 44), Color("dce8e4"))
-	shrine.add_child(visual)
-	if SpriteKit.texture("shrine") == null:
-		for offset: Vector2 in [Vector2(-12, -6), Vector2(0, -14), Vector2(12, -4)]:
-			var pillar := ColorRect.new()
-			pillar.size = Vector2(8, 24)
-			pillar.position = offset + Vector2(-4, -6)
-			pillar.color = Color("f7f5ee")
-			shrine.add_child(pillar)
-	add_child(shrine)
+	visual.modulate = tint
+	s.add_child(visual)
+	add_child(s)
+	shrines.append(s)
 
 func _spawn_survivor() -> void:
 	survivor = DSVillager.new()
@@ -389,9 +445,9 @@ func _spawn_survivor() -> void:
 
 func _on_sim_day(_day: int) -> void:
 	var conditions: Array = ["rested"]
-	if rite_done_today:
+	if rites_done_today.values().any(func(v: bool) -> bool: return v):
 		conditions.append("riteAttended")
-	rite_done_today = false
+	rites_done_today.clear()
 	for id: int in village.tribesmen:
 		village.drift_day(id, conditions)
 	devotion.villager_trickle_day(LOCAL_PLAYER, "god-halor", village.devout_count("god-halor"))
@@ -464,8 +520,18 @@ func _build_hud() -> void:
 	vigor_bar = ColorRect.new()
 	vigor_bar.position = Vector2(13, 169)
 	vigor_bar.size = Vector2(0, 8)
-	vigor_bar.color = Color("5da8a0")   # the votive flame, placeholder-shaped
+	vigor_bar.color = Color("5da8a0")   # Halor's votive flame, placeholder-shaped
 	layer.add_child(vigor_bar)
+	var maren_back := ColorRect.new()
+	maren_back.position = Vector2(12, 182)
+	maren_back.size = Vector2(160, 10)
+	maren_back.color = Color("4a3021")
+	layer.add_child(maren_back)
+	maren_bar = ColorRect.new()
+	maren_bar.position = Vector2(13, 183)
+	maren_bar.size = Vector2(0, 8)
+	maren_bar.color = Color("aebfc9")   # Maren's storm-light
+	layer.add_child(maren_bar)
 	menu_label = Label.new()
 	menu_label.position = Vector2(12, 200)
 	menu_label.add_theme_color_override("font_color", Color("3b3428"))
@@ -478,11 +544,17 @@ func _refresh_bars() -> void:
 		return
 	hp_bar.size.x = 158.0 * stats.hp(LOCAL_PLAYER) / maxf(stats.max_hp(LOCAL_PLAYER), 1.0)
 	stamina_bar.size.x = 158.0 * stats.stamina(LOCAL_PLAYER) / maxf(stats.max_stamina(LOCAL_PLAYER), 1.0)
-	if attuned:
+	if "god-halor" in attuned_gods:
 		var s: Dictionary = devotion.state.get(LOCAL_PLAYER, {}).get("god-halor", {})
 		vigor_bar.size.x = 158.0 * float(s.get("vigor", 0)) / devotion.max_vigor("god-halor")
 	else:
 		vigor_bar.size.x = 0.0
+	if maren_bar != null:
+		if "god-maren" in attuned_gods:
+			var m: Dictionary = devotion.state.get(LOCAL_PLAYER, {}).get("god-maren", {})
+			maren_bar.size.x = 158.0 * float(m.get("vigor", 0)) / devotion.max_vigor("god-maren")
+		else:
+			maren_bar.size.x = 0.0
 
 func _refresh_hud() -> void:
 	if hud == null:
@@ -496,7 +568,7 @@ func _refresh_hud() -> void:
 		"  — night. NIGHT BELONGS TO THE HOUNDS." if clock.is_night() else "",
 		"  |  fed ×%d" % fed if fed > 0 else "",
 		inv if inv != "" else "(empty hands)",
-		"  [Q] Pillar of Salt" if attuned else "", message]
+		("  [Q] Pillar of Salt" if "god-halor" in attuned_gods else "") + ("  [R] Call the Squall" if "god-maren" in attuned_gods else ""), message]
 
 ## --- helpers ------------------------------------------------------------------------
 static func _setup_input() -> void:
@@ -504,7 +576,7 @@ static func _setup_input() -> void:
 		"move_left": [KEY_A, KEY_LEFT], "move_right": [KEY_D, KEY_RIGHT],
 		"move_up": [KEY_W, KEY_UP], "move_down": [KEY_S, KEY_DOWN],
 		"interact": [KEY_E], "craft": [KEY_C], "build": [KEY_B], "eat": [KEY_F],
-		"attack": [KEY_SPACE, KEY_J], "cast": [KEY_Q],
+		"attack": [KEY_SPACE, KEY_J], "cast": [KEY_Q], "cast_2": [KEY_R],
 	}
 	for action: String in keys:
 		if InputMap.has_action(action):
