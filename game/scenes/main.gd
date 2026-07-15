@@ -11,7 +11,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.2.7"
+const GAME_VERSION := "0.2.8"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -168,10 +168,19 @@ func _ready() -> void:
 	elif "--screenshot-camp" in OS.get_cmdline_user_args():
 		inventory.add(acting_pid, "item-wreck-timber", 12)
 		inventory.add(acting_pid, "item-rope", 4)
-		inventory.add(acting_pid, "item-driftwood", 8)
+		inventory.add(acting_pid, "item-driftwood", 40)
 		intent_build("work-workbench")            # plants the camp ring
-		player.position = camp_center + Vector2(90, 40)
-		intent_build("work-driftwood-wall")
+		# lay an L of wall: two horizontal, then a rotated vertical turning the corner
+		var base := camp_center + Vector2(0, 120)
+		for i in 3:
+			player.position = base + Vector2(i * 34 - 40, 0)
+			intent_build("work-driftwood-wall")
+		for j in 3:
+			player.position = base + Vector2(28, j * 30 - 40)
+			intent_build("work-driftwood-wall")
+			var last := works._next_id - 1
+			_rotate_work(last)   # turn the side pieces upright
+		player.position = base + Vector2(-10, 10)
 		_screenshot_and_quit()
 	elif "--screenshot-boss" in OS.get_cmdline_user_args():
 		player.position = Vector2(TILE * 9.0, TILE * 7.0)
@@ -384,6 +393,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion and drag_work_id >= 0:
 		(work_visuals[drag_work_id] as Node2D).position = (get_global_mouse_position() / 16.0).round() * 16.0
+		return
+	# right-click a placed piece to spin it 90° (walls into corners and sides)
+	if event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_RIGHT \
+			and (event as InputEventMouseButton).pressed and not menu_open and not sheet_open and net_mode != "server":
+		var mouse := get_global_mouse_position()
+		for inst_id: Variant in work_visuals:
+			if is_instance_valid(work_visuals[inst_id]) \
+					and (work_visuals[inst_id] as Node2D).position.distance_to(mouse) < 30.0:
+				if net_mode == "client":
+					rpc_id(1, "srv_intent", "rotate_work", [int(inst_id)])
+				else:
+					_rotate_work(int(inst_id))
+				break
 		return
 	if sheet_open and event is InputEventKey and event.pressed:
 		var skey := (event as InputEventKey).physical_keycode
@@ -1109,6 +1131,18 @@ func _move_work(inst_id: int, pos: Vector2) -> void:
 	if net_mode == "server":
 		rpc("cl_world_sync", _world_sync())
 
+## Rotate a placed work 90° (walls, fences — everything can turn).
+func _rotate_work(inst_id: int) -> void:
+	if not works.placed.has(inst_id):
+		return
+	var inst: Dictionary = works.placed[inst_id]
+	inst.rot = (int(inst.get("rot", 0)) + 90) % 360
+	if work_visuals.has(inst_id) and is_instance_valid(work_visuals[inst_id]):
+		(work_visuals[inst_id] as Node2D).rotation_degrees = float(inst.rot)
+	sfx("build")
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+
 ## Shared by building and loading: the physical body of a placed work.
 ## chapel_hint maps god_id -> [x, y] from a save; empty when building live.
 func _spawn_work_visual(inst_id: int, work_id: String, pos: Vector2, chapel_hint: Dictionary) -> void:
@@ -1144,6 +1178,8 @@ func _spawn_work_visual(inst_id: int, work_id: String, pos: Vector2, chapel_hint
 				visual.modulate = Color(0.82, 0.88, 1.0)
 			visual.add_child(_world_label("chapel of %s" % str(registry.get_entity(god_id).name), Vector2(0, 30)))
 	visual.set_meta("inst_id", inst_id)
+	if works.placed.has(inst_id):
+		visual.rotation_degrees = float(works.placed[inst_id].get("rot", 0))
 	work_visuals[inst_id] = visual
 	add_child(visual)
 
@@ -1538,7 +1574,7 @@ func _refresh_hud() -> void:
 		weather = "  — THE GREAT STORM"
 	elif "god-maren" in attuned_for(my_pid) and (clock.day + 1) % 4 == 3:
 		weather = "  — Maren whispers: storm tomorrow"
-	hud.text = "Day %d, %02d:%02d%s%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [T] tally  [SPACE] attack%s\n%s" % [
+	hud.text = "Day %d, %02d:%02d%s%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [T] tally  [SPACE] attack  [drag/R-click] move·turn builds%s\n%s" % [
 		clock.day + 1, clock.minute_of_day / 60, clock.minute_of_day % 60, weather,
 		"  — night. NIGHT BELONGS TO THE HOUNDS." if clock.is_night() else "",
 		"  |  fed ×%d" % fed if fed > 0 else "", _direction_hints(),
@@ -1708,6 +1744,7 @@ func srv_intent(kind: String, args: Array) -> void:
 		"allocate": abilities.allocate(acting_pid, str(args[0]))
 		"deallocate": abilities.deallocate(acting_pid, str(args[0]))
 		"move_work": _move_work(int(args[0]), Vector2(float(args[1]), float(args[2])))
+		"rotate_work": _rotate_work(int(args[0]))
 	rpc_id(peer_id, "cl_player_state", _player_state(acting_pid))
 	rpc("cl_world_sync", _world_sync())
 

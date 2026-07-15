@@ -59,6 +59,16 @@ func _ready() -> void:
 	check(host.inventory.count(1, "item-driftwood") == 8, "and it didn't spend the materials")
 	host.player.position = host.camp_center + Vector2(80, 0)  # back inside
 	check(host.intent_build("work-driftwood-wall"), "inside the ring, the wall goes up")
+	# rotate the wall so it can turn a corner
+	var wall_inst := -1
+	for iid: Variant in host.works.placed:
+		if str(host.works.placed[iid].work_id) == "work-driftwood-wall":
+			wall_inst = int(iid)
+	host._rotate_work(wall_inst)
+	check(int(host.works.placed[wall_inst].get("rot", 0)) == 90, "right-click turns the wall 90°")
+	check((host.work_visuals[wall_inst] as Node2D).rotation_degrees == 90.0, "and the piece visibly turns")
+	host._rotate_work(wall_inst); host._rotate_work(wall_inst); host._rotate_work(wall_inst)
+	check(int(host.works.placed[wall_inst].get("rot", 0)) == 0, "four turns comes full circle")
 	host.camp_center = Vector2.INF   # loosen for the scattered mechanic-tests below
 
 	# station crafting now unlocked
