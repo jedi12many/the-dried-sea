@@ -11,7 +11,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.2.6"
+const GAME_VERSION := "0.2.7"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -72,6 +72,11 @@ var message := "Something pale stands in the north flats. It looks like it is wa
 var menu_label: Label
 var menu_open := false
 var menu_mode := "build"   # "build" | "craft"
+
+# the camp: the first structure plants it; everything after builds within the ring
+const CAMP_RADIUS := 320.0
+var camp_center := Vector2.INF
+var camp_ring: Line2D
 
 # persistence
 var save_path := "user://dried-sea-save.json"
@@ -160,6 +165,14 @@ func _ready() -> void:
 		attuned_for(acting_pid).append("god-halor")
 		_toggle_menu(true, "build")
 		_screenshot_and_quit()
+	elif "--screenshot-camp" in OS.get_cmdline_user_args():
+		inventory.add(acting_pid, "item-wreck-timber", 12)
+		inventory.add(acting_pid, "item-rope", 4)
+		inventory.add(acting_pid, "item-driftwood", 8)
+		intent_build("work-workbench")            # plants the camp ring
+		player.position = camp_center + Vector2(90, 40)
+		intent_build("work-driftwood-wall")
+		_screenshot_and_quit()
 	elif "--screenshot-boss" in OS.get_cmdline_user_args():
 		player.position = Vector2(TILE * 9.0, TILE * 7.0)
 		_screenshot_and_quit()
@@ -181,6 +194,7 @@ func save_game() -> void:
 		"player_pos": [player.position.x, player.position.y],
 		"attuned": attuned.duplicate(true),
 		"chapels": _chapels_to_dict(),
+		"camp": [camp_center.x, camp_center.y] if camp_center != Vector2.INF else null,
 		"rites_done_today": rites_done_today.duplicate(),
 		"harvested_indices": harvested_indices.duplicate(),
 		"boss_dead": boss_dead,
@@ -211,6 +225,10 @@ func load_game() -> void:
 		attuned = {1: g.get("attuned_gods", [])}
 	net_players = g.get("net_players", {})
 	next_pid = int(g.get("next_pid", 1))
+	var camp: Variant = g.get("camp", null)
+	if camp != null:
+		camp_center = Vector2(float(camp[0]), float(camp[1]))
+		_update_camp_ring()
 	rites_done_today = g.get("rites_done_today", {})
 	message = str(g.get("message", "The flats are as you left them."))
 	# world state: remove harvested nodes, rebuild work visuals, restore the boss & Anna
@@ -455,8 +473,49 @@ func intent_interact() -> bool:
 
 ## Where HOME is: the hearth if one burns, else a chapel, else the workbench,
 ## else the world's center. Anna settles here; so will everyone after her.
+## Set / move the camp anchor and redraw its ring. Server broadcasts on change.
+func _set_camp(pos: Vector2) -> void:
+	camp_center = pos
+	_update_camp_ring()
+
+func _update_camp_ring() -> void:
+	if net_mode == "server":
+		return
+	if camp_ring == null:
+		camp_ring = Line2D.new()
+		camp_ring.width = 3.0
+		camp_ring.default_color = Color(0.42, 0.36, 0.26, 0.65)   # a salt-line drawn in the dust
+		camp_ring.z_index = -7
+		# a dashed ring of stakes reads better than a solid circle in pixel art
+		var pts := PackedVector2Array()
+		var seg := 64
+		for i in range(seg + 1):
+			if i % 2 == 0:   # dash: skip every other segment
+				if pts.size() > 0:
+					camp_ring.points = pts   # (Line2D can't do gaps; use posts instead)
+			var a := TAU * i / float(seg)
+			pts.append(Vector2(cos(a), sin(a)) * CAMP_RADIUS)
+		camp_ring.points = pts
+		add_child(camp_ring)
+		# little boundary stakes at the compass points
+		for k in 8:
+			var a := TAU * k / 8.0
+			var stake := SpriteKit.sprite("salt_pillar", Vector2(6, 12), Color("cfd8d2"))
+			stake.position = Vector2(cos(a), sin(a)) * CAMP_RADIUS
+			stake.modulate = Color(1, 1, 1, 0.8)
+			stake.scale = Vector2(0.6, 0.6)
+			camp_ring.add_child(stake)
+	camp_ring.visible = camp_center != Vector2.INF
+	if camp_center != Vector2.INF:
+		camp_ring.position = camp_center
+
 func village_heart() -> Vector2:
-	for wid: String in ["work-hearth", "work-chapel", "work-workbench"]:
+	var hearth := work_pos("work-hearth")
+	if hearth != Vector2.INF:
+		return hearth
+	if camp_center != Vector2.INF:
+		return camp_center
+	for wid: String in ["work-chapel", "work-workbench"]:
 		var pos := work_pos(wid)
 		if pos != Vector2.INF:
 			return pos
@@ -965,10 +1024,21 @@ func intent_build(work_id: String) -> bool:
 		rpc_id(1, "srv_intent", "build", [work_id])
 		return true
 	var work := registry.get_entity(work_id)
-	if work.is_empty() or not inventory.pay(acting_pid, work.get("buildCost", [])):
-		_refresh_hud()
+	if work.is_empty():
 		return false
 	var pos := acting_pos() + Vector2(40, 0)
+	# the camp ring: first structure plants it, the rest must fall inside it
+	if camp_center != Vector2.INF and pos.distance_to(camp_center) > CAMP_RADIUS:
+		message = "Too far from camp. Stand within the ring to build — or drag a piece to found it wider."
+		_refresh_hud()
+		return false
+	if not inventory.pay(acting_pid, work.get("buildCost", [])):
+		message = "Not enough to raise the %s." % str(work.name).to_lower()
+		_refresh_hud()
+		return false
+	if camp_center == Vector2.INF:
+		_set_camp(pos)
+		message = "You plant your camp here. Build within the ring; the flats are kinder inside it."
 	var inst_id := works.place(work_id, acting_pid, pos)
 	sfx("build", pos)
 	if work_id == "work-chapel":
@@ -1018,8 +1088,18 @@ func _move_work(inst_id: int, pos: Vector2) -> void:
 		return
 	var inst: Dictionary = works.placed[inst_id]
 	var old_pos := Vector2(float(inst.get("x", 0)), float(inst.get("y", 0)))
+	# dragging a piece may FOUND or RE-CENTER the camp if it's the only anchor;
+	# otherwise it must land inside the ring
+	if camp_center != Vector2.INF and works.placed.size() > 1 and pos.distance_to(camp_center) > CAMP_RADIUS:
+		if work_visuals.has(inst_id) and is_instance_valid(work_visuals[inst_id]):
+			(work_visuals[inst_id] as Node2D).position = old_pos   # snap back
+		message = "That's outside the camp ring."
+		_refresh_hud()
+		return
 	inst.x = pos.x
 	inst.y = pos.y
+	if camp_center == Vector2.INF or works.placed.size() == 1:
+		_set_camp(pos)   # a lone structure carries the camp with it
 	# a chapel carries its dedication with it
 	for god_id: String in chapels.keys():
 		if (chapels[god_id] as Vector2).distance_to(old_pos) < 1.0:
@@ -1677,6 +1757,7 @@ func _world_sync() -> Dictionary:
 		"day": clock.day, "minute": clock.minute_of_day,
 		"harvested": harvested_indices, "extra_defs": extra_defs,
 		"works": works.placed, "chapels": _chapels_to_dict(),
+		"camp": [camp_center.x, camp_center.y] if camp_center != Vector2.INF else null,
 		"boss_dead": boss_dead, "enemies": enemy_list, "specials": specials,
 		"villager": {"rescued": survivor.rescued, "x": survivor.position.x, "y": survivor.position.y},
 	}
@@ -1731,6 +1812,9 @@ func cl_world_sync(w: Dictionary) -> void:
 	clock.day = int(w.get("day", 0))
 	clock.minute_of_day = int(w.get("minute", 360))
 	daynight.color = _tint_for_minute(clock.minute_of_day)
+	var wcamp: Variant = w.get("camp", null)
+	camp_center = Vector2(float(wcamp[0]), float(wcamp[1])) if wcamp != null else Vector2.INF
+	_update_camp_ring()
 	# extra node defs the server minted after world-gen (boss hoard etc.)
 	for d: Dictionary in w.get("extra_defs", []):
 		if int(d.idx) >= node_defs.size():

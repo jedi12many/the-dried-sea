@@ -51,6 +51,16 @@ func _ready() -> void:
 	check(host.works.count_of("work-workbench") == 1, "the sim knows the workbench stands")
 	check(not host.intent_build("work-workbench"), "can't afford a second — costs are real")
 
+	# --- the camp ring: first structure plants it, the rest build inside ------
+	check(host.camp_center != Vector2.INF, "the workbench planted the camp")
+	host.inventory.add(1, "item-driftwood", 8)
+	host.player.position = host.camp_center + Vector2(host.CAMP_RADIUS + 200.0, 0)  # way out
+	check(not host.intent_build("work-driftwood-wall"), "can't build out past the ring")
+	check(host.inventory.count(1, "item-driftwood") == 8, "and it didn't spend the materials")
+	host.player.position = host.camp_center + Vector2(80, 0)  # back inside
+	check(host.intent_build("work-driftwood-wall"), "inside the ring, the wall goes up")
+	host.camp_center = Vector2.INF   # loosen for the scattered mechanic-tests below
+
 	# station crafting now unlocked
 	host.inventory.add(1, "item-driftwood", 1)
 	check(host.intent_craft("recipe-salt-harvest"), "workbench enables salt harvest")
@@ -175,6 +185,7 @@ func _ready() -> void:
 	host.inventory.add(1, "item-wreck-timber", 20)
 	host.inventory.add(1, "item-salt", 10)
 	host.inventory.add(1, "item-bronze-salvage", 4)
+	host.camp_center = Vector2.INF
 	check(host.intent_build("work-chapel"), "a chapel to Halor rises")
 	var dry: float = host.devotion.state[1]["god-halor"].vigor
 	host.player.position = host.chapels["god-halor"]
@@ -248,6 +259,7 @@ func _ready() -> void:
 	host.inventory.add(1, "item-wreck-timber", 8)
 	host.inventory.add(1, "item-salt", 13)
 	check("work-smokehouse" in host.menu_works(), "Halor's smokehouse is on the build menu (you knelt)")
+	host.camp_center = Vector2.INF
 	check(host.intent_build("work-smokehouse"), "smokehouse raised")
 	var crab2 := _enemy_of(host, "creature-scuttle-crab")
 	host.player.position = crab2.position
@@ -285,6 +297,7 @@ func _ready() -> void:
 	host.inventory.add(1, "item-wreck-timber", 20)
 	host.inventory.add(1, "item-salt", 10)
 	host.inventory.add(1, "item-bronze-salvage", 4)
+	host.camp_center = Vector2.INF
 	check(host.intent_build("work-chapel"), "a second chapel rises")
 	check(host.chapels.has("god-maren"), "dedicated to the Storm-Mother")
 	var m_dry: float = host.devotion.state[1]["god-maren"].vigor
@@ -458,6 +471,7 @@ func _ready() -> void:
 	host.inventory.add(1, "item-wreck-timber", 8)
 	host.inventory.add(1, "item-salt", 12)
 	host.player.position = center + Vector2(-200, 0)
+	host.camp_center = Vector2.INF
 	check(host.intent_build("work-smokehouse") or host.works.count_of("work-smokehouse") > 0, "a smokehouse stands")
 	host.clock.minute_of_day = 8 * 60  # working morning
 	var post := host.work_pos("work-smokehouse")
