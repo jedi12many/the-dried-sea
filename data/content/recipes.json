@@ -203,5 +203,53 @@
         "item-crab-meat"
       ]
     }
+  },
+  {
+    "id": "recipe-salt-cloak",
+    "track": "tree",
+    "output": {
+      "itemId": "item-salt-cloak",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-ship-cloth",
+        "qty": 3
+      },
+      {
+        "itemId": "item-salt",
+        "qty": 4
+      }
+    ],
+    "stationWorkId": "work-workbench",
+    "unlock": {
+      "byItems": [
+        "item-ship-cloth"
+      ]
+    }
+  },
+  {
+    "id": "recipe-bronze-vest",
+    "track": "tree",
+    "output": {
+      "itemId": "item-bronze-vest",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-bronze-salvage",
+        "qty": 8
+      },
+      {
+        "itemId": "item-ship-cloth",
+        "qty": 2
+      }
+    ],
+    "stationWorkId": "work-workbench",
+    "unlock": {
+      "byItems": [
+        "item-bronze-salvage"
+      ]
+    }
   }
 ]

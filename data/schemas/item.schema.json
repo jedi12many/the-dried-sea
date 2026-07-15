@@ -12,6 +12,7 @@
     "category": { "enum": ["material", "tool", "weapon", "armor", "food", "offering", "remnant", "relic", "misc"] },
     "tier": { "type": "integer", "minimum": 0, "maximum": 3 },
     "stackSize": { "type": "integer", "minimum": 1, "default": 20 },
+    "slot": { "enum": ["weapon", "armor", "trinket"], "description": "if set, the item is equippable into this doll slot" },
     "stats": { "type": "object", "additionalProperties": { "type": "number" } },
     "effects": { "$ref": "common.schema.json#/$defs/effectList" },
     "offeringValue": { "type": "number", "description": "worship-rate buydown value; offerings only" },

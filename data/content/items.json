@@ -177,7 +177,11 @@
         "target": "enemy"
       }
     ],
-    "text": "A legend of the storm-line."
+    "text": "A legend of the storm-line.",
+    "slot": "weapon",
+    "stats": {
+      "damage": 26
+    }
   },
   {
     "id": "item-neriss-hourglass",
@@ -213,7 +217,11 @@
       "godAffinity": "god-ur-noth",
       "history": "It costs what you'd expect. It gives more than you'd hope. That is how he works."
     },
-    "text": "A legend of the dark-line."
+    "text": "A legend of the dark-line.",
+    "slot": "armor",
+    "stats": {
+      "defense": 10
+    }
   },
   {
     "id": "item-lighthouse-keepers-lantern",
@@ -236,7 +244,8 @@
     "stats": {
       "damage": 15
     },
-    "text": "The sea's first gift to anyone in trouble: a heavy piece of somewhere else's boat."
+    "text": "The sea's first gift to anyone in trouble: a heavy piece of somewhere else's boat.",
+    "slot": "weapon"
   },
   {
     "id": "item-bronze-knife",
@@ -247,7 +256,8 @@
     "stats": {
       "damage": 19
     },
-    "text": "Salvage-bronze, workbench-ground. It held a ship together; it will hold you together."
+    "text": "Salvage-bronze, workbench-ground. It held a ship together; it will hold you together.",
+    "slot": "weapon"
   },
   {
     "id": "item-salt-votive",
@@ -268,5 +278,29 @@
       "foodMinutes": 12
     },
     "text": "Cured, wrapped, dependable. The taste of getting home anyway."
+  },
+  {
+    "id": "item-salt-cloak",
+    "name": "Salt-Crust Cloak",
+    "category": "armor",
+    "tier": 0,
+    "stackSize": 1,
+    "slot": "armor",
+    "stats": {
+      "defense": 3
+    },
+    "text": "Ship-cloth stiffened with salt until it turns a claw. Smells like the flats. Everything does."
+  },
+  {
+    "id": "item-bronze-vest",
+    "name": "Bronze-Scale Vest",
+    "category": "armor",
+    "tier": 1,
+    "stackSize": 1,
+    "slot": "armor",
+    "stats": {
+      "defense": 7
+    },
+    "text": "Salvage-bronze sewn to a cloth backing, scale over scale. Heavy, honest, and it has stopped worse than a hound."
   }
 ]

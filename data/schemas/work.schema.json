@@ -10,6 +10,7 @@
     "name": { "type": "string" },
     "workingName": { "type": "boolean" },
     "godId": { "type": "string", "description": "god-* id, or 'neutral' for the tier-0 set" },
+    "blocks": { "type": "boolean", "description": "if true, gets a physics collision body — blocks the player and beasts" },
     "category": { "enum": ["structure", "station", "storage", "comfort", "defense", "worship", "grim", "infrastructure"] },
     "favorTierRequired": { "type": "integer", "minimum": 0, "maximum": 3, "default": 0 },
     "buildCost": { "$ref": "common.schema.json#/$defs/cost" },

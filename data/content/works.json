@@ -11,7 +11,8 @@
       }
     ],
     "text": "Tier-0. Keeps out the wind and the optimists.",
-    "purpose": "A wall segment. Blocks hounds and marks your ground."
+    "purpose": "A wall segment. Blocks hounds and marks your ground.",
+    "blocks": true
   },
   {
     "id": "work-workbench",

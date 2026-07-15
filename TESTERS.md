@@ -21,6 +21,7 @@ on a **shared server** with the other testers. Thanks for helping.
 | F | eat (food raises your maximums — eat BEFORE trouble) |
 | C | CRAFT MENU — every recipe, its cost, and where to make it |
 | B | BUILD MENU — every building and what it does |
+| I | your PACK & paper doll — equip weapons and armor |
 | T | character sheet (the Tally) |
 | Q / R | miracles, once you've knelt to the right god |
 | X | consume a god-remnant (think first) |

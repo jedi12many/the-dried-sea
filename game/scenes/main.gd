@@ -11,7 +11,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.2.9"
+const GAME_VERSION := "0.3.0"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -45,6 +45,11 @@ var sheet_back: ColorRect
 var sheet_open := false
 var consumed_hp: Dictionary = {}   # pid -> permanent strength eaten from gods
 var cheat_death_used: Dictionary = {}  # pid -> bool (resets at dawn)
+var equipped: Dictionary = {}      # pid -> {weapon: item_id, armor: item_id}
+var doll_label: Label
+var doll_back: ColorRect
+var doll_sprite: Node2D
+var doll_open := false
 
 var player: DSPlayer
 var hud: Label
@@ -165,6 +170,16 @@ func _ready() -> void:
 		attuned_for(acting_pid).append("god-halor")
 		_toggle_menu(true, "build")
 		_screenshot_and_quit()
+	elif "--screenshot-doll" in OS.get_cmdline_user_args():
+		inventory.add(acting_pid, "item-bronze-knife", 1)
+		inventory.add(acting_pid, "item-salt-cloak", 1)
+		inventory.add(acting_pid, "item-driftwood-club", 1)
+		inventory.add(acting_pid, "item-smoked-crab", 3)
+		inventory.add(acting_pid, "item-salt", 12)
+		equip_toggle(acting_pid, "item-bronze-knife")
+		equip_toggle(acting_pid, "item-salt-cloak")
+		_toggle_doll(true)
+		_screenshot_and_quit()
 	elif "--screenshot-camp" in OS.get_cmdline_user_args():
 		inventory.add(acting_pid, "item-wreck-timber", 12)
 		inventory.add(acting_pid, "item-rope", 4)
@@ -209,6 +224,7 @@ func save_game() -> void:
 		"boss_dead": boss_dead,
 		"abilities": abilities.state.duplicate(true),
 		"consumed_hp": consumed_hp.duplicate(true),
+		"equipped": equipped.duplicate(true),
 		"net_players": net_players.duplicate(), "next_pid": next_pid,
 		"survivor": {"rescued": survivor.rescued if survivor != null else false,
 			"tribesman_id": survivor.tribesman_id if survivor != null else -1,
@@ -262,6 +278,7 @@ func load_game() -> void:
 		abilities.state[1] = {"earned": back_pay, "alloc": {}}
 		message += "\nThe flats have been keeping count: %d TEMPER owed. [T] to spend it." % back_pay
 	consumed_hp = SaveSystem._int_keys(g.get("consumed_hp", {})) if g.has("consumed_hp") else {1: float(g.get("consumed_hp_bonus", 0.0))}
+	equipped = SaveSystem._int_keys(g.get("equipped", {}))
 	_recompute_vitals()
 	if boss_dead:
 		for e in enemies.duplicate():
@@ -411,6 +428,14 @@ func _unhandled_input(event: InputEvent) -> void:
 					_rotate_work(int(inst_id))
 				break
 		return
+	if doll_open and event is InputEventKey and event.pressed:
+		var dkey := (event as InputEventKey).physical_keycode
+		if dkey >= KEY_1 and dkey <= KEY_9:
+			intent_equip_index(int(dkey - KEY_1))
+			return
+		if dkey == KEY_ESCAPE or dkey == KEY_I:
+			_toggle_doll(false)
+			return
 	if sheet_open and event is InputEventKey and event.pressed:
 		var skey := (event as InputEventKey).physical_keycode
 		if skey >= KEY_1 and skey <= KEY_6:
@@ -464,6 +489,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("sheet"):
 		sfx("ui")
 		_toggle_sheet(not sheet_open)
+	elif event.is_action_pressed("inventory"):
+		sfx("ui")
+		_toggle_doll(not doll_open)
 	elif event.is_action_pressed("save"):
 		save_game()
 		message = "The flats will remember. (saved)"
@@ -889,7 +917,7 @@ func intent_attack() -> bool:
 	sfx("swing")
 	sfx("hit", target.position)
 	target.on_hit()
-	if inventory.count(acting_pid, "item-marens-own-harpoon") > 0 \
+	if equipped_item(acting_pid, "weapon") == "item-marens-own-harpoon" \
 			or abilities.talent_active(acting_pid, "talent-bolt-marked"):
 		_flash_bolt(target.position)   # strike true and the bolt comes down on your mark
 		sfx("bolt", target.position)
@@ -897,17 +925,44 @@ func intent_attack() -> bool:
 		_on_enemy_killed(target)
 	return true
 
-const WEAPONS := {"item-marens-own-harpoon": 26.0, "item-bronze-knife": 19.0, "item-driftwood-club": 15.0}
+func equipped_item(pid: int, slot: String) -> String:
+	return str(equipped.get(pid, {}).get(slot, ""))
+
+## Equip an item from the pack into its doll slot; any current occupant returns
+## to the pack. Toggling an already-equipped item unequips it.
+func equip_toggle(pid: int, item_id: String) -> void:
+	var item := registry.get_entity(item_id)
+	var slot: String = str(item.get("slot", ""))
+	if slot == "":
+		return
+	if not equipped.has(pid):
+		equipped[pid] = {}
+	var current: String = equipped_item(pid, slot)
+	if current == item_id:                       # unequip
+		equipped[pid].erase(slot)
+		inventory.add(pid, item_id, 1)
+	else:
+		if inventory.count(pid, item_id) <= 0:
+			return
+		inventory.pay(pid, [{"itemId": item_id, "qty": 1}])
+		if current != "":
+			inventory.add(pid, current, 1)       # old piece back to the pack
+		equipped[pid][slot] = item_id
+	_recompute_vitals(pid)
 
 func attack_damage() -> float:
-	# the best weapon in your pack decides the swing — legends, then bronze, then wood
+	# your EQUIPPED weapon decides the swing; bare hands otherwise
+	var w := equipped_item(acting_pid, "weapon")
 	var dmg := ATTACK_DAMAGE
-	for weapon: String in WEAPONS:
-		if inventory.count(acting_pid, weapon) > 0:
-			dmg = maxf(dmg, float(WEAPONS[weapon]))
+	if w != "":
+		dmg = float(registry.get_entity(w).get("stats", {}).get("damage", ATTACK_DAMAGE))
 	dmg = abilities.mod_add(acting_pid, "melee-damage", dmg)
 	dmg = abilities.mod_add(acting_pid, "bolt-on-swing", dmg)
 	return dmg
+
+func armor_defense(pid: int) -> float:
+	var a := equipped_item(pid, "armor")
+	return float(registry.get_entity(a).get("stats", {}).get("defense", 0.0)) if a != "" else 0.0
 
 func attack_stamina_cost() -> float:
 	return maxf(ATTACK_STAMINA - abilities.mod_add(acting_pid, "attack-cost-reduction"), 5.0)
@@ -945,6 +1000,7 @@ func damage_player(amount: float, pid: int = -1) -> void:
 		pid = my_pid
 	if int(petrify.get(pid, 0)) > 0:
 		return  # the salt holds
+	amount = maxf(amount - armor_defense(pid), 1.0)   # worn scale turns the worst of it
 	# The Returning: what goes out comes back — once a day, even you
 	if abilities.talent_active(pid, "talent-the-returning") and not cheat_death_used.get(pid, false) \
 			and stats.hp(pid) - amount <= 0.0:
@@ -1103,6 +1159,75 @@ func _toggle_sheet(open: bool) -> void:
 			lines.append("    %s %s (%d) — %s" % ["■" if lit else "□", str(talent.name), int(talent.threshold), str(talent.text)])
 	sheet_label.text = "\n".join(lines)
 
+## --- the pack & the paper doll ----------------------------------------------
+## Equippable things you can act on: currently-equipped first (to unequip),
+## then equippable items sitting in the pack.
+func equippable_list() -> Array:
+	var out: Array = []
+	for slot: String in ["weapon", "armor", "trinket"]:
+		var cur := equipped_item(acting_pid, slot)
+		if cur != "":
+			out.append(cur)
+	for item_id: String in inventory._inv(acting_pid).keys():
+		if str(registry.get_entity(item_id).get("slot", "")) != "" and item_id not in out:
+			out.append(item_id)
+	return out
+
+func _toggle_doll(open: bool) -> void:
+	doll_open = open
+	if doll_label == null:
+		return
+	doll_label.visible = open
+	doll_back.visible = open
+	doll_sprite.visible = open
+	if not open:
+		return
+	var weapon := equipped_item(acting_pid, "weapon")
+	var armor := equipped_item(acting_pid, "armor")
+	var lines := ["THE PACK & THE DOLL — number to equip/unequip, [I] to close", ""]
+	lines.append("        WEAPON: %s%s" % [
+		str(registry.get_entity(weapon).name) if weapon != "" else "— bare hands —",
+		"  (%d dmg)" % int(attack_damage()) if true else ""])
+	lines.append("        ARMOR:  %s%s" % [
+		str(registry.get_entity(armor).name) if armor != "" else "— none —",
+		"  (−%d dmg)" % int(armor_defense(acting_pid)) if armor != "" else ""])
+	lines.append("        health %d / %d" % [int(stats.hp(acting_pid)), int(stats.max_hp(acting_pid))])
+	lines.append("")
+	var equippable := equippable_list()
+	if equippable.size() > 0:
+		lines.append("EQUIP:")
+		for i in equippable.size():
+			var it := registry.get_entity(str(equippable[i]))
+			var slot := str(it.get("slot", ""))
+			var worn := equipped_item(acting_pid, slot) == str(equippable[i])
+			var stat := ""
+			if slot == "weapon":
+				stat = "  %d dmg" % int(it.get("stats", {}).get("damage", 0))
+			elif slot == "armor":
+				stat = "  −%d dmg" % int(it.get("stats", {}).get("defense", 0))
+			lines.append("  %d. %s%s%s" % [i + 1, str(it.name), stat, "   ✓ worn — press to remove" if worn else ""])
+		lines.append("")
+	lines.append("PACK:")
+	var any := false
+	for item_id: String in inventory._inv(acting_pid).keys():
+		lines.append("  %s ×%d" % [str(registry.get_entity(item_id).name), inventory.count(acting_pid, item_id)])
+		any = true
+	if not any:
+		lines.append("  (empty hands)")
+	doll_label.text = "\n".join(lines)
+
+func intent_equip_index(i: int) -> void:
+	var equippable := equippable_list()
+	if i < 0 or i >= equippable.size():
+		return
+	var item_id := str(equippable[i])
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "equip", [item_id])
+	else:
+		equip_toggle(acting_pid, item_id)
+	if doll_open:
+		_toggle_doll(true)
+
 ## One-shot audio, guarded for the headless server.
 func sfx(name: String, at := Vector2.INF, base_db := 0.0) -> void:
 	if net_mode != "server" and sound != null:
@@ -1217,6 +1342,14 @@ func _spawn_work_visual(inst_id: int, work_id: String, pos: Vector2, chapel_hint
 	visual.set_meta("inst_id", inst_id)
 	if works.placed.has(inst_id):
 		visual.rotation_degrees = float(works.placed[inst_id].get("rot", 0))
+	if work.get("blocks", false):
+		var body := StaticBody2D.new()
+		var shape := CollisionShape2D.new()
+		var rect := RectangleShape2D.new()
+		rect.size = Vector2(30, 14)   # a wall segment's footprint (rotates with the visual)
+		shape.shape = rect
+		body.add_child(shape)
+		visual.add_child(body)
 	work_visuals[inst_id] = visual
 	add_child(visual)
 
@@ -1581,6 +1714,25 @@ func _build_hud() -> void:
 	menu_label.add_theme_font_size_override("font_size", 14)
 	menu_label.visible = false
 	layer.add_child(menu_label)
+	# the pack & paper doll
+	doll_back = ColorRect.new()
+	doll_back.position = Vector2(360, 120)
+	doll_back.size = Vector2(560, 470)
+	doll_back.color = Color(0.949, 0.937, 0.910, 0.95)
+	doll_back.visible = false
+	layer.add_child(doll_back)
+	doll_sprite = SpriteKit.sprite("survivor", Vector2(22, 30), Color("c8865a"))
+	doll_sprite.position = Vector2(790, 400)
+	doll_sprite.scale = Vector2(4.0, 4.0)
+	doll_sprite.visible = false
+	layer.add_child(doll_sprite)
+	doll_label = Label.new()
+	doll_label.position = Vector2(376, 132)
+	doll_label.custom_minimum_size = Vector2(528, 0)
+	doll_label.add_theme_color_override("font_color", Color("3b3428"))
+	doll_label.add_theme_font_size_override("font_size", 13)
+	doll_label.visible = false
+	layer.add_child(doll_label)
 
 func _refresh_bars() -> void:
 	if hp_bar == null:
@@ -1611,7 +1763,7 @@ func _refresh_hud() -> void:
 		weather = "  — THE GREAT STORM"
 	elif "god-maren" in attuned_for(my_pid) and (clock.day + 1) % 4 == 3:
 		weather = "  — Maren whispers: storm tomorrow"
-	hud.text = "Day %d, %02d:%02d%s%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [T] tally  [SPACE] attack  [drag] move  [R-click] turn  [Shift+R-click] reclaim%s\n%s" % [
+	hud.text = "Day %d, %02d:%02d%s%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [I] pack  [T] tally  [SPACE] attack  [drag] move  [R-click] turn  [Shift+R-click] reclaim%s\n%s" % [
 		clock.day + 1, clock.minute_of_day / 60, clock.minute_of_day % 60, weather,
 		"  — night. NIGHT BELONGS TO THE HOUNDS." if clock.is_night() else "",
 		"  |  fed ×%d" % fed if fed > 0 else "", _direction_hints(),
@@ -1644,7 +1796,7 @@ static func _setup_input() -> void:
 		"move_up": [KEY_W, KEY_UP], "move_down": [KEY_S, KEY_DOWN],
 		"interact": [KEY_E], "craft": [KEY_C], "build": [KEY_B], "eat": [KEY_F],
 		"attack": [KEY_SPACE, KEY_J], "cast": [KEY_Q], "cast_2": [KEY_R], "consume": [KEY_X],
-		"save": [KEY_F5], "sheet": [KEY_T],
+		"save": [KEY_F5], "sheet": [KEY_T], "inventory": [KEY_I],
 	}
 	for action: String in keys:
 		if InputMap.has_action(action):
@@ -1780,6 +1932,7 @@ func srv_intent(kind: String, args: Array) -> void:
 		"consume": intent_consume_remnant()
 		"allocate": abilities.allocate(acting_pid, str(args[0]))
 		"deallocate": abilities.deallocate(acting_pid, str(args[0]))
+		"equip": equip_toggle(acting_pid, str(args[0]))
 		"move_work": _move_work(int(args[0]), Vector2(float(args[1]), float(args[2])))
 		"rotate_work": _rotate_work(int(args[0]))
 		"demolish_work": _demolish_work(int(args[0]))
@@ -1810,6 +1963,7 @@ func _player_state(pid: int) -> Dictionary:
 		"abilities": abilities.state.get(pid, {}),
 		"devotion": devotion.state.get(pid, {}),
 		"attuned": attuned_for(pid),
+		"equipped": equipped.get(pid, {}),
 		"petrify": int(petrify.get(pid, 0)),
 		"message": message,
 	}
@@ -1872,7 +2026,10 @@ func cl_player_state(p: Dictionary) -> void:
 	abilities.state[my_pid] = p.get("abilities", {})
 	devotion.state[my_pid] = p.get("devotion", {})
 	attuned[my_pid] = p.get("attuned", [])
+	equipped[my_pid] = p.get("equipped", {})
 	petrify_frames = int(p.get("petrify", 0))
+	if doll_open:
+		_toggle_doll(true)
 	if player != null:
 		player.modulate = Color("cfd0ce") if petrify_frames > 0 else Color.WHITE
 	if str(p.get("message", "")) != "":

@@ -64,6 +64,12 @@ func _ready() -> void:
 	for iid: Variant in host.works.placed:
 		if str(host.works.placed[iid].work_id) == "work-driftwood-wall":
 			wall_inst = int(iid)
+	# a wall is a real barrier now: it carries a physics body
+	var has_body := false
+	for child in (host.work_visuals[wall_inst] as Node2D).get_children():
+		if child is StaticBody2D:
+			has_body = true
+	check(has_body, "the wall blocks — it has a collision body")
 	host._rotate_work(wall_inst)
 	check(int(host.works.placed[wall_inst].get("rot", 0)) == 90, "right-click turns the wall 90°")
 	check((host.work_visuals[wall_inst] as Node2D).rotation_degrees == 90.0, "and the piece visibly turns")
@@ -94,11 +100,25 @@ func _ready() -> void:
 	host.inventory.add(1, "item-driftwood", 4)
 	host.inventory.add(1, "item-rope", 1)
 	check(host.intent_craft("recipe-driftwood-club"), "a club from the sea's first gift")
+	host.equip_toggle(1, "item-driftwood-club")
+	check(host.equipped_item(1, "weapon") == "item-driftwood-club", "the club is in hand")
 	check(host.attack_damage() == 15.0, "the club swings harder")
 	host.inventory.add(1, "item-bronze-salvage", 4)
 	host.inventory.add(1, "item-wreck-timber", 1)
 	check(host.intent_craft("recipe-bronze-knife"), "bronze knife off the workbench")
-	check(host.attack_damage() == 19.0, "bronze beats driftwood")
+	host.equip_toggle(1, "item-bronze-knife")
+	check(host.inventory.count(1, "item-driftwood-club") == 1, "swapping weapons returns the club to the pack")
+	check(host.attack_damage() == 19.0, "equipped bronze beats the club")
+	# armor turns a blow; a naked hit lands full
+	host.inventory.add(1, "item-salt-cloak", 1)
+	var full := host.stats.hp(1)
+	host.damage_player(20.0, 1)
+	var naked_loss := full - host.stats.hp(1)
+	host.stats.actors[1].hp = full
+	host.equip_toggle(1, "item-salt-cloak")
+	check(host.equipped_item(1, "armor") == "item-salt-cloak", "the cloak is worn")
+	host.damage_player(20.0, 1)
+	check((full - host.stats.hp(1)) < naked_loss, "the salt-crust cloak turns some of the blow")
 
 	# tending: stand at the workbench, put it to work
 	var wb_pos := host.work_pos("work-workbench")
@@ -424,7 +444,8 @@ func _ready() -> void:
 	host.inventory.add(1, "item-wreck-timber", 4)
 	check(host.intent_craft("recipe-marens-own-harpoon"), "THE RITE IS DONE — the harpoon is forged")
 	check(host.inventory.count(1, "item-marens-own-harpoon") == 1, "Maren's Own Harpoon, in hand")
-	check(host.attack_damage() > 20.0, "the legend changes what your hands can do")
+	host.equip_toggle(1, "item-marens-own-harpoon")
+	check(host.attack_damage() > 20.0, "the equipped legend changes what your hands can do")
 	check(host.inventory.count(1, "item-harpoon-verse") == 3, "the song is knowledge — not consumed")
 
 	host.clock.day = 4
