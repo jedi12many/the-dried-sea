@@ -177,7 +177,14 @@ func load_game() -> void:
 		var inst: Dictionary = works.placed[inst_id]
 		_spawn_work_visual(str(inst.work_id), Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))), chapel_dict)
 	boss_dead = bool(g.get("boss_dead", false))
-	abilities.state = SaveSystem._int_keys(g.get("abilities", {}))
+	if g.has("abilities"):
+		abilities.state = SaveSystem._int_keys(g.get("abilities", {}))
+	else:
+		# pre-Tally save: back-pay everything the flats already owe this player
+		var back_pay := 6 + clock.day * 2 + (2 if boss_dead else 0) + attuned_gods.size() \
+			+ (1 if bool(g.get("survivor", {}).get("rescued", false)) else 0)
+		abilities.state[LOCAL_PLAYER] = {"earned": back_pay, "alloc": {}}
+		message += "\nThe flats have been keeping count: %d TEMPER owed. [T] to spend it." % back_pay
 	consumed_hp_bonus = float(g.get("consumed_hp_bonus", 0.0))
 	cheat_death_used_today = bool(g.get("cheat_death_used_today", false))
 	_recompute_vitals()

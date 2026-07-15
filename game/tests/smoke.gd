@@ -395,6 +395,20 @@ func _ready() -> void:
 	check(host3.stats.max_hp(1) == host.stats.max_hp(1), "and the body still follows it")
 	host3.queue_free()
 
+	# regression (Jeff, playtest): a PRE-Tally save must back-pay Temper, not zero it
+	var raw := SaveSystem.read_file(host.save_path)
+	(raw.game as Dictionary).erase("abilities")
+	SaveSystem.write_file("user://smoke-pretally-save.json", raw)
+	var host4: GameHost = load("res://scenes/main.tscn").instantiate()
+	host4.skip_autoload = true
+	host4.save_path = "user://smoke-pretally-save.json"
+	add_child(host4)
+	await get_tree().physics_frame
+	host4.load_game()
+	check(host4.abilities.earned(1) >= 8, "old saves get back-pay (%d Temper owed)" % host4.abilities.earned(1))
+	check(host4.abilities.allocate(1, "virtue-grit"), "and can spend it immediately")
+	host4.queue_free()
+
 	# --- Anna keeps a day ------------------------------------------------------
 	var center := Vector2(GameHost.WORLD.x * GameHost.TILE / 2.0, GameHost.WORLD.y * GameHost.TILE / 2.0)
 	host.survivor.position = center  # settled
