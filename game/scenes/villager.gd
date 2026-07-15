@@ -24,8 +24,11 @@ var is_captive := false     # a bound raider (origin "taken") — held, not free
 var days_held := 0
 var task := ""              # dynamically assigned: wood/food/salt/bronze
 var needs_help := false     # fled danger — waiting at home for the flats to clear
+var _strike_cd := 0.0
 const DANGER_RADIUS := 150.0
 const SAFE_RADIUS := 260.0
+const WARDEN_SPEED := 150.0
+const WARDEN_STRIKE_RANGE := 34.0
 var _wander_target := Vector2.ZERO
 var _rng := RandomNumberGenerator.new()
 var _label: Label
@@ -100,16 +103,30 @@ func _mood_word() -> String:
 		"desertion": return "ready to leave"
 		_: return mood
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if host == null or not rescued:
 		return
 	if host.net_mode == "client":
 		return   # the server walks them; we just watch
 	var center := host.village_heart()
+	# WARDENS answer the horn: they run at threats and fight, never flee
+	if def_class == "class-warden" and not is_captive:
+		_strike_cd = maxf(_strike_cd - delta, 0.0)
+		var duty: Vector2 = host.warden_duty(self)
+		if duty != Vector2.INF:
+			if position.distance_to(duty) > WARDEN_STRIKE_RANGE:
+				velocity = (duty - position).normalized() * WARDEN_SPEED
+			else:
+				velocity = Vector2.ZERO
+				if _strike_cd == 0.0:
+					_strike_cd = 0.9
+					host.warden_strike(self)
+			move_and_slide()
+			return
 	# DANGER: a working villager caught near a beast drops everything and runs home
-	if rescued and not is_captive:
+	if rescued and not is_captive and def_class != "class-warden":
 		var edist := host.enemy_near_dist(position)
-		if not needs_help and edist < DANGER_RADIUS:
+		if not needs_help and edist < DANGER_RADIUS and not host.warden_covers(position):
 			needs_help = true
 			_refresh_label()
 			if host.net_mode != "client":

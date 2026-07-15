@@ -24,6 +24,7 @@ on a **shared server** with the other testers. Thanks for helping.
 | I | your PACK & paper doll — equip weapons and armor |
 | V | THE VILLAGE — your people, their jobs, moods, and needs |
 | — | RAIDERS: beat one low and it surrenders — [E] to bind it for the yoke |
+| — | WARDENS (a villager trade): auto-run to danger and fight — they even subdue raiders for you |
 | G | pool your food into the village stores |
 | T | character sheet (the Tally) |
 | Q / R | miracles, once you've knelt to the right god |

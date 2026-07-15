@@ -271,9 +271,21 @@ func _ready() -> void:
 
 	# NEED HELP: the danger helper reports the nearest beast; villagers flee on it
 	check(host.enemy_near_dist(Vector2(-8000, -8000)) > DSVillager.DANGER_RADIUS, "far off, no danger to a worker")
-	if host.enemies.size() > 0 and is_instance_valid(host.enemies[0]):
-		var e0: DSEnemy = host.enemies[0]
-		check(host.enemy_near_dist(e0.position) < DSVillager.DANGER_RADIUS, "a beast on the spot IS danger")
+	# WARDENS answer the horn: they cover workers and strike beasts
+	var ward = host.villagers[0]
+	ward.def_class = "class-warden"; ward.rescued = true
+	if ward.tribesman_id < 0:
+		ward.tribesman_id = host.village.add_tribesman("Guard", "class-warden", "rescued", [], "god-halor")
+	ward.position = Vector2(2000, 2000)
+	check(host.warden_covers(ward.position), "a worker beside a warden is covered — won't flee")
+	check(not host.warden_covers(ward.position + Vector2(400, 0)), "but not one across the camp")
+	var wh := DSEnemy.new(); wh.position = ward.position + Vector2(20, 0)
+	wh.setup(host, "creature-salt-hound"); host.add_child(wh); host.enemies.append(wh)
+	check(host.warden_duty(ward) != Vector2.INF, "a beast near the camp is a warden's duty")
+	var wh_hp := host.stats.hp(wh)
+	host.warden_strike(ward)
+	check(host.stats.hp(wh) < wh_hp, "the warden strikes the beast")
+	host.stats.unregister(wh); host.enemies.erase(wh); wh.queue_free()
 	# feeding: pool food, and a fed villager doesn't go hungry
 	host.inventory.add(1, "item-smoked-crab", 5)
 	host.intent_give_food()

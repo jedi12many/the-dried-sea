@@ -11,7 +11,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.4.2"
+const GAME_VERSION := "0.4.3"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -2010,8 +2010,69 @@ func enemy_near_dist(from: Vector2) -> float:
 			best = minf(best, from.distance_to(e.position))
 	return best
 
+func _nearest_hostile(from: Vector2, within: float) -> DSEnemy:
+	var best := within
+	var found: DSEnemy = null
+	for e in enemies:
+		if is_instance_valid(e) and not e.peaceful and not e.surrendered and not e.is_boss:
+			var d := from.distance_to(e.position)
+			if d < best:
+				best = d
+				found = e
+	return found
+
+const WARDEN_DEFEND_RADIUS := 560.0
+const WARDEN_GUARD_RADIUS := 130.0
+const WARDEN_DAMAGE := 13.0
+
+## Where a warden is needed: the hostile nearest a threatened worker, else the
+## hostile nearest the camp. INF = all quiet (the warden goes back to chores).
+func warden_duty(_warden: DSVillager) -> Vector2:
+	# a beast menacing any working villager is the priority
+	for v: DSVillager in all_villagers():
+		if v.rescued and not v.is_captive and v.def_class != "class-warden":
+			var e := _nearest_hostile(v.position, DSVillager.DANGER_RADIUS + 40.0)
+			if e != null:
+				return e.position
+	# else defend the camp itself
+	var near := _nearest_hostile(village_heart(), WARDEN_DEFEND_RADIUS)
+	return near.position if near != null else Vector2.INF
+
+## A warden strikes the beast in front of them.
+func warden_strike(warden: DSVillager) -> void:
+	var e := _nearest_hostile(warden.position, DSVillager.WARDEN_STRIKE_RANGE)
+	if e == null:
+		return
+	_flash_swing(e.position)
+	sfx("hit", e.position)
+	e.on_hit()
+	if e.subduable and not e.surrendered:
+		var mh := float(registry.get_entity(e.creature_id).get("stats", {}).get("hp", 60))
+		if stats.hp(e) - WARDEN_DAMAGE <= mh * 0.25:
+			stats.actors[e].hp = mh * 0.25
+			e.surrender()   # wardens subdue raiders — a captive for the yoke
+			return
+	if stats.damage(e, WARDEN_DAMAGE):
+		_on_enemy_killed(e)
+
+## Is a warden standing guard over this spot? A covered worker doesn't flee.
+func warden_covers(pos: Vector2) -> bool:
+	for v: DSVillager in all_villagers():
+		if v.rescued and not v.is_captive and v.def_class == "class-warden" \
+				and pos.distance_to(v.position) < WARDEN_GUARD_RADIUS:
+			return true
+	return false
+
 func on_villager_needs_help(v: DSVillager) -> void:
-	message = "%s fled danger and is running home — clear the flats, or send a warden." % v.display_name
+	var wardened := false
+	for w: DSVillager in all_villagers():
+		if w.rescued and not w.is_captive and w.def_class == "class-warden":
+			wardened = true
+			break
+	if wardened:
+		message = "%s is in danger — a warden is moving to them." % v.display_name
+	else:
+		message = "%s fled danger and is running home — clear the flats, or take on a warden." % v.display_name
 	_refresh_hud()
 
 func _on_sim_day(_day: int) -> void:
