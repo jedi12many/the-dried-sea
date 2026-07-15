@@ -94,7 +94,36 @@ func _physics_process(delta: float) -> void:
 			player.modulate = Color.WHITE
 			message = "The salt lets you go. Halor's strength is spent — worship gives it back."
 			_refresh_hud()
+	_update_prompt()
 	_refresh_bars()
+
+## The floating [E] prompt above the survivor's head — mirrors intent_interact's priority.
+func _update_prompt() -> void:
+	if player == null or player.prompt == null:
+		return
+	player.prompt.text = current_prompt()
+
+func current_prompt() -> String:
+	for s in shrines:
+		if player.position.distance_to(s.position) < INTERACT_RANGE and s.get_meta("god_id") not in attuned_gods:
+			return "[E] Kneel"
+	if survivor != null and not survivor.rescued and player.position.distance_to(survivor.position) < INTERACT_RANGE:
+		return "[E] Rescue her"
+	for god_id: String in chapels:
+		if player.position.distance_to(chapels[god_id]) < INTERACT_RANGE:
+			return "[E] Hold the rite" if not rites_done_today.get(god_id, false) else "(rite already held today)"
+	var best := HARVEST_RANGE
+	var best_item := ""
+	for node in resource_nodes:
+		if is_instance_valid(node) and player.position.distance_to(node.position) < best:
+			best = player.position.distance_to(node.position)
+			best_item = str(registry.get_entity(node.get_meta("item_id")).get("name", ""))
+	if best_item != "":
+		return "[E] Gather %s" % best_item
+	for e in enemies:
+		if is_instance_valid(e) and player.position.distance_to(e.position) < ATTACK_RANGE:
+			return "[SPACE] Attack"
+	return ""
 
 func _unhandled_input(event: InputEvent) -> void:
 	if menu_open and event is InputEventKey and event.pressed:
@@ -191,6 +220,7 @@ func _apply_effect(effect: Dictionary) -> void:
 			for i in mini(strikes, in_range.size()):
 				var target: DSEnemy = in_range[i]
 				_flash_bolt(target.position)
+				target.on_hit()
 				if stats.damage(target, 25.0):
 					_on_enemy_killed(target)
 		_:
@@ -207,6 +237,7 @@ func _flash_bolt(at: Vector2) -> void:
 func intent_rescue() -> bool:
 	survivor.rescue()
 	message = "%s, of the drowned coast towns. She follows you home — give her a hearth and she'll keep it.\nShe is devout: her prayers feed Halor a little every day." % survivor.display_name
+	_check_village_keys()  # if her need already stands built, she blooms on arrival
 	_refresh_hud()
 	return true
 
@@ -282,13 +313,20 @@ func _toggle_build_menu(open: bool) -> void:
 		return
 	var lines := ["BUILD — press a number, [B] to close"]
 	var options := menu_works()
+	var last_god := ""
 	for i in options.size():
 		var work := registry.get_entity(str(options[i]))
+		var god_id: String = work.get("godId", "neutral")
+		if god_id != last_god:
+			last_god = god_id
+			lines.append("· %s ·" % ("salvage" if god_id == "neutral" else str(registry.get_entity(god_id).name) + "'s works"))
 		var cost_bits: Array[String] = []
 		for c: Dictionary in work.get("buildCost", []):
 			cost_bits.append("%s×%d" % [str(registry.get_entity(str(c.itemId)).get("name", c.itemId)), int(c.qty)])
 		var afford := inventory.can_afford(LOCAL_PLAYER, work.get("buildCost", []))
 		lines.append("%d. %s%s — %s" % [i + 1, str(work.name), "" if afford else "  (can't afford)", ", ".join(cost_bits)])
+	if attuned_gods.size() < 2:
+		lines.append("· more works open when you kneel at new shrines ·")
 	menu_label.text = "\n".join(lines)
 
 func intent_craft(recipe_id: String) -> bool:
@@ -315,10 +353,25 @@ func intent_attack() -> bool:
 	if target == null:
 		return false
 	if not stats.spend_stamina(LOCAL_PLAYER, ATTACK_STAMINA):
+		message = "Too winded to swing. Breath comes back — or food raises the ceiling."
+		_refresh_hud()
 		return false
+	_flash_swing(target.position)
+	target.on_hit()
 	if stats.damage(target, ATTACK_DAMAGE):
 		_on_enemy_killed(target)
 	return true
+
+## A short slash flash toward the target — SPACE should feel like something.
+func _flash_swing(toward: Vector2) -> void:
+	var dir := (toward - player.position).normalized()
+	var slash := ColorRect.new()
+	slash.size = Vector2(22, 4)
+	slash.rotation = dir.angle()
+	slash.position = player.position + dir * 20.0
+	slash.color = Color("f7f5ee")
+	add_child(slash)
+	get_tree().create_timer(0.1).timeout.connect(slash.queue_free)
 
 func damage_player(amount: float) -> void:
 	if petrify_frames > 0:
@@ -361,11 +414,29 @@ func intent_build(work_id: String) -> bool:
 				chapels[god_id] = visual.position
 				if god_id == "god-maren":
 					visual.modulate = Color(0.82, 0.88, 1.0)
+				visual.add_child(_world_label("chapel of %s" % str(registry.get_entity(god_id).name), Vector2(0, 30)))
 				message = "A chapel to %s, raised from wreck-timber. Hold rites here [E] — their strength returns through worship." % str(registry.get_entity(god_id).name)
 				break
 	add_child(visual)
+	_check_village_keys()
 	_refresh_hud()
 	return true
+
+## Some works ARE what a villager needed (their Key). The chapel gives the
+## devout their shrine; the hearth gives the storyteller their fire.
+const WORK_KEYS := {"work-chapel": "shrine-access", "work-hearth": "audience-kept"}
+
+func _check_village_keys() -> void:
+	for work_id: String in WORK_KEYS:
+		if works.count_of(work_id) == 0:
+			continue
+		for id: int in village.tribesmen:
+			var rec: Dictionary = village.tribesmen[id]
+			if rec.key == WORK_KEYS[work_id] and not rec.key_met:
+				village.meet_key(id)
+				message = "%s has what they needed — watch them work now." % str(rec.name)
+				if survivor != null and survivor.tribesman_id == id:
+					survivor.modulate = Color(1.12, 1.04, 0.92)  # bloomed: a touch warmer
 
 ## --- world (placeholder) ---------------------------------------------------------
 func _build_ground() -> void:
@@ -434,8 +505,20 @@ func _spawn_one_shrine(god_id: String, pos: Vector2, tint: Color) -> void:
 	var visual := SpriteKit.sprite("shrine", Vector2(44, 44), Color("dce8e4"))
 	visual.modulate = tint
 	s.add_child(visual)
+	s.add_child(_world_label("a fallen shrine", Vector2(0, 24)))
 	add_child(s)
 	shrines.append(s)
+
+## Small in-world nameplates so landmarks read as themselves.
+func _world_label(text: String, offset: Vector2) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.position = offset + Vector2(-70, 0)
+	l.custom_minimum_size = Vector2(140, 0)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.add_theme_color_override("font_color", Color("8a7a5c"))
+	l.add_theme_font_size_override("font_size", 10)
+	return l
 
 func _spawn_survivor() -> void:
 	survivor = DSVillager.new()
@@ -479,10 +562,29 @@ func _on_sim_minute(_m: int) -> void:
 	if _minutes_since_hour >= 60:
 		_minutes_since_hour = 0
 		works.favor_hour()
-	var night := Color(0.42, 0.46, 0.62)
-	var day := Color(1, 1, 1)
-	daynight.color = night if clock.is_night() else day
+	daynight.color = _tint_for_minute(clock.minute_of_day)
 	_refresh_hud()
+
+## Gradual light: night -> warm dawn -> blinding day -> gold dusk -> night.
+func _tint_for_minute(m: int) -> Color:
+	const NIGHT := Color(0.42, 0.46, 0.62)
+	const DAWN := Color(0.95, 0.82, 0.72)
+	const DAY := Color(1, 1, 1)
+	const DUSK := Color(1.0, 0.85, 0.62)
+	var h := m / 60.0
+	if h < 4.0:
+		return NIGHT
+	if h < 5.0:
+		return NIGHT.lerp(DAWN, h - 4.0)
+	if h < 7.0:
+		return DAWN.lerp(DAY, (h - 5.0) / 2.0)
+	if h < 18.0:
+		return DAY
+	if h < 20.0:
+		return DAY.lerp(DUSK, (h - 18.0) / 2.0)
+	if h < 21.5:
+		return DUSK.lerp(NIGHT, (h - 20.0) / 1.5)
+	return NIGHT
 
 func _build_hud() -> void:
 	var layer := CanvasLayer.new()
@@ -563,12 +665,28 @@ func _refresh_hud() -> void:
 	for item_id: String in inventory._inv(LOCAL_PLAYER):
 		inv += "%s ×%d   " % [str(registry.get_entity(item_id).get("name", item_id)), inventory.count(LOCAL_PLAYER, item_id)]
 	var fed: int = (stats.actors.get(LOCAL_PLAYER, {}).get("foods", []) as Array).size()
-	hud.text = "Day %d, %02d:%02d%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [SPACE] attack%s\n%s" % [
+	hud.text = "Day %d, %02d:%02d%s%s%s\n%s\n[WASD] move  [E] interact  [C] craft  [B] build  [F] eat  [SPACE] attack%s\n%s" % [
 		clock.day + 1, clock.minute_of_day / 60, clock.minute_of_day % 60,
 		"  — night. NIGHT BELONGS TO THE HOUNDS." if clock.is_night() else "",
-		"  |  fed ×%d" % fed if fed > 0 else "",
+		"  |  fed ×%d" % fed if fed > 0 else "", _direction_hints(),
 		inv if inv != "" else "(empty hands)",
 		("  [Q] Pillar of Salt" if "god-halor" in attuned_gods else "") + ("  [R] Call the Squall" if "god-maren" in attuned_gods else ""), message]
+
+## Where the unfinished business is: unvisited shrines, the stranded woman.
+func _direction_hints() -> String:
+	var bits: Array[String] = []
+	for s in shrines:
+		if s.get_meta("god_id") not in attuned_gods:
+			bits.append("a pale shrine %s" % _bearing(s.position))
+	if survivor != null and not survivor.rescued:
+		bits.append("someone stranded %s" % _bearing(survivor.position))
+	return "  |  " + ";  ".join(bits) if bits.size() > 0 else ""
+
+func _bearing(to: Vector2) -> String:
+	var d := to - player.position
+	const DIRS := ["E", "SE", "S", "SW", "W", "NW", "N", "NE"]
+	var idx := wrapi(roundi(d.angle() / (PI / 4.0)), 0, 8)
+	return "%s, %d paces" % [DIRS[idx], int(d.length() / 32.0)]
 
 ## --- helpers ------------------------------------------------------------------------
 static func _setup_input() -> void:

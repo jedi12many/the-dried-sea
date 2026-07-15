@@ -16,9 +16,33 @@ var attack_damage := 8.0
 var peaceful := false   # ambient archetypes never chase or bite
 var _cooldown := 0.0
 var _stun := 0.0
+var _visual: Node2D
+var _hp_bar: ColorRect
 
 func stun(seconds: float) -> void:
 	_stun = maxf(_stun, seconds)
+
+## Hit feedback: white flash + a health sliver that appears once blooded.
+func on_hit() -> void:
+	if _visual != null:
+		_visual.modulate = Color(3, 3, 3)
+		get_tree().create_timer(0.1).timeout.connect(func() -> void:
+			if is_instance_valid(self) and _visual != null:
+				_visual.modulate = Color.WHITE)
+	if _hp_bar == null:
+		var back := ColorRect.new()
+		back.size = Vector2(18, 3)
+		back.position = Vector2(-9, -14)
+		back.color = Color("4a3021")
+		add_child(back)
+		_hp_bar = ColorRect.new()
+		_hp_bar.size = Vector2(16, 1)
+		_hp_bar.position = Vector2(-8, -13)
+		_hp_bar.color = Color("b0483c")
+		add_child(_hp_bar)
+	var creature := host.registry.get_entity(creature_id)
+	var max_hp := float(creature.get("stats", {}).get("hp", 20))
+	_hp_bar.size.x = 16.0 * clampf(host.stats.hp(self) / max_hp, 0.0, 1.0)
 
 func setup(game_host: GameHost, id: String) -> void:
 	host = game_host
@@ -31,7 +55,8 @@ func setup(game_host: GameHost, id: String) -> void:
 	host.stats.register(self, float(stats.get("hp", 20)))
 
 func _ready() -> void:
-	add_child(SpriteKit.sprite(CREATURE_SPRITES.get(creature_id, "hound"), Vector2(20, 16), Color("cfc9ba")))
+	_visual = SpriteKit.sprite(CREATURE_SPRITES.get(creature_id, "hound"), Vector2(20, 16), Color("cfc9ba"))
+	add_child(_visual)
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(16, 12)

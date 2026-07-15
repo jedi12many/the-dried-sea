@@ -158,6 +158,16 @@ func _ready() -> void:
 	host._on_sim_day(1)
 	check(host.devotion.state[1]["god-halor"].vigor > v_before_days, "her prayers feed Halor daily")
 
+	# readability: her need already stands built (the chapel) — she blooms on arrival
+	check(host.village.tribesmen[host.survivor.tribesman_id].bloomed, "Anna's Key was waiting: the chapel — she blooms")
+
+	# the prompt mirrors the world
+	host.player.position = host.chapels["god-halor"]
+	check(host.current_prompt().contains("rite"), "prompt at the chapel speaks of rites (got '%s')" % host.current_prompt())
+	host.player.position = Vector2(-9999, -9999)
+	check(host.current_prompt() == "", "no prompt in the empty flats")
+	check(host._direction_hints().contains("pale shrine"), "the HUD points at the storm shrine still waiting")
+
 	# --- hunger: hunt, eat, smoke, feast (after kneeling — Halor's works are open) ---
 	var crab := _enemy_of(host, "creature-scuttle-crab")
 	check(crab != null and crab.peaceful, "crabs have nowhere to be and no quarrel with you")

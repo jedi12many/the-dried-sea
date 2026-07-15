@@ -5,8 +5,20 @@ extends CharacterBody2D
 
 const SPEED := 140.0
 
+var facing := Vector2.DOWN
+var prompt: Label
+
 func _ready() -> void:
 	add_child(SpriteKit.sprite("survivor", Vector2(22, 30), Color("c8865a")))
+	prompt = Label.new()
+	prompt.position = Vector2(-70, -44)
+	prompt.custom_minimum_size = Vector2(140, 0)
+	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	prompt.add_theme_color_override("font_color", Color("3b3428"))
+	prompt.add_theme_color_override("font_outline_color", Color("f2efe8"))
+	prompt.add_theme_constant_override("outline_size", 4)
+	prompt.add_theme_font_size_override("font_size", 11)
+	add_child(prompt)
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(18, 26)
@@ -24,5 +36,7 @@ func _physics_process(_delta: float) -> void:
 		velocity = Vector2.ZERO   # rooted — the pillar does not walk
 		return
 	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	if dir != Vector2.ZERO:
+		facing = dir.normalized()
 	velocity = dir * SPEED
 	move_and_slide()

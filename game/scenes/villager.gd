@@ -15,10 +15,19 @@ var rescued := false
 var tribesman_id := -1
 var _wander_target := Vector2.ZERO
 var _rng := RandomNumberGenerator.new()
+var _label: Label
 
 func _ready() -> void:
 	_rng.seed = 31
 	add_child(SpriteKit.sprite("villager", Vector2(18, 26), Color("b0765a")))
+	_label = Label.new()
+	_label.text = "someone, stranded"
+	_label.position = Vector2(-70, 16)
+	_label.custom_minimum_size = Vector2(140, 0)
+	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_label.add_theme_color_override("font_color", Color("8a7a5c"))
+	_label.add_theme_font_size_override("font_size", 10)
+	add_child(_label)
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(14, 22)
@@ -29,6 +38,8 @@ func rescue() -> void:
 	rescued = true
 	tribesman_id = host.village.add_tribesman(display_name, "class-brinewife", "rescued",
 		["trait-devout", "trait-storyteller"], "god-halor")
+	if _label != null:
+		_label.text = display_name
 
 func _physics_process(_delta: float) -> void:
 	if host == null or not rescued:
