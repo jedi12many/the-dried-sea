@@ -533,6 +533,48 @@ def gen_altar() -> Image.Image:
     return img
 
 
+def gen_cot_hut() -> Image.Image:
+    """A squat driftwood sleeping hut: mismatched-plank walls under a
+    slung ship-cloth tarp roof, a dark low doorway, one warm lamp pixel."""
+    w, h = 30, 26
+    img = new_canvas(w, h)
+
+    wall_x0, wall_x1 = 4, 25
+    wall_y0, wall_y1 = 13, 23
+
+    # weathered plank wall
+    rect(img, wall_x0, wall_y0, wall_x1, wall_y1, PALETTE["WOOD_TAN"])
+    rect(img, 6, wall_y0, 7, wall_y1, PALETTE["WOOD_MED"])    # weathered plank
+    rect(img, 19, wall_y0, 20, wall_y1, PALETTE["WOOD_LIGHT"])  # sun-bleached plank
+    for seam_x in range(wall_x0 + 4, wall_x1, 4):
+        rect(img, seam_x, wall_y0, seam_x, wall_y1, PALETTE["WOOD_DARK"])
+
+    # slung tarp roof -- asymmetric drape, peak set left of wall-center
+    roof_top, roof_bottom = 3, 12
+    apex_x = 12
+    left_reach, right_reach = 13, 14  # right slope drapes further: the slant
+    for y in range(roof_top, roof_bottom + 1):
+        frac = (y - roof_top) / (roof_bottom - roof_top)
+        left = round(frac * left_reach)
+        right = round(frac * right_reach)
+        x0 = max(0, apex_x - left)
+        x1 = min(w - 1, apex_x + right)
+        hline(img, x0, x1, y, PALETTE["CLOTH"])
+    # fold-shadow creases in the slung cloth
+    hline(img, 6, 16, 7, PALETTE["BRINE_SHADE"])
+    hline(img, 5, 20, 10, PALETTE["BRINE_SHADE"])
+
+    # dark doorway, centered low
+    door_x0, door_x1 = 13, 15
+    rect(img, door_x0, 19, door_x1, wall_y1, PALETTE["WOOD_DARK"])
+
+    # warm lamplight pixel beside the doorway
+    px(img, door_x1 + 2, 21, PALETTE["GOLD"])
+
+    add_outline(img, PALETTE["WOOD_DARK"])
+    return img
+
+
 SPRITES = [
     # ground.png: UPGRADED to Gemini art (import_art.py --tile) — do not regenerate
     ("ground2.png", lambda: gen_ground(seed=2)),
@@ -546,6 +588,7 @@ SPRITES = [
     ("cloth.png", gen_cloth),
     ("salt_mound.png", gen_salt_mound),
     ("bronze.png", gen_bronze),
+    ("cot_hut.png", gen_cot_hut),
     # shrine.png: UPGRADED to Gemini art (import_art.py) � do not regenerate
     # chapel.png: UPGRADED to Gemini art (import_art.py) � do not regenerate
     # workbench.png: UPGRADED to Gemini art (import_art.py) � do not regenerate

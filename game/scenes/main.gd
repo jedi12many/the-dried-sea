@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.6.0"
+const GAME_VERSION := "0.6.1"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -1684,6 +1684,8 @@ func _toggle_village(open: bool) -> void:
 					"break at the Salt-Wheel, or Unbind in %d day(s)" % maxi(0, 3 - v.days_held)])
 				continue
 			var doing: String = {"wood": "gathering wood", "food": "cooking", "salt": "boiling salt", "bronze": "salvaging bronze"}.get(v.task, "idle")
+			if v.housed:
+				doing = "asleep"
 			var status: String = "NEEDS HELP!" if v.needs_help else ("content" if bool(rec.get("bloomed", false)) else v._mood_word())
 			if not v.needs_help and not bool(rec.get("bloomed", false)):
 				status += " — " + _villager_need(v, rec)
@@ -1891,6 +1893,32 @@ func _toggle_journal(open: bool) -> void:
 				lines.append("  · %s" % str(registry.get_entity(str(active[k].id)).title))
 	journal.text = "\n".join(lines)
 
+## --- housing: everyone gets a bunk if there's room -----------------------------
+## Deterministic: huts sorted by instance id offer `houses` bunks each; the
+## roster (sorted by tribesman id) claims them in order. Returns this villager's
+## hut door position, or INF if the village is short on roofs.
+func house_slot_for(v: DSVillager) -> Vector2:
+	var bunks: Array[Vector2] = []
+	var hut_ids: Array = []
+	for inst_id: Variant in works.placed:
+		if int(registry.get_entity(str(works.placed[inst_id].work_id)).get("houses", 0)) > 0:
+			hut_ids.append(int(inst_id))
+	hut_ids.sort()
+	for hid: int in hut_ids:
+		var inst: Dictionary = works.placed[hid]
+		var cap := int(registry.get_entity(str(inst.work_id)).get("houses", 0))
+		for b in cap:
+			bunks.append(Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))))
+	if bunks.is_empty():
+		return Vector2.INF
+	var sleepers: Array = all_villagers().filter(func(w: DSVillager) -> bool:
+		return w.rescued and not w.is_captive)
+	sleepers.sort_custom(func(a: DSVillager, b: DSVillager) -> bool: return a.tribesman_id < b.tribesman_id)
+	var i := sleepers.find(v)
+	if i < 0 or i >= bunks.size():
+		return Vector2.INF   # no bunk left — the hearth-huddle keeps them
+	return bunks[i]
+
 ## --- the Offertory: the altar's two halves, one numbered list -----------------
 ## The nearest placed altar within reach, or -1.
 func _altar_near() -> int:
@@ -2076,6 +2104,7 @@ func _spawn_work_visual(inst_id: int, work_id: String, pos: Vector2, chapel_hint
 		"work-salt-cellar": "salt_cellar", "work-lightning-rod": "lightning_rod",
 		"work-storm-cistern": "storm_cistern",
 		"work-altar-halor": "altar", "work-altar-maren": "altar",
+		"work-driftwood-cot": "cot_hut",
 	}
 	var fallback := Color("6e5138") if not work.get("grim", false) else Color("5b3a6e")
 	if work_id == "work-altar-halor":
@@ -3112,13 +3141,13 @@ func _world_sync() -> Dictionary:
 		"villager": {"rescued": survivor.rescued, "tid": survivor.tribesman_id,
 			"bloomed": bool(village.tribesmen.get(survivor.tribesman_id, {}).get("bloomed", false)),
 			"mood": survivor.mood, "task": survivor.task, "help": survivor.needs_help,
-			"x": survivor.position.x, "y": survivor.position.y},
+			"housed": survivor.housed, "x": survivor.position.x, "y": survivor.position.y},
 		"pool": villagers.map(func(v: DSVillager) -> Dictionary:
 			var rec: Dictionary = village.tribesmen.get(v.tribesman_id, {})
 			return {"nid": int(v.get_meta("nid", 0)), "name": v.display_name, "cls": v.def_class,
 				"x": v.position.x, "y": v.position.y, "rescued": v.rescued, "mood": v.mood, "job": v.job_work_id,
 				"captive": v.is_captive, "held": v.days_held, "task": v.task, "help": v.needs_help,
-				"tid": v.tribesman_id, "bloomed": bool(rec.get("bloomed", false)),
+				"housed": v.housed, "tid": v.tribesman_id, "bloomed": bool(rec.get("bloomed", false)),
 				"covered": bool(rec.get("warden_covered", true))}),
 		"stock": village_stock,
 		"sanctum": sanctum.to_save(),
@@ -3268,6 +3297,8 @@ func cl_world_sync(w: Dictionary) -> void:
 		survivor.tribesman_id = int(w.villager.get("tid", survivor.tribesman_id))
 		survivor.task = str(w.villager.get("task", survivor.task))
 		survivor.needs_help = bool(w.villager.get("help", false))
+		survivor.housed = bool(w.villager.get("housed", false))
+		survivor.visible = not survivor.housed
 		if bool(w.villager.rescued) and not survivor.rescued:
 			survivor.rescued = true
 			survivor.set_label_name()
@@ -3301,6 +3332,8 @@ func cl_world_sync(w: Dictionary) -> void:
 		body.days_held = int(pd.get("held", 0))
 		body.task = str(pd.get("task", ""))
 		body.needs_help = bool(pd.get("help", false))
+		body.housed = bool(pd.get("housed", false))
+		body.visible = not body.housed   # inside a hut, the mirror vanishes too
 		body.tribesman_id = int(pd.get("tid", -1))   # WAS DROPPED: without it the modal's roster filter rejected every mirror
 		# a display-only tribesman record so the modal renders status on the client (the sim runs server-side)
 		if body.tribesman_id >= 0:

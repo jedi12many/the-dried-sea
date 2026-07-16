@@ -24,6 +24,7 @@ var is_captive := false     # a bound raider (origin "taken") — held, not free
 var days_held := 0
 var task := ""              # dynamically assigned: wood/food/salt/bronze
 var needs_help := false     # fled danger — waiting at home for the flats to clear
+var housed := false         # tucked into a cot-hut for the night — hidden, safe
 var _strike_cd := 0.0
 const DANGER_RADIUS := 150.0
 const SAFE_RADIUS := 260.0
@@ -109,11 +110,14 @@ func _physics_process(delta: float) -> void:
 	if host.net_mode == "client":
 		return   # the server walks them; we just watch
 	var center := host.village_heart()
-	# WARDENS answer the horn: they run at threats and fight, never flee
+	# WARDENS answer the horn: they run at threats and fight, never flee —
+	# a night alarm pulls them straight out of bed
 	if def_class == "class-warden" and not is_captive:
 		_strike_cd = maxf(_strike_cd - delta, 0.0)
 		var duty: Vector2 = host.warden_duty(self)
 		if duty != Vector2.INF:
+			if housed:
+				_leave_house()
 			if position.distance_to(duty) > WARDEN_STRIKE_RANGE:
 				velocity = (duty - position).normalized() * WARDEN_SPEED
 			else:
@@ -122,6 +126,13 @@ func _physics_process(delta: float) -> void:
 					_strike_cd = 0.9
 					host.warden_strike(self)
 			move_and_slide()
+			return
+	# HOUSED: the night is someone else's problem — rest until the morning hour
+	if housed:
+		if not _is_night() or host.house_slot_for(self) == Vector2.INF:
+			_leave_house()   # morning — or the roof was reclaimed out from over them
+		else:
+			velocity = Vector2.ZERO
 			return
 	# DANGER: a working villager caught near a beast drops everything and runs home
 	if rescued and not is_captive and def_class != "class-warden":
@@ -135,14 +146,19 @@ func _physics_process(delta: float) -> void:
 			needs_help = false   # safe and home — back to work
 			_refresh_label()
 	if needs_help:
-		# run for the village heart and huddle there — each at their own slot, not in a pile
-		var huddle := center + _slot_offset()
-		if position.distance_to(huddle) > 6.0:
-			velocity = (huddle - position).normalized() * FOLLOW_SPEED
+		# at night a cot-hut is the better refuge — drop the huddle and go in
+		if _is_night() and not is_captive and host.house_slot_for(self) != Vector2.INF:
+			needs_help = false
+			_refresh_label()
 		else:
-			velocity = Vector2.ZERO
-		move_and_slide()
-		return
+			# run for the village heart and huddle there — each at their own slot, not in a pile
+			var huddle := center + _slot_offset()
+			if position.distance_to(huddle) > 6.0:
+				velocity = (huddle - position).normalized() * FOLLOW_SPEED
+			else:
+				velocity = Vector2.ZERO
+			move_and_slide()
+			return
 	if position.distance_to(center) > SETTLE_RADIUS:
 		var guide: Vector2 = host.nearest_threat(position).pos
 		if guide == Vector2.INF:
@@ -160,11 +176,34 @@ func _physics_process(delta: float) -> void:
 				velocity = (duty - position).normalized() * WANDER_SPEED * 2.2
 			else:
 				velocity = Vector2.ZERO   # at post
+				# bedtime: arriving at the hut door, they go inside
+				if _bound_for_house and _is_night():
+					_enter_house()
+					return
 		else:
 			if _wander_target == Vector2.ZERO or position.distance_to(_wander_target) < 8.0:
 				_wander_target = center + Vector2(_rng.randf_range(-110, 110), _rng.randf_range(-110, 110))
 			velocity = (_wander_target - position).normalized() * WANDER_SPEED
 	move_and_slide()
+
+## --- housing: dinner, then in for the night; out again for breakfast ----------
+func _is_night() -> bool:
+	var hour := host.clock.minute_of_day / 60
+	return hour >= 21 or hour < 6
+
+func _enter_house() -> void:
+	housed = true
+	visible = false          # the hut holds them; the flats can't
+	velocity = Vector2.ZERO
+	needs_help = false
+	_refresh_label()
+
+func _leave_house() -> void:
+	housed = false
+	visible = true
+	# step out the door, each to their own spot — breakfast is at the hearth
+	position += Vector2(0, 14) + _slot_offset() * 0.3
+	_refresh_label()
 
 ## A small, STABLE per-villager offset so folk who share a spot (the same work
 ## zone, the same chapel, the night hearth) fan into a little cluster instead of
@@ -176,19 +215,32 @@ func _slot_offset() -> Vector2:
 	var rad := 22.0 + float(k % 4) * 9.0
 	return Vector2(cos(ang), sin(ang)) * rad
 
-## Where their day wants them: at their job by day, their god's chapel at dusk,
-## home at night. Each target is nudged by their slot so a crowd fans out.
+## Where their day wants them: breakfast at the hearth, their job by day, their
+## god's chapel at dusk, dinner at the hearth, then INTO a cot-hut for the night
+## (safety and rest; no room → the old hearth-huddle). Each target is nudged by
+## their slot so a crowd fans out.
+var _bound_for_house := false
+
 func _daily_target(center: Vector2) -> Vector2:
+	_bound_for_house = false
 	if is_captive:
 		var yoke := host.work_pos("work-yoke-post")
 		return yoke if yoke != Vector2.INF else center   # bound to the post, or milling
 	var hour := host.clock.minute_of_day / 60
-	if hour >= 6 and hour < 17 and task != "":
+	if hour >= 6 and hour < 7:
+		return center + Vector2(0, 44) + _slot_offset()   # breakfast at the hearth
+	if hour >= 7 and hour < 17 and task != "":
 		var z: Vector2 = host.task_work_zone(task)   # their assigned work: a station or a forage spot
 		return z + _slot_offset() if z != Vector2.INF else Vector2.INF
-	if hour >= 17 and hour < 21 and def_patron != "":
+	if hour >= 17 and hour < 19 and def_patron != "":
 		var c: Vector2 = host.chapels.get(def_patron, Vector2.INF)
 		return c + _slot_offset() if c != Vector2.INF else Vector2.INF
+	if hour >= 19 and hour < 21:
+		return center + Vector2(0, 44) + _slot_offset()   # dinner at the hearth
 	if hour >= 21 or hour < 6:
-		return center + Vector2(0, 44) + _slot_offset()
+		var bunk: Vector2 = host.house_slot_for(self)
+		if bunk != Vector2.INF:
+			_bound_for_house = true
+			return bunk   # no slot offset — walk to the door itself
+		return center + Vector2(0, 44) + _slot_offset()   # no room at any inn
 	return Vector2.INF

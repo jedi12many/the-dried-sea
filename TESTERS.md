@@ -25,6 +25,7 @@ on a **shared server** with the other testers. Thanks for helping.
 | V | THE VILLAGE — your people, their jobs, moods, and needs |
 | — | RAIDERS: beat one low and it surrenders — [E] to bind it for the yoke |
 | — | WARDENS (a villager trade): auto-run to danger and fight — they even subdue raiders for you |
+| — | HOUSING: build a Driftwood Cot-Hut (sleeps 2). After dinner at the hearth, villagers go inside for the night — hidden and safe — and step out at dawn for breakfast. No room = they huddle at the hearth like before |
 | G | pool your food into the village stores |
 | J | THE JOURNAL — read your callings and make their choices |
 | — | ALTARS (build menu, once you're attuned): stand at one, [E] opens THE OFFERTORY — lay offerings a god craves and display relics; splendor multiplies what your rites restore. Watch the annotations: each god wants different things, and some things OFFEND |

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "work.schema.json",
-  "$comment": "v2 — a buildable. Every work belongs to a god (or 'neutral'). Spells drain; works feed. Adds sanctum (the Sanctum altar, WORLD-SPEC).",
+  "$comment": "v3 — a buildable. Every work belongs to a god (or 'neutral'). Spells drain; works feed. Adds sanctum (the Sanctum altar, WORLD-SPEC) and houses (villager sleeping capacity).",
   "type": "object",
   "required": ["id", "name", "godId", "category", "buildCost", "text"],
   "additionalProperties": false,
@@ -40,6 +40,7 @@
       },
       "additionalProperties": false
     },
+    "houses": { "type": "integer", "minimum": 1, "description": "villager sleeping capacity — at night they go inside for rest and safety" },
     "purpose": { "type": "string", "description": "plain one-line function shown in menus (what it DOES), distinct from flavor text" },
     "text": { "type": "string" }
   }

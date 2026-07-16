@@ -685,6 +685,48 @@ func _ready() -> void:
 	check(host.sanctum.altar_for("god-halor") == -1, "the consecration is gone")
 	host._toggle_offertory(false)
 
+	# --- HOUSING: dinner, then in for the night, out for breakfast --------------
+	host.inventory.add(1, "item-driftwood", 20)
+	host.inventory.add(1, "item-ship-cloth", 4)
+	host.player.position = host.camp_center + Vector2(50, -40)
+	check(host.intent_build("work-driftwood-cot"), "a cot-hut rises from driftwood and cloth")
+	var anna := host.survivor
+	var bunk := host.house_slot_for(anna)
+	check(bunk != Vector2.INF, "Anna has a bunk with her name on it")
+	# dinner hour: she is drawn to the hearth, not the hut
+	host.clock.minute_of_day = 19 * 60 + 30
+	var dinner_spot: Vector2 = anna._daily_target(host.village_heart())
+	check(dinner_spot != Vector2.INF and dinner_spot.distance_to(host.village_heart()) < 90.0, "dinner is at the hearth")
+	# night falls: the hut calls, and she walks in
+	host.clock.minute_of_day = 22 * 60
+	anna.position = bunk + Vector2(30, 0)   # already close; the walk is short
+	for i in 90:
+		await get_tree().physics_frame
+	check(anna.housed and not anna.visible, "at night she goes inside — housed and hidden")
+	# safety: a beast right outside the door cannot spook someone indoors
+	var night_hound := _enemy_of(host, "creature-salt-hound")
+	var night_hound_home := Vector2.ZERO
+	if night_hound != null:
+		night_hound_home = night_hound.position
+		night_hound.position = anna.position + Vector2(40, 0)
+	for i in 10:
+		await get_tree().physics_frame
+	check(anna.housed and not anna.needs_help, "the dark stays outside — no panic through a wall")
+	if night_hound != null:
+		night_hound.position = night_hound_home
+	# morning: out she comes for breakfast
+	host.clock.minute_of_day = 6 * 60 + 10
+	for i in 30:
+		await get_tree().physics_frame
+	check(not anna.housed and anna.visible, "at the breakfast hour she steps back out")
+	var brekkie: Vector2 = anna._daily_target(host.village_heart())
+	check(brekkie != Vector2.INF and brekkie.distance_to(host.village_heart()) < 90.0, "and heads for the hearth")
+	# no room at the inn: the second sleeper gets the huddle, not a bunk
+	var crowd: Array = host.all_villagers().filter(func(w: DSVillager) -> bool: return w.rescued and not w.is_captive)
+	if crowd.size() >= 3:
+		var third: DSVillager = crowd[2]   # bunks = 2 per hut; the third is out of luck
+		check(host.house_slot_for(third) == Vector2.INF, "two bunks per hut — the third sleeper huddles at the hearth")
+
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)
 

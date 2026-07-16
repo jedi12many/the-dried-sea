@@ -1,401 +1,420 @@
 [
-  {
-    "id": "work-driftwood-wall",
-    "name": "Driftwood Wall",
-    "godId": "neutral",
-    "category": "structure",
-    "buildCost": [
-      {
-        "itemId": "item-driftwood",
-        "qty": 4
-      }
-    ],
-    "text": "Tier-0. Keeps out the wind and the optimists.",
-    "purpose": "A wall segment. Blocks hounds and marks your ground.",
-    "blocks": true
+ {
+  "id": "work-driftwood-wall",
+  "name": "Driftwood Wall",
+  "godId": "neutral",
+  "category": "structure",
+  "buildCost": [
+   {
+    "itemId": "item-driftwood",
+    "qty": 4
+   }
+  ],
+  "text": "Tier-0. Keeps out the wind and the optimists.",
+  "purpose": "A wall segment. Blocks hounds and marks your ground.",
+  "blocks": true
+ },
+ {
+  "id": "work-driftwood-cot",
+  "name": "Driftwood Cot-Hut",
+  "godId": "neutral",
+  "category": "structure",
+  "buildCost": [
+   {
+    "itemId": "item-driftwood",
+    "qty": 6
+   },
+   {
+    "itemId": "item-ship-cloth",
+    "qty": 2
+   }
+  ],
+  "houses": 2,
+  "text": "Tier-0. Four walls of wave-worn wood and a cloth roof. The dark stays outside; that's the whole trick of houses.",
+  "purpose": "Sleeps two villagers. At night they go inside — rested, and safe from what walks the flats."
+ },
+ {
+  "id": "work-workbench",
+  "name": "Wreck-Timber Workbench",
+  "godId": "neutral",
+  "category": "station",
+  "buildCost": [
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 6
+   },
+   {
+    "itemId": "item-rope",
+    "qty": 2
+   }
+  ],
+  "useDetection": "crafting-at",
+  "favorTrickle": 0,
+  "text": "Tier-0. Every village starts as a plank at working height.",
+  "purpose": "Crafting station. Unlocks salt, tools, and votives when you stand near it."
+ },
+ {
+  "id": "work-yoke-post",
+  "name": "Yoke-Post",
+  "godId": "neutral",
+  "category": "station",
+  "buildCost": [
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 4
+   },
+   {
+    "itemId": "item-rope",
+    "qty": 4
+   }
+  ],
+  "useDetection": "captive-held",
+  "favorTrickle": 0,
+  "text": "Holds the Taken while you decide who you are. Not grim by itself — what happens next is.",
+  "purpose": "Holds a captured raider until you break or free them. (capture: coming soon)"
+ },
+ {
+  "id": "work-chapel",
+  "name": "Chapel",
+  "godId": "neutral",
+  "category": "worship",
+  "buildCost": [
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 20
+   },
+   {
+    "itemId": "item-salt",
+    "qty": 10
+   },
+   {
+    "itemId": "item-bronze-salvage",
+    "qty": 4
+   }
+  ],
+  "useDetection": "rite-in-progress",
+  "favorTrickle": 2,
+  "text": "Dedicated to one god at consecration. Rank-2 attunement needs one; a priest will come.",
+  "purpose": "Your god's house. Hold rites here [E] to restore their Vigor; enshrine remnants."
+ },
+ {
+  "id": "work-hearth",
+  "name": "Great Hearth",
+  "godId": "god-halor",
+  "category": "comfort",
+  "buildCost": [
+   {
+    "itemId": "item-salt",
+    "qty": 8
+   },
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 6
+   }
+  ],
+  "useDetection": "villagers-near-while-lit",
+  "favorTrickle": 1.5,
+  "effects": [
+   {
+    "type": "village-morale",
+    "magnitude": 1.05,
+    "target": "village"
+   }
+  ],
+  "text": "The center of every Halor village. Feeds him a little every evening it's warm.",
+  "purpose": "The village heart — settlers gather here. Tended, it feeds Halor favor."
+ },
+ {
+  "id": "work-smokehouse",
+  "name": "Smokehouse",
+  "godId": "god-halor",
+  "category": "station",
+  "buildCost": [
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 8
+   },
+   {
+    "itemId": "item-salt",
+    "qty": 12
+   }
+  ],
+  "useDetection": "curing-active",
+  "favorTrickle": 1,
+  "text": "Meat curing inside is a small prayer to the Salt-Father.",
+  "purpose": "Cures raw meat into smoked food and salt rations. Tended, it feeds Halor."
+ },
+ {
+  "id": "work-salt-cellar",
+  "name": "Salt Cellar",
+  "godId": "god-halor",
+  "category": "storage",
+  "favorTierRequired": 1,
+  "buildCost": [
+   {
+    "itemId": "item-salt",
+    "qty": 20
+   },
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 6
+   }
+  ],
+  "useDetection": "stores-food",
+  "favorTrickle": 0.5,
+  "effects": [
+   {
+    "type": "spoilage-slow",
+    "magnitude": 0.5,
+    "target": "structure"
+   }
+  ],
+  "text": "What is kept well, keeps.",
+  "purpose": "Food storage that slows spoilage. Tended, it feeds Halor."
+ },
+ {
+  "id": "work-lightning-rod",
+  "name": "Lightning-Rod",
+  "godId": "god-maren",
+  "category": "defense",
+  "buildCost": [
+   {
+    "itemId": "item-bronze-salvage",
+    "qty": 6
+   },
+   {
+    "itemId": "item-rope",
+    "qty": 2
+   }
+  ],
+  "useDetection": "storm-active",
+  "favorTrickle": 3,
+  "effects": [
+   {
+    "type": "storm-protection",
+    "radius": 12,
+    "target": "area"
+   }
+  ],
+  "text": "Real protection in the great storms — and every bolt it takes is a hymn.",
+  "purpose": "Storm protection in a radius during the great storms. Feeds Maren favor."
+ },
+ {
+  "id": "work-storm-cistern",
+  "name": "Storm-Cistern",
+  "godId": "god-maren",
+  "category": "infrastructure",
+  "buildCost": [
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 8
+   },
+   {
+    "itemId": "item-ship-cloth",
+    "qty": 4
+   }
+  ],
+  "useDetection": "collecting-rain",
+  "favorTrickle": 1,
+  "text": "Catches what the Storm-Mother throws. She likes being kept.",
+  "purpose": "Collects rain during storms. Feeds Maren favor."
+ },
+ {
+  "id": "work-tide-bell",
+  "name": "Tide-Bell",
+  "godId": "god-neris",
+  "category": "worship",
+  "buildCost": [
+   {
+    "itemId": "item-bronze-salvage",
+    "qty": 8
+   }
+  ],
+  "useDetection": "rings-on-rhythm",
+  "favorTrickle": 1,
+  "text": "Rings the hours of a tide that isn't there. Neris keeps count anyway.",
+  "purpose": "Marks Neris's tide-rhythm hours. Feeds her favor. (effects: coming soon)"
+ },
+ {
+  "id": "work-healing-bath",
+  "name": "Healing Bath",
+  "godId": "god-neris",
+  "category": "comfort",
+  "favorTierRequired": 1,
+  "buildCost": [
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 10
+   },
+   {
+    "itemId": "item-salt",
+    "qty": 15
+   },
+   {
+    "itemId": "item-pearl",
+    "qty": 2
+   }
+  ],
+  "useDetection": "bather-present",
+  "favorTrickle": 1.5,
+  "effects": [
+   {
+    "type": "heal-over-time",
+    "magnitude": 2,
+    "target": "ally"
+   }
+  ],
+  "text": "Warm brine, drawn right. The closest thing to the sea's embrace left standing.",
+  "purpose": "Slowly heals whoever rests in it. Feeds Neris. (effects: coming soon)"
+ },
+ {
+  "id": "work-way-beacon",
+  "name": "Way-Beacon",
+  "godId": "god-vessa",
+  "category": "infrastructure",
+  "buildCost": [
+   {
+    "itemId": "item-driftwood",
+    "qty": 6
+   },
+   {
+    "itemId": "item-ship-cloth",
+    "qty": 2
+   }
+  ],
+  "useDetection": "traveler-passes",
+  "favorTrickle": 0.5,
+  "text": "A flag on the flats. Vessa counts every traveler it saves an hour.",
+  "purpose": "A travel marker. Feeds Vessa favor. (effects: coming soon)"
+ },
+ {
+  "id": "work-beast-pen",
+  "name": "Beast Pen",
+  "godId": "god-ghal",
+  "category": "station",
+  "buildCost": [
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 12
+   },
+   {
+    "itemId": "item-rope",
+    "qty": 6
+   }
+  ],
+  "useDetection": "animal-kept",
+  "favorTrickle": 1,
+  "text": "Old Ghal's first commandment: keep what keeps you.",
+  "purpose": "Keeps tamed beasts. Feeds Old Ghal. (taming: coming soon)"
+ },
+ {
+  "id": "work-salt-wheel",
+  "name": "The Salt-Wheel",
+  "workingName": true,
+  "godId": "god-ur-noth",
+  "category": "grim",
+  "grim": true,
+  "buildCost": [
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 15
+   },
+   {
+    "itemId": "item-bronze-salvage",
+    "qty": 8
+   },
+   {
+    "itemId": "item-rope",
+    "qty": 8
+   }
+  ],
+  "useDetection": "captive-grinding",
+  "favorTrickle": 4,
+  "grimRules": {
+   "kinderAlternative": "The Unbinding: good treatment + time converts the Taken into true villagers with no instrument at all.",
+   "recipeSource": "A slaver's wreck in the Shallows; the manifest is worse than the wheel.",
+   "testimony": "Priests won't walk past it without muttering. Pilgrims arrive slower. Saved Peoples refuse to trade in sight of it. Ur-Noth's voice warms with every turn."
   },
-  {
-    "id": "work-workbench",
-    "name": "Wreck-Timber Workbench",
-    "godId": "neutral",
-    "category": "station",
-    "buildCost": [
-      {
-        "itemId": "item-wreck-timber",
-        "qty": 6
-      },
-      {
-        "itemId": "item-rope",
-        "qty": 2
-      }
-    ],
-    "useDetection": "crafting-at",
-    "favorTrickle": 0,
-    "text": "Tier-0. Every village starts as a plank at working height.",
-    "purpose": "Crafting station. Unlocks salt, tools, and votives when you stand near it."
+  "text": "Breaks the Taken quickly into the Broken. Feeds the Unlit with every turn. You will never need it. That's the point.",
+  "purpose": "GRIM: breaks a captive fast into the Broken. Feeds Ur-Noth. (coming soon)"
+ },
+ {
+  "id": "work-rendering-vat",
+  "name": "Rendering-Vat",
+  "godId": "god-ur-noth",
+  "category": "grim",
+  "grim": true,
+  "favorTierRequired": 1,
+  "buildCost": [
+   {
+    "itemId": "item-bronze-salvage",
+    "qty": 10
+   },
+   {
+    "itemId": "item-reef-iron",
+    "qty": 6
+   }
+  ],
+  "useDetection": "remnant-rendering",
+  "favorTrickle": 4,
+  "grimRules": {
+   "kinderAlternative": "Remnants can be enshrined (strengthens a god) or traded whole; consuming raw works without the vat, just at worse yield.",
+   "recipeSource": "Whispered, not found. He offers it the third time you hold a remnant too long.",
+   "testimony": "It hums at night. The villagers have all, independently, decided never to mention it."
   },
-  {
-    "id": "work-yoke-post",
-    "name": "Yoke-Post",
-    "godId": "neutral",
-    "category": "station",
-    "buildCost": [
-      {
-        "itemId": "item-wreck-timber",
-        "qty": 4
-      },
-      {
-        "itemId": "item-rope",
-        "qty": 4
-      }
-    ],
-    "useDetection": "captive-held",
-    "favorTrickle": 0,
-    "text": "Holds the Taken while you decide who you are. Not grim by itself — what happens next is.",
-    "purpose": "Holds a captured raider until you break or free them. (capture: coming soon)"
+  "text": "Consumes god-remnants at better yield. The gods know exactly what it is.",
+  "purpose": "GRIM: consumes god-remnants at better yield. Feeds Ur-Noth. (coming soon)"
+ },
+ {
+  "id": "work-altar-halor",
+  "name": "Altar of the Salt-Father",
+  "godId": "god-halor",
+  "category": "worship",
+  "buildCost": [
+   {
+    "itemId": "item-salt",
+    "qty": 12
+   },
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 8
+   },
+   {
+    "itemId": "item-bronze-salvage",
+    "qty": 2
+   }
+  ],
+  "sanctum": {
+   "relicSlots": 4,
+   "slotsPerTier": 2
   },
-  {
-    "id": "work-chapel",
-    "name": "Chapel",
-    "godId": "neutral",
-    "category": "worship",
-    "buildCost": [
-      {
-        "itemId": "item-wreck-timber",
-        "qty": 20
-      },
-      {
-        "itemId": "item-salt",
-        "qty": 10
-      },
-      {
-        "itemId": "item-bronze-salvage",
-        "qty": 4
-      }
-    ],
-    "useDetection": "rite-in-progress",
-    "favorTrickle": 2,
-    "text": "Dedicated to one god at consecration. Rank-2 attunement needs one; a priest will come.",
-    "purpose": "Your god's house. Hold rites here [E] to restore their Vigor; enshrine remnants."
+  "text": "A shelf of salt-scoured stone at the chapel's heart, cut for things worth keeping. Halor has never asked for gold. He asks what you're willing to not eat.",
+  "purpose": "Halor's altar. Relics displayed and offerings laid here strengthen his rites."
+ },
+ {
+  "id": "work-altar-maren",
+  "name": "Altar of the Squall",
+  "godId": "god-maren",
+  "category": "worship",
+  "buildCost": [
+   {
+    "itemId": "item-storm-glass",
+    "qty": 2
+   },
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 8
+   },
+   {
+    "itemId": "item-bronze-salvage",
+    "qty": 2
+   }
+  ],
+  "sanctum": {
+   "relicSlots": 4,
+   "slotsPerTier": 2
   },
-  {
-    "id": "work-hearth",
-    "name": "Great Hearth",
-    "godId": "god-halor",
-    "category": "comfort",
-    "buildCost": [
-      {
-        "itemId": "item-salt",
-        "qty": 8
-      },
-      {
-        "itemId": "item-wreck-timber",
-        "qty": 6
-      }
-    ],
-    "useDetection": "villagers-near-while-lit",
-    "favorTrickle": 1.5,
-    "effects": [
-      {
-        "type": "village-morale",
-        "magnitude": 1.05,
-        "target": "village"
-      }
-    ],
-    "text": "The center of every Halor village. Feeds him a little every evening it's warm.",
-    "purpose": "The village heart — settlers gather here. Tended, it feeds Halor favor."
-  },
-  {
-    "id": "work-smokehouse",
-    "name": "Smokehouse",
-    "godId": "god-halor",
-    "category": "station",
-    "buildCost": [
-      {
-        "itemId": "item-wreck-timber",
-        "qty": 8
-      },
-      {
-        "itemId": "item-salt",
-        "qty": 12
-      }
-    ],
-    "useDetection": "curing-active",
-    "favorTrickle": 1,
-    "text": "Meat curing inside is a small prayer to the Salt-Father.",
-    "purpose": "Cures raw meat into smoked food and salt rations. Tended, it feeds Halor."
-  },
-  {
-    "id": "work-salt-cellar",
-    "name": "Salt Cellar",
-    "godId": "god-halor",
-    "category": "storage",
-    "favorTierRequired": 1,
-    "buildCost": [
-      {
-        "itemId": "item-salt",
-        "qty": 20
-      },
-      {
-        "itemId": "item-wreck-timber",
-        "qty": 6
-      }
-    ],
-    "useDetection": "stores-food",
-    "favorTrickle": 0.5,
-    "effects": [
-      {
-        "type": "spoilage-slow",
-        "magnitude": 0.5,
-        "target": "structure"
-      }
-    ],
-    "text": "What is kept well, keeps.",
-    "purpose": "Food storage that slows spoilage. Tended, it feeds Halor."
-  },
-  {
-    "id": "work-lightning-rod",
-    "name": "Lightning-Rod",
-    "godId": "god-maren",
-    "category": "defense",
-    "buildCost": [
-      {
-        "itemId": "item-bronze-salvage",
-        "qty": 6
-      },
-      {
-        "itemId": "item-rope",
-        "qty": 2
-      }
-    ],
-    "useDetection": "storm-active",
-    "favorTrickle": 3,
-    "effects": [
-      {
-        "type": "storm-protection",
-        "radius": 12,
-        "target": "area"
-      }
-    ],
-    "text": "Real protection in the great storms — and every bolt it takes is a hymn.",
-    "purpose": "Storm protection in a radius during the great storms. Feeds Maren favor."
-  },
-  {
-    "id": "work-storm-cistern",
-    "name": "Storm-Cistern",
-    "godId": "god-maren",
-    "category": "infrastructure",
-    "buildCost": [
-      {
-        "itemId": "item-wreck-timber",
-        "qty": 8
-      },
-      {
-        "itemId": "item-ship-cloth",
-        "qty": 4
-      }
-    ],
-    "useDetection": "collecting-rain",
-    "favorTrickle": 1,
-    "text": "Catches what the Storm-Mother throws. She likes being kept.",
-    "purpose": "Collects rain during storms. Feeds Maren favor."
-  },
-  {
-    "id": "work-tide-bell",
-    "name": "Tide-Bell",
-    "godId": "god-neris",
-    "category": "worship",
-    "buildCost": [
-      {
-        "itemId": "item-bronze-salvage",
-        "qty": 8
-      }
-    ],
-    "useDetection": "rings-on-rhythm",
-    "favorTrickle": 1,
-    "text": "Rings the hours of a tide that isn't there. Neris keeps count anyway.",
-    "purpose": "Marks Neris's tide-rhythm hours. Feeds her favor. (effects: coming soon)"
-  },
-  {
-    "id": "work-healing-bath",
-    "name": "Healing Bath",
-    "godId": "god-neris",
-    "category": "comfort",
-    "favorTierRequired": 1,
-    "buildCost": [
-      {
-        "itemId": "item-wreck-timber",
-        "qty": 10
-      },
-      {
-        "itemId": "item-salt",
-        "qty": 15
-      },
-      {
-        "itemId": "item-pearl",
-        "qty": 2
-      }
-    ],
-    "useDetection": "bather-present",
-    "favorTrickle": 1.5,
-    "effects": [
-      {
-        "type": "heal-over-time",
-        "magnitude": 2,
-        "target": "ally"
-      }
-    ],
-    "text": "Warm brine, drawn right. The closest thing to the sea's embrace left standing.",
-    "purpose": "Slowly heals whoever rests in it. Feeds Neris. (effects: coming soon)"
-  },
-  {
-    "id": "work-way-beacon",
-    "name": "Way-Beacon",
-    "godId": "god-vessa",
-    "category": "infrastructure",
-    "buildCost": [
-      {
-        "itemId": "item-driftwood",
-        "qty": 6
-      },
-      {
-        "itemId": "item-ship-cloth",
-        "qty": 2
-      }
-    ],
-    "useDetection": "traveler-passes",
-    "favorTrickle": 0.5,
-    "text": "A flag on the flats. Vessa counts every traveler it saves an hour.",
-    "purpose": "A travel marker. Feeds Vessa favor. (effects: coming soon)"
-  },
-  {
-    "id": "work-beast-pen",
-    "name": "Beast Pen",
-    "godId": "god-ghal",
-    "category": "station",
-    "buildCost": [
-      {
-        "itemId": "item-wreck-timber",
-        "qty": 12
-      },
-      {
-        "itemId": "item-rope",
-        "qty": 6
-      }
-    ],
-    "useDetection": "animal-kept",
-    "favorTrickle": 1,
-    "text": "Old Ghal's first commandment: keep what keeps you.",
-    "purpose": "Keeps tamed beasts. Feeds Old Ghal. (taming: coming soon)"
-  },
-  {
-    "id": "work-salt-wheel",
-    "name": "The Salt-Wheel",
-    "workingName": true,
-    "godId": "god-ur-noth",
-    "category": "grim",
-    "grim": true,
-    "buildCost": [
-      {
-        "itemId": "item-wreck-timber",
-        "qty": 15
-      },
-      {
-        "itemId": "item-bronze-salvage",
-        "qty": 8
-      },
-      {
-        "itemId": "item-rope",
-        "qty": 8
-      }
-    ],
-    "useDetection": "captive-grinding",
-    "favorTrickle": 4,
-    "grimRules": {
-      "kinderAlternative": "The Unbinding: good treatment + time converts the Taken into true villagers with no instrument at all.",
-      "recipeSource": "A slaver's wreck in the Shallows; the manifest is worse than the wheel.",
-      "testimony": "Priests won't walk past it without muttering. Pilgrims arrive slower. Saved Peoples refuse to trade in sight of it. Ur-Noth's voice warms with every turn."
-    },
-    "text": "Breaks the Taken quickly into the Broken. Feeds the Unlit with every turn. You will never need it. That's the point.",
-    "purpose": "GRIM: breaks a captive fast into the Broken. Feeds Ur-Noth. (coming soon)"
-  },
-  {
-    "id": "work-rendering-vat",
-    "name": "Rendering-Vat",
-    "godId": "god-ur-noth",
-    "category": "grim",
-    "grim": true,
-    "favorTierRequired": 1,
-    "buildCost": [
-      {
-        "itemId": "item-bronze-salvage",
-        "qty": 10
-      },
-      {
-        "itemId": "item-reef-iron",
-        "qty": 6
-      }
-    ],
-    "useDetection": "remnant-rendering",
-    "favorTrickle": 4,
-    "grimRules": {
-      "kinderAlternative": "Remnants can be enshrined (strengthens a god) or traded whole; consuming raw works without the vat, just at worse yield.",
-      "recipeSource": "Whispered, not found. He offers it the third time you hold a remnant too long.",
-      "testimony": "It hums at night. The villagers have all, independently, decided never to mention it."
-    },
-    "text": "Consumes god-remnants at better yield. The gods know exactly what it is.",
-    "purpose": "GRIM: consumes god-remnants at better yield. Feeds Ur-Noth. (coming soon)"
-  },
-  {
-    "id": "work-altar-halor",
-    "name": "Altar of the Salt-Father",
-    "godId": "god-halor",
-    "category": "worship",
-    "buildCost": [
-      {
-        "itemId": "item-salt",
-        "qty": 12
-      },
-      {
-        "itemId": "item-wreck-timber",
-        "qty": 8
-      },
-      {
-        "itemId": "item-bronze-salvage",
-        "qty": 2
-      }
-    ],
-    "sanctum": {
-      "relicSlots": 4,
-      "slotsPerTier": 2
-    },
-    "text": "A shelf of salt-scoured stone at the chapel's heart, cut for things worth keeping. Halor has never asked for gold. He asks what you're willing to not eat.",
-    "purpose": "Halor's altar. Relics displayed and offerings laid here strengthen his rites."
-  },
-  {
-    "id": "work-altar-maren",
-    "name": "Altar of the Squall",
-    "godId": "god-maren",
-    "category": "worship",
-    "buildCost": [
-      {
-        "itemId": "item-storm-glass",
-        "qty": 2
-      },
-      {
-        "itemId": "item-wreck-timber",
-        "qty": 8
-      },
-      {
-        "itemId": "item-bronze-salvage",
-        "qty": 2
-      }
-    ],
-    "sanctum": {
-      "relicSlots": 4,
-      "slotsPerTier": 2
-    },
-    "text": "Bronze fittings bolted to a slab that's taken a strike before and kept standing. Maren doesn't want quiet devotion. She wants to see what you brought her.",
-    "purpose": "Maren's altar. Relics displayed and offerings laid here strengthen her rites."
-  }
+  "text": "Bronze fittings bolted to a slab that's taken a strike before and kept standing. Maren doesn't want quiet devotion. She wants to see what you brought her.",
+  "purpose": "Maren's altar. Relics displayed and offerings laid here strengthen her rites."
+ }
 ]
