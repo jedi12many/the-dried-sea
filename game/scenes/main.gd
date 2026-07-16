@@ -5,13 +5,13 @@ extends Node2D
 ## M1 slice: walk, harvest, hand-craft, build, day/night. Placeholder art only.
 
 const TILE := 32
-const WORLD := Vector2i(48, 32)
+const WORLD := Vector2i(96, 64)
 const HARVEST_RANGE := 56.0
 const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.5.1"
+const GAME_VERSION := "0.5.2"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -176,6 +176,7 @@ func _ready() -> void:
 	player = DSPlayer.new()
 	player.position = Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
 	add_child(player)
+	_attach_camera()
 	_spawn_enemies()
 	_spawn_shrines()
 	_spawn_survivor()
@@ -1917,6 +1918,19 @@ func _check_village_keys() -> void:
 				if survivor != null and survivor.tribesman_id == id:
 					survivor.modulate = Color(1.12, 1.04, 0.92)  # bloomed: a touch warmer
 
+## The view follows your own body and stops at the world's edge — so the flats
+## fill the screen and you never scroll off into the void beyond the map.
+func _attach_camera() -> void:
+	var cam := Camera2D.new()
+	cam.limit_left = 0
+	cam.limit_top = 0
+	cam.limit_right = WORLD.x * TILE
+	cam.limit_bottom = WORLD.y * TILE
+	cam.position_smoothing_enabled = true
+	cam.position_smoothing_speed = 8.0
+	player.add_child(cam)
+	cam.make_current()
+
 ## --- world (placeholder) ---------------------------------------------------------
 func _build_ground() -> void:
 	var ground_tex := SpriteKit.texture("ground")
@@ -2030,8 +2044,11 @@ func _spawn_survivor() -> void:
 func _spawn_stranded_pool() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 424242
-	var spots := [Vector2(TILE * 44, TILE * 20), Vector2(TILE * 6, TILE * 18),
-		Vector2(TILE * 40, TILE * 28), Vector2(TILE * 16, TILE * 27)]
+	# fractions of the world so they spread with the map instead of clumping
+	var w := WORLD.x * TILE
+	var h := WORLD.y * TILE
+	var spots := [Vector2(w * 0.92, h * 0.62), Vector2(w * 0.13, h * 0.56),
+		Vector2(w * 0.83, h * 0.88), Vector2(w * 0.33, h * 0.84)]
 	for i in spots.size():
 		var v := DSVillager.new()
 		v.host = self
@@ -2625,10 +2642,26 @@ func _direction_hints() -> String:
 			bits.append("a pale shrine %s" % _bearing(s.position))
 	if survivor != null and not survivor.rescued:
 		bits.append("someone stranded %s" % _bearing(survivor.position))
+	var raider := _nearest_raider()
+	if raider != null:
+		bits.append("a raider prowls %s" % _bearing(raider.position))
 	var verses := inventory.count(acting_pid, "item-harpoon-verse")
 	if verses > 0 and verses < 3:
 		bits.append("the harpoon-song: %d/3 verses" % verses)
 	return "  |  " + ";  ".join(bits) if bits.size() > 0 else ""
+
+## Nearest un-subdued raider — the convertible kind — so the HUD can point you
+## to one to beat down and yoke. Ignores raiders already on their knees.
+func _nearest_raider() -> DSEnemy:
+	var best: DSEnemy = null
+	var best_d := INF
+	for e in enemies:
+		if is_instance_valid(e) and e.creature_id == "creature-raider" and not e.surrendered:
+			var d := player.position.distance_to(e.position)
+			if d < best_d:
+				best_d = d
+				best = e
+	return best
 
 func _bearing(to: Vector2) -> String:
 	var d := to - player.position
