@@ -135,9 +135,10 @@ func _physics_process(delta: float) -> void:
 			needs_help = false   # safe and home — back to work
 			_refresh_label()
 	if needs_help:
-		# run for the village heart and huddle there
-		if position.distance_to(center) > FOLLOW_STOP:
-			velocity = (center - position).normalized() * FOLLOW_SPEED
+		# run for the village heart and huddle there — each at their own slot, not in a pile
+		var huddle := center + _slot_offset()
+		if position.distance_to(huddle) > 6.0:
+			velocity = (huddle - position).normalized() * FOLLOW_SPEED
 		else:
 			velocity = Vector2.ZERO
 		move_and_slide()
@@ -165,17 +166,29 @@ func _physics_process(delta: float) -> void:
 			velocity = (_wander_target - position).normalized() * WANDER_SPEED
 	move_and_slide()
 
+## A small, STABLE per-villager offset so folk who share a spot (the same work
+## zone, the same chapel, the night hearth) fan into a little cluster instead of
+## standing stacked in one pixel. Villager bodies don't collide, so without this
+## they pile up perfectly on any shared target.
+func _slot_offset() -> Vector2:
+	var k: int = tribesman_id if tribesman_id >= 0 else int(get_meta("nid", 0))
+	var ang := float(k) * 2.3999632   # golden angle → an even spread, no clumps
+	var rad := 22.0 + float(k % 4) * 9.0
+	return Vector2(cos(ang), sin(ang)) * rad
+
 ## Where their day wants them: at their job by day, their god's chapel at dusk,
-## home at night.
+## home at night. Each target is nudged by their slot so a crowd fans out.
 func _daily_target(center: Vector2) -> Vector2:
 	if is_captive:
 		var yoke := host.work_pos("work-yoke-post")
 		return yoke if yoke != Vector2.INF else center   # bound to the post, or milling
 	var hour := host.clock.minute_of_day / 60
 	if hour >= 6 and hour < 17 and task != "":
-		return host.task_work_zone(task)   # their assigned work: a station or a forage spot
+		var z: Vector2 = host.task_work_zone(task)   # their assigned work: a station or a forage spot
+		return z + _slot_offset() if z != Vector2.INF else Vector2.INF
 	if hour >= 17 and hour < 21 and def_patron != "":
-		return host.chapels.get(def_patron, Vector2.INF)
+		var c: Vector2 = host.chapels.get(def_patron, Vector2.INF)
+		return c + _slot_offset() if c != Vector2.INF else Vector2.INF
 	if hour >= 21 or hour < 6:
-		return center + Vector2(0, 44)
+		return center + Vector2(0, 44) + _slot_offset()
 	return Vector2.INF

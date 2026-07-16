@@ -243,10 +243,12 @@ func _ready() -> void:
 		intent_build("work-smokehouse")
 		survivor.rescue()
 		survivor.position = village_heart()
+		var _spread := 0
 		for v: DSVillager in villagers:
 			v.def_class = ["class-salvager", "class-brinewife", "class-smith", "class-reef-runner"][villagers.find(v) % 4]
 			v.rescue()
-			v.position = village_heart()
+			_spread += 1
+			v.position = village_heart() + Vector2(cos(_spread * 1.3), sin(_spread * 1.3)) * (56.0 + _spread * 14.0)
 		village_stock["item-smoked-crab"] = 4
 		village.tribesmen[survivor.tribesman_id].bloomed = true
 		_on_sim_day(1)
