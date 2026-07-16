@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.5.3"
+const GAME_VERSION := "0.5.4"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -118,7 +118,7 @@ var menu_open := false
 var modals: Dictionary = {}   # name -> {root, panel, title, body, footer}
 var menu_mode := "build"   # "build" | "craft"
 var menu_page := 0          # pages of 9; [0] key advances (recipes can exceed 9)
-const MENU_PER_PAGE := 9
+const MENU_PER_PAGE := 6   # build rows are 3 lines each; 6 fit the modal, longer lists page with [0]
 
 # the camp: the first structure plants it; everything after builds within the ring
 const CAMP_RADIUS := 320.0
@@ -608,7 +608,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			else:
 				_render_craft_menu()
 			return
-		if key >= KEY_1 and key <= KEY_9:
+		if key >= KEY_1 and key < KEY_1 + MENU_PER_PAGE:   # only the keys this page actually uses
 			var idx := menu_page * MENU_PER_PAGE + int(key - KEY_1)
 			if idx < options.size():
 				if menu_mode == "build":
@@ -1116,12 +1116,11 @@ func _toggle_menu(open: bool, mode: String = "build") -> void:
 		_render_craft_menu()
 
 ## The footer of the craft/build modal: how to act, plus the page turn.
-func _menu_footer(verb: String, close_key: String, page: int, page_count: int) -> String:
-	var foot := "[1-9] %s   ·   [%s] close" % [verb, close_key]
+func _menu_footer(verb: String, close_key: String, page: int, page_count: int, shown: int) -> void:
+	var foot := "[1-%d] %s   ·   [%s] close" % [maxi(shown, 1), verb, close_key]
 	if page_count > 1:
 		foot += "   ·   page %d/%d — [0] for more" % [page + 1, page_count]
 	(modals.menu.footer as Label).text = foot
-	return foot
 
 func _render_build_menu() -> void:
 	if menu_title != null:
@@ -1146,7 +1145,7 @@ func _render_build_menu() -> void:
 	if attuned_for(my_pid).size() < 2:
 		lines.append("· more works open when you kneel at new shrines ·")
 	menu_label.text = "\n".join(lines)
-	_menu_footer("raise it", "B", menu_page, page_count)
+	_menu_footer("raise it", "B", menu_page, page_count, end - start)
 
 func _render_craft_menu() -> void:
 	if menu_title != null:
@@ -1176,7 +1175,7 @@ func _render_craft_menu() -> void:
 	if options.is_empty():
 		lines.append("Nothing to make yet — gather materials, raise a workbench.")
 	menu_label.text = "\n".join(lines)
-	_menu_footer("make it", "C", menu_page, page_count)
+	_menu_footer("make it", "C", menu_page, page_count, end - start)
 
 func intent_craft(recipe_id: String) -> bool:
 	if net_mode == "client":
@@ -2598,7 +2597,7 @@ func _build_hud() -> void:
 	sheet_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	sheet_label.add_theme_font_size_override("font_size", 12)
 
-	var m_menu := _make_modal(layer, "menu", Vector2(540, 600), "CRAFT")
+	var m_menu := _make_modal(layer, "menu", Vector2(580, 640), "CRAFT")
 	menu_label = m_menu.body
 	menu_title = m_menu.title
 
