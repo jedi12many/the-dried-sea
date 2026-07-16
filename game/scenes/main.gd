@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.6.6"
+const GAME_VERSION := "0.6.7"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -2337,6 +2337,7 @@ func _spawn_work_visual(inst_id: int, work_id: String, pos: Vector2, chapel_hint
 		"work-storm-cistern": "storm_cistern",
 		"work-altar-halor": "altar", "work-altar-maren": "altar",
 		"work-driftwood-cot": "cot_hut", "work-tent": "tent",
+		"work-salt-wheel": "salt_wheel",
 	}
 	var fallback := Color("6e5138") if not work.get("grim", false) else Color("5b3a6e")
 	if work_id == "work-altar-halor":
