@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.6.2"
+const GAME_VERSION := "0.6.3"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -257,6 +257,7 @@ func _ready() -> void:
 		inventory.add(acting_pid, "item-storm-glass", 2)
 		inventory.add(acting_pid, "item-crab-meat", 3)
 		inventory.add(acting_pid, "item-remnant-shellback", 1)
+		_harness_found_village()
 		intent_build("work-altar-halor")
 		var alt := sanctum.altar_for("god-halor")
 		intent_sanctum(alt, "item-salt")
@@ -266,6 +267,7 @@ func _ready() -> void:
 	elif "--screenshot-village" in OS.get_cmdline_user_args():
 		inventory.add(acting_pid, "item-wreck-timber", 20)
 		inventory.add(acting_pid, "item-salt", 20)
+		_harness_found_village()
 		intent_build("work-workbench")
 		intent_build("work-smokehouse")
 		survivor.rescue()
@@ -295,7 +297,8 @@ func _ready() -> void:
 		inventory.add(acting_pid, "item-wreck-timber", 12)
 		inventory.add(acting_pid, "item-rope", 4)
 		inventory.add(acting_pid, "item-driftwood", 40)
-		intent_build("work-workbench")            # plants the camp ring
+		_harness_found_village()                  # the hearth plants the camp ring
+		intent_build("work-workbench")
 		# lay an L of wall: two horizontal, then a rotated vertical turning the corner
 		var base := camp_center + Vector2(0, 120)
 		for i in 3:
@@ -375,6 +378,10 @@ func load_game() -> void:
 	if camp != null:
 		camp_center = Vector2(float(camp[0]), float(camp[1]))
 		_update_camp_ring()
+	# the ring belongs to the hearth now — if this world has one, center on it
+	# (migrates old saves founded by whatever-you-dropped-first)
+	if work_pos("work-hearth") != Vector2.INF:
+		_recenter_on_hearth()
 	rites_done_today = g.get("rites_done_today", {})
 	message = str(g.get("message", "The flats are as you left them."))
 	# world state: remove harvested nodes, rebuild work visuals, restore the boss & Anna
@@ -837,8 +844,11 @@ func intent_talk(v: DSVillager) -> bool:
 ## Where HOME is: the hearth if one burns, else a chapel, else the workbench,
 ## else the world's center. Anna settles here; so will everyone after her.
 ## Set / move the camp anchor and redraw its ring. Server broadcasts on change.
-func _set_camp(pos: Vector2) -> void:
-	camp_center = pos
+## The hearth is the heart: the build ring centers on it, and there is no village
+## without one. Re-derive the center from the hearth after any build / move /
+## reclaim — reclaim the hearth and the ring dissolves until you raise another.
+func _recenter_on_hearth() -> void:
+	camp_center = work_pos("work-hearth")
 	_update_camp_ring()
 
 func _update_camp_ring() -> void:
@@ -1162,6 +1172,10 @@ func intent_eat() -> bool:
 ## The build menu: what you can raise, grouped by whose it is. A god's works
 ## appear once you're attuned — recipes arrive with faith.
 func menu_works() -> Array:
+	# no village yet? the only build that matters is its heart — the Great Hearth
+	# founds it, even before you've knelt to Halor (raising it courts him anyway)
+	if work_pos("work-hearth") == Vector2.INF:
+		return ["work-hearth"]
 	var order := ["neutral", "god-halor", "god-maren", "god-neris", "god-vessa", "god-ghal"]
 	var visible_sets := ["neutral"]
 	visible_sets.append_array(attuned_for(my_pid))
@@ -1234,19 +1248,24 @@ func _render_build_menu() -> void:
 	menu_page = clamp(menu_page, 0, page_count - 1)
 	var start := menu_page * MENU_PER_PAGE
 	var end := int(min(start + MENU_PER_PAGE, options.size()))
+	var founding := work_pos("work-hearth") == Vector2.INF
 	var lines: Array[String] = []
+	if founding:
+		lines.append("· found your village ·")
 	var last_god := ""
 	for i in range(start, end):
 		var work := registry.get_entity(str(options[i]))
 		var god_id: String = work.get("godId", "neutral")
-		if god_id != last_god:
+		if not founding and god_id != last_god:
 			last_god = god_id
 			lines.append("· %s ·" % ("salvage" if god_id == "neutral" else str(registry.get_entity(god_id).name) + "'s works"))
 		var afford := inventory.can_afford(acting_pid, work.get("buildCost", []))
 		lines.append("%d. %s%s" % [i - start + 1, str(work.name), "" if afford else "  (can't afford)"])
 		lines.append("     %s" % str(work.get("purpose", work.get("text", ""))))
 		lines.append("     cost: %s" % _cost_str(work.get("buildCost", [])))
-	if attuned_for(my_pid).size() < 2:
+	if founding:
+		lines.append("· the hearth is the heart — everything else grows around it ·")
+	elif attuned_for(my_pid).size() < 2:
 		lines.append("· more works open when you kneel at new shrines ·")
 	menu_label.text = "\n".join(lines)
 	_menu_footer("raise it", "B", menu_page, page_count, end - start)
@@ -1538,20 +1557,28 @@ func intent_build(work_id: String) -> bool:
 	if work.is_empty():
 		return false
 	var pos := acting_pos() + Vector2(40, 0)
-	# the camp ring: first structure plants it, the rest must fall inside it
-	if camp_center != Vector2.INF and pos.distance_to(camp_center) > CAMP_RADIUS:
-		message = "Too far from camp. Stand within the ring to build — or drag a piece to found it wider."
+	# the village grows around its hearth: found it by raising the Great Hearth,
+	# then every other piece must fall inside the ring the hearth centers
+	var has_hearth := work_pos("work-hearth") != Vector2.INF
+	if not has_hearth:
+		if work_id != "work-hearth":
+			message = "Raise a Great Hearth first — the village grows around its fire."
+			_refresh_hud()
+			return false
+	elif pos.distance_to(camp_center) > CAMP_RADIUS:
+		message = "Too far from the hearth. Build within the ring."
 		_refresh_hud()
 		return false
 	if not inventory.pay(acting_pid, work.get("buildCost", [])):
 		message = "Not enough to raise the %s." % str(work.name).to_lower()
 		_refresh_hud()
 		return false
-	if camp_center == Vector2.INF:
-		_set_camp(pos)
-		message = "You plant your camp here. Build within the ring; the flats are kinder inside it."
 	var inst_id := works.place(work_id, acting_pid, pos)
 	sanctum.register(inst_id, work_id)
+	if work_id == "work-hearth":
+		_recenter_on_hearth()   # the ring centers on the hearth, always
+		if not has_hearth:
+			message = "You raise the Great Hearth. The village will grow around its fire."
 	if sanctum.is_altar(inst_id):
 		message = "The %s stands. Stand at it [E] to lay relics and offerings — splendor bears your rites up." % str(work.name).to_lower()
 	sfx("build", pos)
@@ -2022,22 +2049,22 @@ func _move_work(inst_id: int, pos: Vector2) -> void:
 		return
 	var inst: Dictionary = works.placed[inst_id]
 	var old_pos := Vector2(float(inst.get("x", 0)), float(inst.get("y", 0)))
-	# dragging a piece may FOUND or RE-CENTER the camp if it's the only anchor;
-	# otherwise it must land inside the ring
-	if camp_center != Vector2.INF and works.placed.size() > 1 and pos.distance_to(camp_center) > CAMP_RADIUS:
+	# the hearth carries the whole ring with it; every other piece must stay inside
+	var is_hearth := str(inst.work_id) == "work-hearth"
+	if not is_hearth and camp_center != Vector2.INF and pos.distance_to(camp_center) > CAMP_RADIUS:
 		if work_visuals.has(inst_id) and is_instance_valid(work_visuals[inst_id]):
 			(work_visuals[inst_id] as Node2D).position = old_pos   # snap back
-		message = "That's outside the camp ring."
+		message = "That's outside the hearth's ring."
 		_refresh_hud()
 		return
 	inst.x = pos.x
 	inst.y = pos.y
-	if camp_center == Vector2.INF or works.placed.size() == 1:
-		_set_camp(pos)   # a lone structure carries the camp with it
 	# a chapel carries its dedication with it
 	for god_id: String in chapels.keys():
 		if (chapels[god_id] as Vector2).distance_to(old_pos) < 1.0:
 			chapels[god_id] = pos
+	if is_hearth:
+		_recenter_on_hearth()   # drag the hearth, and the village moves with it
 	if work_visuals.has(inst_id) and is_instance_valid(work_visuals[inst_id]):
 		(work_visuals[inst_id] as Node2D).position = pos
 	if net_mode == "server":
@@ -2073,10 +2100,9 @@ func _demolish_work(inst_id: int) -> void:
 	if work_visuals.has(inst_id) and is_instance_valid(work_visuals[inst_id]):
 		work_visuals[inst_id].queue_free()
 	work_visuals.erase(inst_id)
-	# if that was the last structure, the camp un-plants (re-found it anywhere)
-	if works.placed.is_empty():
-		camp_center = Vector2.INF
-		_update_camp_ring()
+	# the ring follows the hearth: reclaim the hearth and the village loses its
+	# center (raise a new one to re-found), reclaim anything else and it holds
+	_recenter_on_hearth()
 	sfx("build")
 	message = "You reclaim the %s.%s" % [str(work.name).to_lower(),
 		"  Salvaged: %s." % ", ".join(refunded) if refunded.size() > 0 else ""]
@@ -2968,6 +2994,13 @@ static func _setup_input() -> void:
 			var ev := InputEventKey.new()
 			ev.physical_keycode = keycode
 			InputMap.action_add_event(action, ev)
+
+## Screenshot/test harness helper: raise the founding hearth (the village must
+## exist before anything else can be built) so a harness can fill it in.
+func _harness_found_village() -> void:
+	inventory.add(acting_pid, "item-salt", 8)
+	inventory.add(acting_pid, "item-wreck-timber", 6)
+	intent_build("work-hearth")
 
 func _screenshot_and_quit() -> void:
 	await get_tree().create_timer(1.2).timeout

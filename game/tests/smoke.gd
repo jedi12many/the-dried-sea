@@ -41,18 +41,25 @@ func _ready() -> void:
 	check(host.intent_craft("recipe-rope"), "hand-crafted rope from cloth")
 	check(host.inventory.count(1, "item-rope") == 2, "rope in hand, cloth spent")
 
-	# build: gather timber the honest way, then raise a workbench
+	# build: gather timber the honest way, then found the village on a hearth
 	for i in 3:
 		var t := _node_of(host, "item-wreck-timber")
 		host.player.position = t.position
 		host.intent_harvest()
 	check(host.inventory.count(1, "item-wreck-timber") >= 6, "timber gathered")
-	check(host.intent_build("work-workbench"), "workbench raised")
+	# --- the village grows around its hearth ---------------------------------
+	host.inventory.add(1, "item-wreck-timber", 12)   # enough for hearth + workbench
+	host.inventory.add(1, "item-salt", 8)
+	check(host.menu_works() == ["work-hearth"], "before founding, the only build is the hearth")
+	check(not host.intent_build("work-workbench"), "nothing raises before the hearth")
+	check(host.camp_center == Vector2.INF, "and no ring exists yet")
+	check(host.intent_build("work-hearth"), "the Great Hearth founds the village")
+	check(host.camp_center != Vector2.INF and host.camp_center == host.work_pos("work-hearth"), "the ring centers on the hearth")
+	host.player.position = host.camp_center + Vector2(70, 0)   # a step off the hearth, still in-ring
+	check(host.intent_build("work-workbench"), "now the workbench raises, inside the ring")
 	check(host.works.count_of("work-workbench") == 1, "the sim knows the workbench stands")
-	check(not host.intent_build("work-workbench"), "can't afford a second — costs are real")
 
-	# --- the camp ring: first structure plants it, the rest build inside ------
-	check(host.camp_center != Vector2.INF, "the workbench planted the camp")
+	# --- the ring: everything else falls inside it ---------------------------
 	host.inventory.add(1, "item-driftwood", 8)
 	host.player.position = host.camp_center + Vector2(host.CAMP_RADIUS + 200.0, 0)  # way out
 	check(not host.intent_build("work-driftwood-wall"), "can't build out past the ring")
@@ -80,7 +87,7 @@ func _ready() -> void:
 	host._demolish_work(wall_inst)
 	check(not host.works.placed.has(wall_inst), "Shift+right-click reclaims the wall")
 	check(host.inventory.count(1, "item-driftwood") == drift_before + 2, "and salvages half its driftwood (4→2)")
-	host.camp_center = Vector2.INF   # loosen for the scattered mechanic-tests below
+	host.camp_center = host.player.position   # ring follows the player: loosen for the scattered mechanic-tests below
 
 	# station crafting now unlocked
 	host.inventory.add(1, "item-driftwood", 1)
@@ -220,7 +227,7 @@ func _ready() -> void:
 	host.inventory.add(1, "item-wreck-timber", 20)
 	host.inventory.add(1, "item-salt", 10)
 	host.inventory.add(1, "item-bronze-salvage", 4)
-	host.camp_center = Vector2.INF
+	host.camp_center = host.player.position   # ring follows the player for the scattered build below
 	check(host.intent_build("work-chapel"), "a chapel to Halor rises")
 	var dry: float = host.devotion.state[1]["god-halor"].vigor
 	host.player.position = host.chapels["god-halor"]
@@ -333,6 +340,7 @@ func _ready() -> void:
 	host.add_child(doomed); host.villagers.append(doomed)
 	host.inventory.add(1, "item-wreck-timber", 15); host.inventory.add(1, "item-bronze-salvage", 8); host.inventory.add(1, "item-rope", 8)
 	host.player.position = host.village_heart() + Vector2(120, 0)
+	host.camp_center = host.player.position   # ring follows the player for this build
 	check(host.intent_build("work-salt-wheel"), "raise the Salt-Wheel")
 	var wheel_inst := -1
 	for iid: Variant in host.works.placed:
@@ -391,7 +399,7 @@ func _ready() -> void:
 	host.inventory.add(1, "item-wreck-timber", 8)
 	host.inventory.add(1, "item-salt", 13)
 	check("work-smokehouse" in host.menu_works(), "Halor's smokehouse is on the build menu (you knelt)")
-	host.camp_center = Vector2.INF
+	host.camp_center = host.player.position   # ring follows the player for the scattered build below
 	check(host.intent_build("work-smokehouse"), "smokehouse raised")
 	var crab2 := _enemy_of(host, "creature-scuttle-crab")
 	host.player.position = crab2.position
@@ -429,7 +437,7 @@ func _ready() -> void:
 	host.inventory.add(1, "item-wreck-timber", 20)
 	host.inventory.add(1, "item-salt", 10)
 	host.inventory.add(1, "item-bronze-salvage", 4)
-	host.camp_center = Vector2.INF
+	host.camp_center = host.player.position   # ring follows the player for the scattered build below
 	check(host.intent_build("work-chapel"), "a second chapel rises")
 	check(host.chapels.has("god-maren"), "dedicated to the Storm-Mother")
 	var m_dry: float = host.devotion.state[1]["god-maren"].vigor
@@ -604,7 +612,7 @@ func _ready() -> void:
 	host.inventory.add(1, "item-wreck-timber", 8)
 	host.inventory.add(1, "item-salt", 12)
 	host.player.position = center + Vector2(-200, 0)
-	host.camp_center = Vector2.INF
+	host.camp_center = host.player.position   # ring follows the player for the scattered build below
 	check(host.intent_build("work-smokehouse") or host.works.count_of("work-smokehouse") > 0, "a smokehouse stands")
 	host.clock.minute_of_day = 8 * 60  # working morning
 	var post := host.work_pos("work-smokehouse")
