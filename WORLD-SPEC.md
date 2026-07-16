@@ -120,6 +120,29 @@ Beyond a god-neutral tier-0 set (driftwood, wreck-timber, rope — nobody builds
 - **Priests are attracted, not built:** raise a god's chapel, keep an offering lit, and within days a wandering priest of that god arrives — Soulmask-style recruitment, flavored as pilgrimage. Priests are tribesmen with a class: they conduct restoration rites and Rededication, cleanse Ur-Noth scarring (if you dare host both), buff the village, and **sell rumors** (see itemization).
 - Pantheon politics (v2): tribesmen have their own devotions; certain god pairs bless or friction with each other under one palisade. Homestead-scale theology.
 
+### The Sanctum — the altar is the god's character sheet *(working names throughout: Sanctum, Splendor, Offertory, Keeper)*
+
+*(Designed 2026-07-16. The formalization of two older promises: "offerings buy the rate down" and the church tier's "offering altar." Comparable-game anchor: Valheim's comfort/resting bonus — a scored, curated space that buffs regeneration — except the bonus points UP: it restores the god, not the player. This gives building and decorating a devotional reason to exist.)*
+
+**The core object is the Altar** — one craftable per god, favor-tier-gated, raised at (or upgrading) that god's chapel. The altar mirrors the player's own paper doll:
+
+- **Relic slots — the god's worn equipment.** 4 slots on a fresh altar; **upgrading the altar** (materials + next favor tier, station-tier pattern) grows it to 6, then 8 at the deepest tier. Relics are quest-won singulars — from Callings, boss keystones, Deep Callings, first-wreck hunts. Displayed, never consumed, freely retrievable; each contributes a fixed Splendor chunk. Four slots means curation hurts from day one, and a relic displayed here is a relic NOT displayed anywhere else.
+- **The Offertory — the god's pack.** A separate consumable bag on the same altar. Ordinary goods laid there are **taken by the god at the dawn tithe** (craved goods first), and what currently remains sets the offering half of Splendor. A stocked altar is a small standing prayer; a dry one is just furniture.
+
+**Appetites — offerings are geared to gods.** Each god's data carries an offering table: **craves ×2 · accepts ×1 · ignores ×0 · offends = negative**. Bronze laid before Neris is craved; the same bronze means nothing to Halor. The pantheon's personalities become legible through their appetites with zero prose — and the **offends** lane writes to the Verdict ledgers (lay a husk before Halor and the flats remember). Relics carry a gentler version of the same pull: any god honors a story, but their *own* stories burn brighter (full value at their altar, reduced elsewhere).
+
+**Splendor → the restorative bonus.** `Vigor returned by a rite = base × Splendor`, where Splendor runs a bounded curve (~1.0×–2.5× at EA, economy-model asserted). Offering stacks score with hard diminishing returns (variety of craved types beats one giant stack — no dumping 400 salt to max a temple). The dawn tithe also feeds a passive trickle sized well below active rites: worship stays the main verb.
+
+**Tending.** A Sanctum holds its Splendor while rites are held regularly or a devout villager serves as its **Keeper** (a real village task — the self-managing labor system can route it); neglected, offerings spoil faster. Temples live inside the village economy, not beside it.
+
+**The grim mirror.** Ur-Noth's altar is the **Reliquary of the Unlit**: it craves what honest gods refuse — consumed-remnant husks, the chains of Broken captives — and its Splendor multiplies what his rites *drain from other gods*. Structures testify: pilgrims, priests, and Peoples react to it, and every offering laid there is a ledger entry. Design law holds: the kinder-slower alternative is simply the honest temple.
+
+**Morality is read, not declared:** what you display and what you feed your gods is now Verdict-legible. A hall of mercy-relics and a hall of husks are both confessions.
+
+**2D-first form (the Soul Build ships this):** the whole system is one building inventory — the **Offertory modal**: pack on the left, relic slots + offering bag on the right, every item annotated with the god's appetite ("salt ×12 — craved", "bronze ×3 — Neris ignores this"). The annotation is the entire tutorial. **3D extension (additive, nothing forked):** the spatial layer returns as an extra Splendor component — enclosure quality and god-affine decor pieces scored within the altar's radius — on top of the identical relic/offertory core.
+
+**Data (portability law):** `gods/*.json` → `offerings: {craves, accepts, offends}` (+ optional per-entry weights); `works.json` → altar entries with `sanctum: {relicSlots, slotsPerTier}`; `items.json` → `relic: {points}` on quest singulars (alongside `legend`/`remnantOf`); `tuning/sanctum.json` → stack curve, tithe rate, multiplier band, spoil rate. In 3D, decor works additionally carry `splendor: {points, affinity}`.
+
 ---
 
 ## Biomes (EA target: 3, by depth band)
