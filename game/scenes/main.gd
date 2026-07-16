@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.5.5"
+const GAME_VERSION := "0.6.0"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -36,6 +36,12 @@ var devotion: DevotionSystem
 var village: VillageSystem
 var works: WorksSystem
 var verdict: VerdictSystem
+var sanctum: SanctumSystem
+var offertory_open := false
+var offertory_inst := -1        # which altar the open Offertory is looking at
+var offertory_label: Label
+var offertory_title: Label
+var offertory_items: Array = []  # number key -> item_id map, rebuilt each render
 var inventory: InventorySystem
 var stats: StatsSystem
 var abilities: AbilitiesSystem
@@ -162,6 +168,11 @@ func _ready() -> void:
 	village = VillageSystem.new(registry)
 	works = WorksSystem.new(registry, devotion)
 	verdict = VerdictSystem.new(registry)
+	sanctum = SanctumSystem.new(registry)
+	sanctum.offense_laid.connect(func(p: int, god_id: String, _item: String) -> void:
+		verdict.record(p, "gods", -3.0, "an offense laid before %s" % god_id, clock.day)
+		message = "%s turns from the altar. The flats remember what you laid there." % str(registry.get_entity(god_id).name)
+		_refresh_hud())
 	inventory = InventorySystem.new(registry)
 	stats = StatsSystem.new()
 	stats.register(acting_pid, 60.0, 60.0)   # unfed floor — food raises the ceiling
@@ -235,6 +246,20 @@ func _ready() -> void:
 				if v.is_captive:
 					v.position = player.position + Vector2(50, 0)
 		_toggle_village(true)
+		_screenshot_and_quit()
+	elif "--screenshot-offertory" in OS.get_cmdline_user_args():
+		inventory.add(acting_pid, "item-salt", 28)
+		inventory.add(acting_pid, "item-wreck-timber", 10)
+		inventory.add(acting_pid, "item-bronze-salvage", 4)
+		inventory.add(acting_pid, "item-smoked-crab", 6)
+		inventory.add(acting_pid, "item-storm-glass", 2)
+		inventory.add(acting_pid, "item-crab-meat", 3)
+		inventory.add(acting_pid, "item-remnant-shellback", 1)
+		intent_build("work-altar-halor")
+		var alt := sanctum.altar_for("god-halor")
+		intent_sanctum(alt, "item-salt")
+		intent_sanctum(alt, "item-remnant-shellback")
+		_toggle_offertory(true, alt)
 		_screenshot_and_quit()
 	elif "--screenshot-village" in OS.get_cmdline_user_args():
 		inventory.add(acting_pid, "item-wreck-timber", 20)
@@ -322,6 +347,7 @@ func save_game() -> void:
 		"village_stock": village_stock.duplicate(),
 		"callings": callings.duplicate(true),
 		"callings_done": callings_done.duplicate(true),
+		"sanctum": sanctum.to_save(),
 		"message": message,
 	}
 	SaveSystem.write_file(save_path, s)
@@ -390,6 +416,7 @@ func load_game() -> void:
 	village_stock = g.get("village_stock", {})
 	callings = SaveSystem._int_keys(g.get("callings", {}))
 	callings_done = SaveSystem._int_keys(g.get("callings_done", {}))
+	sanctum.from_save(g.get("sanctum", {}))
 	_villager_nid = maxi(_villager_nid, int(g.get("villager_nid", _villager_nid)))
 	for pd: Dictionary in g.get("pool", []):
 		var v: DSVillager = null
@@ -486,6 +513,8 @@ func current_prompt() -> String:
 			return "[E] Kneel"
 	if survivor != null and not survivor.rescued and player.position.distance_to(survivor.position) < interact_range():
 		return "[E] Rescue her"
+	if _offertory_takes_e() >= 0:
+		return "[E] The offertory"
 	for god_id: String in chapels:
 		if acting_pos().distance_to(chapels[god_id]) < interact_range():
 			if _carrying_remnant():
@@ -623,7 +652,26 @@ func _unhandled_input(event: InputEvent) -> void:
 			_toggle_menu(false)
 			return
 		# the OTHER menu key falls through to switch modes below
+	if offertory_open and event is InputEventKey and event.pressed:
+		var okey := (event as InputEventKey).physical_keycode
+		if okey >= KEY_1 and okey <= KEY_9:
+			var oidx := int(okey - KEY_1)
+			if oidx < offertory_items.size():
+				intent_sanctum(offertory_inst, str(offertory_items[oidx]))
+			return
+		if okey == KEY_ESCAPE or okey == KEY_E:
+			sfx("ui")
+			_toggle_offertory(false)
+			return
+		return   # the altar holds your attention; other keys wait
 	if event.is_action_pressed("interact"):
+		# standing at an altar, E opens the Offertory (the god's inventory);
+		# a pending chapel rite that's closer keeps its claim on E
+		var altar := _offertory_takes_e()
+		if altar >= 0 and not menu_open:
+			sfx("ui")
+			_toggle_offertory(true, altar)
+			return
 		intent_interact()
 	elif event.is_action_pressed("craft"):
 		sfx("ui")
@@ -1005,8 +1053,60 @@ func intent_rite(god_id: String) -> bool:
 		return false
 	rites_done_today[god_id] = true
 	sfx("rite")
-	devotion.rite_day(acting_pid, god_id, "chapel", 1)
-	message = "You lead the rite at %s's chapel. The shrine-light steadies a little." % str(registry.get_entity(god_id).name)
+	# the Sanctum: this god's altar bears the rite up (or sours it — offenses count)
+	var altar := sanctum.altar_for(god_id)
+	var splendor := sanctum.splendor(altar) if altar >= 0 else 1.0
+	devotion.rite_day(acting_pid, god_id, "chapel", 1, splendor)
+	var god_name := str(registry.get_entity(god_id).name)
+	if splendor > 1.05:
+		message = "You lead the rite at %s's chapel. The altar's splendor bears it up (×%.1f)." % [god_name, splendor]
+	elif splendor < 0.95:
+		message = "You lead the rite at %s's chapel — but something on the altar sours it (×%.1f)." % [god_name, splendor]
+	else:
+		message = "You lead the rite at %s's chapel. The shrine-light steadies a little." % god_name
+	_refresh_hud()
+	return true
+
+## The Offertory: one toggle verb, server-authoritative. If the item is on the
+## altar (relic slot or bag) it comes back to your pack; if it's in your pack it
+## goes to the altar — relics to the god's worn slots, goods to the bag.
+func intent_sanctum(inst_id: int, item_id: String) -> bool:
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "sanctum", [inst_id, item_id])
+		return true
+	if not sanctum.is_altar(inst_id):
+		return false
+	var god_id := str(sanctum.state[inst_id].god_id)
+	if sanctum.take_relic(inst_id, item_id):
+		inventory.add(acting_pid, item_id, 1)
+		message = "You lift %s from the altar." % str(registry.get_entity(item_id).name)
+	else:
+		var back := sanctum.withdraw(inst_id, item_id)
+		if back > 0:
+			inventory.add(acting_pid, item_id, back)
+			message = "You take back what was laid out (×%d)." % back
+		elif inventory.count(acting_pid, item_id) > 0:
+			if sanctum.relic_points(item_id) > 0.0:
+				if not sanctum.place_relic(inst_id, item_id, devotion.favor_tier(acting_pid, god_id)):
+					message = "The altar's slots are full — %s holds only so many stories." % str(registry.get_entity(god_id).name)
+					_refresh_hud()
+					return false
+				inventory.pay(acting_pid, [{"itemId": item_id, "qty": 1}])
+				message = "You set %s on the altar. It belongs to a story now." % str(registry.get_entity(item_id).name)
+			else:
+				var qty := inventory.count(acting_pid, item_id)
+				inventory.pay(acting_pid, [{"itemId": item_id, "qty": qty}])
+				sanctum.deposit(acting_pid, inst_id, item_id, qty)
+				var lane := sanctum.lane(god_id, item_id)
+				match lane:
+					"craves": message = "You lay it out (×%d). %s is pleased — this is craved." % [qty, str(registry.get_entity(god_id).name)]
+					"accepts": message = "You lay it out (×%d). It is accepted." % qty
+					"ignores": message = "You lay it out (×%d). %s does not stoop to notice." % [qty, str(registry.get_entity(god_id).name)]
+		else:
+			return false
+	sfx("rite")
+	if offertory_open:
+		_toggle_offertory(true, inst_id)
 	_refresh_hud()
 	return true
 
@@ -1449,6 +1549,9 @@ func intent_build(work_id: String) -> bool:
 		_set_camp(pos)
 		message = "You plant your camp here. Build within the ring; the flats are kinder inside it."
 	var inst_id := works.place(work_id, acting_pid, pos)
+	sanctum.register(inst_id, work_id)
+	if sanctum.is_altar(inst_id):
+		message = "The %s stands. Stand at it [E] to lay relics and offerings — splendor bears your rites up." % str(work.name).to_lower()
 	sfx("build", pos)
 	if work_id == "work-chapel":
 		# dedicate to the first attuned god who lacks one
@@ -1788,6 +1891,96 @@ func _toggle_journal(open: bool) -> void:
 				lines.append("  · %s" % str(registry.get_entity(str(active[k].id)).title))
 	journal.text = "\n".join(lines)
 
+## --- the Offertory: the altar's two halves, one numbered list -----------------
+## The nearest placed altar within reach, or -1.
+func _altar_near() -> int:
+	var best := -1
+	var best_d := interact_range() + 30.0   # a shade forgiving; altars are furniture
+	for inst_id: Variant in works.placed:
+		if not sanctum.is_altar(int(inst_id)):
+			continue
+		var inst: Dictionary = works.placed[inst_id]
+		var d: float = player.position.distance_to(Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))))
+		if d < best_d:
+			best_d = d
+			best = int(inst_id)
+	return best
+
+## Should E open the Offertory here? The altar claims E only when it's closer
+## than any chapel with a rite still pending — the day's rite always has a way in.
+func _offertory_takes_e() -> int:
+	var altar := _altar_near()
+	if altar < 0:
+		return -1
+	var inst: Dictionary = works.placed[altar]
+	var altar_d: float = player.position.distance_to(Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))))
+	for god_id: String in chapels:
+		if not rites_done_today.get(god_id, false) \
+				and player.position.distance_to(chapels[god_id]) < minf(altar_d, interact_range()):
+			return -1
+	return altar
+
+func _toggle_offertory(open: bool, inst_id: int = -1) -> void:
+	offertory_open = open
+	offertory_inst = inst_id if open else -1
+	var m: Dictionary = modals.get("offertory", {})
+	if m.is_empty():
+		return
+	(m.root as Control).visible = open
+	if not open or not sanctum.is_altar(inst_id):
+		return
+	var god_id := str(sanctum.state[inst_id].god_id)
+	var god_name := str(registry.get_entity(god_id).name)
+	offertory_title.text = "THE OFFERTORY — %s" % god_name.to_upper()
+	var s: Dictionary = sanctum.state[inst_id]
+	var tier := devotion.favor_tier(my_pid, god_id)
+	var slots := sanctum.relic_slots(inst_id, tier)
+	offertory_items = []
+	var lines: Array[String] = []
+	# the god's worn equipment
+	lines.append("RELICS  (%d of %d slots — the god's worn stories)" % [(s.relics as Array).size(), slots])
+	for relic_id: String in s.relics:
+		offertory_items.append(relic_id)
+		lines.append("  %d. %s   — displayed; press to take back" % [offertory_items.size(), str(registry.get_entity(relic_id).name)])
+	if (s.relics as Array).is_empty():
+		lines.append("  (bare stone — relics come from callings and great deeds)")
+	lines.append("")
+	# the god's pack
+	lines.append("LAID OUT  (the dawn tithe takes a little each day)")
+	var bag: Dictionary = s.bag
+	for item_id: String in bag:
+		offertory_items.append(item_id)
+		lines.append("  %d. %s ×%d   — %s; press to take back" % [offertory_items.size(),
+			str(registry.get_entity(item_id).name), int(bag[item_id]), sanctum.lane(god_id, item_id)])
+	if bag.is_empty():
+		lines.append("  (nothing — a dry altar is just furniture)")
+	lines.append("")
+	# your pack, annotated with the god's appetite
+	lines.append("YOUR PACK")
+	var any := false
+	for item_id: String in inventory._inv(my_pid).keys():
+		if offertory_items.size() >= 9:
+			break
+		var is_relic := sanctum.relic_points(item_id) > 0.0
+		var lane := sanctum.lane(god_id, item_id)
+		if not is_relic and lane == "ignores":
+			lines.append("      %s ×%d — %s ignores this" % [str(registry.get_entity(item_id).name),
+				inventory.count(my_pid, item_id), god_name])
+			continue
+		offertory_items.append(item_id)
+		var note := "a relic — display it" if is_relic else lane
+		if lane == "offends":
+			note = "OFFENDS — the flats will remember"
+		lines.append("  %d. %s ×%d   — %s" % [offertory_items.size(),
+			str(registry.get_entity(item_id).name), inventory.count(my_pid, item_id), note])
+		any = true
+	if not any and (s.relics as Array).is_empty() and bag.is_empty():
+		lines.append("  (nothing %s wants — gather what they crave)" % god_name)
+	offertory_label.text = "\n".join(lines)
+	var spl := sanctum.splendor(inst_id)
+	(modals.offertory.footer as Label).text = "splendor ×%.1f — rites to %s return %s   ·   [1-%d] move   ·   [E] close" % [
+		spl, god_name, ("more" if spl > 1.05 else ("LESS — something offends" if spl < 0.95 else "the usual")), maxi(offertory_items.size(), 1)]
+
 ## --- One-shot audio, guarded for the headless server.
 func sfx(name: String, at := Vector2.INF, base_db := 0.0) -> void:
 	if net_mode != "server" and sound != null:
@@ -1838,6 +2031,14 @@ func _demolish_work(inst_id: int) -> void:
 	for god_id: String in chapels.keys():
 		if (chapels[god_id] as Vector2).distance_to(pos) < 4.0:
 			chapels.erase(god_id)
+	# an altar gives back what was laid on it — relics and offerings, not the tithe
+	if sanctum.is_altar(inst_id):
+		var contents := sanctum.unregister(inst_id)
+		for relic_id: String in contents.get("relics", []):
+			inventory.add(acting_pid, relic_id, 1)
+		var bag: Dictionary = contents.get("bag", {})
+		for item_id: String in bag:
+			inventory.add(acting_pid, item_id, int(bag[item_id]))
 	works.placed.erase(inst_id)
 	if work_visuals.has(inst_id) and is_instance_valid(work_visuals[inst_id]):
 		work_visuals[inst_id].queue_free()
@@ -1874,8 +2075,13 @@ func _spawn_work_visual(inst_id: int, work_id: String, pos: Vector2, chapel_hint
 		"work-hearth": "hearth", "work-driftwood-wall": "wall", "work-yoke-post": "yoke_post",
 		"work-salt-cellar": "salt_cellar", "work-lightning-rod": "lightning_rod",
 		"work-storm-cistern": "storm_cistern",
+		"work-altar-halor": "altar", "work-altar-maren": "altar",
 	}
 	var fallback := Color("6e5138") if not work.get("grim", false) else Color("5b3a6e")
+	if work_id == "work-altar-halor":
+		fallback = Color("e8e2d4")   # salt-pale
+	elif work_id == "work-altar-maren":
+		fallback = Color("aebfc9")   # storm-light
 	if work_id == "work-chapel":
 		fallback = Color("f2efe8")
 	var visual := SpriteKit.sprite(work_sprites.get(work_id, "none"),
@@ -2314,6 +2520,13 @@ func on_villager_needs_help(v: DSVillager) -> void:
 func _on_sim_day(_day: int) -> void:
 	_village_dawn()
 	devotion.villager_trickle_day(acting_pid, "god-halor", village.devout_count("god-halor"))
+	# the dawn tithe: each altar's god takes a little of what was laid out, and
+	# that consumption is worship — it feeds every player attuned to that god
+	var tithe := sanctum.dawn_tithe()
+	for god_id: String in tithe:
+		for pid: Variant in attuned:
+			if pid is int and god_id in attuned_for(int(pid)):
+				devotion.tithe_day(int(pid), god_id, float(tithe[god_id]))
 	for inst_id: Variant in works.placed:
 		works.placed[inst_id].in_use = false   # dawn: works rest until tended
 	village.end_of_day()
@@ -2618,6 +2831,10 @@ func _build_hud() -> void:
 	journal = m_journal.body
 	journal.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
+	var m_offertory := _make_modal(layer, "offertory", Vector2(660, 560), "THE OFFERTORY")
+	offertory_label = m_offertory.body
+	offertory_title = m_offertory.title
+
 func _refresh_bars() -> void:
 	if hp_bar == null:
 		return
@@ -2835,6 +3052,7 @@ func srv_intent(kind: String, args: Array) -> void:
 		"equip": equip_toggle(acting_pid, str(args[0]))
 		"give_food": intent_give_food()
 		"journal": journal_interact(acting_pid, int(args[0]))
+		"sanctum": intent_sanctum(int(args[0]), str(args[1]))
 		"move_work": _move_work(int(args[0]), Vector2(float(args[1]), float(args[2])))
 		"rotate_work": _rotate_work(int(args[0]))
 		"demolish_work": _demolish_work(int(args[0]))
@@ -2903,6 +3121,7 @@ func _world_sync() -> Dictionary:
 				"tid": v.tribesman_id, "bloomed": bool(rec.get("bloomed", false)),
 				"covered": bool(rec.get("warden_covered", true))}),
 		"stock": village_stock,
+		"sanctum": sanctum.to_save(),
 	}
 
 func _players_snapshot() -> Array:
@@ -3098,6 +3317,13 @@ func cl_world_sync(w: Dictionary) -> void:
 			v.queue_free()
 	if village_panel_open:
 		_toggle_village(true)
+	# the altars: client mirrors the sanctum state; refresh the open Offertory
+	sanctum.from_save(w.get("sanctum", {}))
+	if offertory_open:
+		if sanctum.is_altar(offertory_inst):
+			_toggle_offertory(true, offertory_inst)
+		else:
+			_toggle_offertory(false)   # the altar was reclaimed under us
 	_refresh_hud()
 
 @rpc("authority", "unreliable_ordered")

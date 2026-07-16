@@ -345,5 +345,57 @@
     },
     "text": "Consumes god-remnants at better yield. The gods know exactly what it is.",
     "purpose": "GRIM: consumes god-remnants at better yield. Feeds Ur-Noth. (coming soon)"
+  },
+  {
+    "id": "work-altar-halor",
+    "name": "Altar of the Salt-Father",
+    "godId": "god-halor",
+    "category": "worship",
+    "buildCost": [
+      {
+        "itemId": "item-salt",
+        "qty": 12
+      },
+      {
+        "itemId": "item-wreck-timber",
+        "qty": 8
+      },
+      {
+        "itemId": "item-bronze-salvage",
+        "qty": 2
+      }
+    ],
+    "sanctum": {
+      "relicSlots": 4,
+      "slotsPerTier": 2
+    },
+    "text": "A shelf of salt-scoured stone at the chapel's heart, cut for things worth keeping. Halor has never asked for gold. He asks what you're willing to not eat.",
+    "purpose": "Halor's altar. Relics displayed and offerings laid here strengthen his rites."
+  },
+  {
+    "id": "work-altar-maren",
+    "name": "Altar of the Squall",
+    "godId": "god-maren",
+    "category": "worship",
+    "buildCost": [
+      {
+        "itemId": "item-storm-glass",
+        "qty": 2
+      },
+      {
+        "itemId": "item-wreck-timber",
+        "qty": 8
+      },
+      {
+        "itemId": "item-bronze-salvage",
+        "qty": 2
+      }
+    ],
+    "sanctum": {
+      "relicSlots": 4,
+      "slotsPerTier": 2
+    },
+    "text": "Bronze fittings bolted to a slab that's taken a strike before and kept standing. Maren doesn't want quiet devotion. She wants to see what you brought her.",
+    "purpose": "Maren's altar. Relics displayed and offerings laid here strengthen her rites."
   }
 ]

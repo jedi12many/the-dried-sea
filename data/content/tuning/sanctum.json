@@ -1,0 +1,15 @@
+{
+  "$comment": "Sanctum tuning v1 — the altar economy. Bands asserted by tools/economy-model.mjs.",
+  "lanes": {
+    "craves": 2.0,
+    "accepts": 1.0,
+    "ignores": 0.0,
+    "offends": -2.0
+  },
+  "offeringScoreK": 0.06,
+  "titheTypesPerDawn": 2,
+  "titheQtyPerType": 1,
+  "titheVigorPerUnit": 1.0,
+  "relicOffGodMult": 0.5,
+  "multiplierCeiling": 2.5
+}

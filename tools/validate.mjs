@@ -87,6 +87,7 @@ for (const { file, obj } of entities) {
     if (obj.grim && !obj.grimRules) err(file, `${obj.id} grim=true requires grimRules (kinder alternative is a design LAW)`);
     if (obj.grim && obj.godId !== "god-ur-noth") warn(file, `${obj.id} is grim but not Ur-Noth's — intended?`);
     if ((obj.favorTrickle ?? 0) > 0 && !obj.useDetection) err(file, `${obj.id} trickles favor but has no useDetection — idle works must feed nothing`);
+    if (obj.sanctum && (obj.sanctum.relicSlots ?? 0) < 1) err(file, `${obj.id} sanctum.relicSlots must be >= 1`);
   }
   if (t === "god") {
     for (const inv of obj.invocations ?? []) {
@@ -94,6 +95,8 @@ for (const { file, obj } of entities) {
         warn(file, `${inv.id} vigorCost ${inv.vigorCost} is cheap — 'magic saves your life once per pickle', check tuning`);
     }
     for (const legendId of obj.affinityLegendIds ?? []) ref(file, obj.id, legendId, "affinityLegendIds");
+    for (const lane of ["craves", "accepts", "offends"])
+      for (const itemId of obj.offerings?.[lane] ?? []) ref(file, obj.id, itemId, `offerings.${lane}`);
   }
   if (t === "recipe") {
     ref(file, obj.id, obj.output?.itemId, "output");

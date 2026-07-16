@@ -43,5 +43,10 @@
   },
   "flags": [],
   "affinityLegendIds": ["item-salt-fathers-hearthstone"],
+  "offerings": {
+    "craves": ["item-salt", "item-smoked-crab", "item-smoked-eel"],
+    "accepts": ["item-wreck-timber", "item-rope", "item-salt-ration"],
+    "offends": ["item-crab-meat"]
+  },
   "lore": "The homestead god. His works are the reason your village looks like a home and not a camp."
 }

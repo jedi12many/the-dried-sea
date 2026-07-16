@@ -21,6 +21,7 @@ func _init() -> void:
 	_test_abilities()
 	_test_save()
 	_test_stats()
+	_test_sanctum()
 	_test_golden_run()
 	print("\n%d checks, %d failure(s)" % [checks, failures.size()])
 	quit(1 if failures.size() > 0 else 0)
@@ -279,6 +280,87 @@ func _test_stats() -> void:
 	check(stats.hp("hero") <= stats.max_hp("hero"), "hp clamps down with the ceiling")
 	stats.tick(60.0)
 	check(stats.max_hp("hero") == 100.0, "unfed again")
+
+## The Sanctum: the altar is the god's character sheet — relic slots are its
+## worn gear, the offertory bag its pack, appetites make bronze mean something
+## to one god and nothing to another, and Splendor multiplies the rite.
+func _test_sanctum() -> void:
+	var reg := Registry.new()
+	reg.load_all()
+	var sanc := SanctumSystem.new(reg)
+	var P := 1
+	# appetites straight from the god data — the tables are the tutorial
+	check(sanc.lane("god-halor", "item-salt") == "craves", "Halor craves salt")
+	check(sanc.lane("god-halor", "item-storm-glass") == "ignores", "Halor ignores storm-glass")
+	check(sanc.lane("god-maren", "item-storm-glass") == "craves", "Maren craves storm-glass")
+	check(sanc.lane("god-halor", "item-crab-meat") == "offends", "raw blood on the hearth god's altar offends")
+	check(sanc.lane("god-neris", "item-bronze-salvage") == "craves", "bronze means something to Neris")
+	check(sanc.lane("god-halor", "item-bronze-salvage") == "ignores", "…and nothing to Halor")
+	# an altar wakes on register, and only sanctum works count
+	sanc.register(1, "work-altar-halor")
+	sanc.register(2, "work-hearth")
+	check(sanc.is_altar(1) and not sanc.is_altar(2), "only sanctum works become altars")
+	check(sanc.altar_for("god-halor") == 1, "rites can find the god's altar")
+	check(absf(sanc.splendor(1) - 1.0) < 0.001, "a bare altar is exactly x1.0")
+	# offerings: craved beats accepted, variety beats one giant stack
+	sanc.deposit(P, 1, "item-salt", 16)
+	var salt_only := sanc.splendor(1)
+	check(salt_only > 1.0, "craved offerings raise Splendor (%.2f)" % salt_only)
+	sanc.deposit(P, 1, "item-smoked-crab", 16)
+	var two_craved := sanc.splendor(1)
+	sanc.withdraw(1, "item-smoked-crab")
+	sanc.deposit(P, 1, "item-salt", 16)   # same units, one stack of 32
+	check(two_craved > sanc.splendor(1), "variety of craved types beats one giant stack")
+	# relics: the god's worn gear — capped slots, off-god worth less
+	var pre_relic := sanc.splendor(1)
+	check(sanc.place_relic(1, "item-remnant-shellback", 0), "a remnant can be DISPLAYED (the third road)")
+	check(absf(sanc.splendor(1) - pre_relic - 0.4) < 0.01, "the on-god relic adds exactly its 0.4 chunk")
+	var pre_offgod := sanc.splendor(1)
+	sanc.place_relic(1, "item-neriss-hourglass", 0)   # Neris's story on Halor's altar
+	check(absf(sanc.splendor(1) - pre_offgod - 0.25) < 0.01, "an off-god relic burns at half (0.5 pts x 0.5)")
+	sanc.take_relic(1, "item-neriss-hourglass")
+	check(not sanc.place_relic(1, "item-remnant-shellback", 0), "the same story can't be told twice")
+	check(not sanc.place_relic(1, "item-salt", 0), "ordinary goods are not relics")
+	check(sanc.relic_slots(1, 0) == 4 and sanc.relic_slots(1, 2) == 6 and sanc.relic_slots(1, 3) == 8, "slots grow 4/6/8 with favor tier")
+	check(sanc.take_relic(1, "item-remnant-shellback"), "relics come back — displayed, never consumed")
+	# the offends lane drags the whole temple down, below 1.0
+	sanc.register(3, "work-altar-maren")
+	# (halor altar) — lay an offense
+	var before_offense := sanc.splendor(1)
+	var offended := [false]
+	sanc.offense_laid.connect(func(_p: int, _g: String, _i: String) -> void: offended[0] = true)
+	sanc.deposit(P, 1, "item-crab-meat", 9)
+	check(offended[0], "the offense is witnessed (signal for the Verdict ledger)")
+	check(sanc.splendor(1) < before_offense, "an offense sours Splendor")
+	sanc.withdraw(1, "item-crab-meat")
+	# the dawn tithe: craved taken first, consumption IS worship
+	sanc.deposit(P, 3, "item-storm-glass", 2)
+	sanc.deposit(P, 3, "item-rope", 4)
+	var fed := sanc.dawn_tithe()
+	check(float(fed.get("god-maren", 0.0)) > 0.0, "the tithe feeds Maren (%.1f vigor)" % float(fed.get("god-maren", 0.0)))
+	check(int(sanc.state[3].bag.get("item-storm-glass", 0)) == 1, "the god took one craved storm-glass")
+	# splendor bounded by the ceiling
+	for i in 30:
+		sanc.deposit(P, 3, "item-storm-glass", 100)
+	check(sanc.splendor(3) <= float(reg.tuning.sanctum.multiplierCeiling) + 0.001, "Splendor never exceeds the ceiling")
+	# save round-trip
+	var dump := sanc.to_save()
+	var sanc2 := SanctumSystem.new(reg)
+	sanc2.from_save(dump)
+	check(sanc2.is_altar(1) and absf(sanc2.splendor(3) - sanc.splendor(3)) < 0.001, "the altars survive a save round-trip")
+	check(sanc2.relic_slots(3, 0) == 4, "work_id survives the round-trip (slots still resolve)")
+	# rites: splendor multiplies recovery, and the sour floor is real
+	var dev := DevotionSystem.new(reg)
+	dev.attune(P, "god-halor")
+	dev.state[P]["god-halor"].vigor = 10.0
+	dev.rite_day(P, "god-halor", "chapel", 1, 1.0)
+	var plain: float = dev.state[P]["god-halor"].vigor
+	dev.state[P]["god-halor"].vigor = 10.0
+	dev.rite_day(P, "god-halor", "chapel", 1, 2.0)
+	check(dev.state[P]["god-halor"].vigor > plain, "a splendid altar bears the rite up")
+	dev.state[P]["god-halor"].vigor = 10.0
+	dev.rite_day(P, "god-halor", "chapel", 1, 0.5)
+	check(dev.state[P]["god-halor"].vigor < plain, "an offended altar sours the rite (floor 0.5)")
 
 func _test_golden_run() -> void:
 	## 30 sim-days, all systems ticking together, mid-game setup.

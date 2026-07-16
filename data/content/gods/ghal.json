@@ -43,5 +43,9 @@
   },
   "flags": [],
   "affinityLegendIds": [],
+  "offerings": {
+    "craves": ["item-crab-meat"],
+    "accepts": ["item-smoked-crab"]
+  },
   "lore": "The wild one. His sanctum is wherever the largest living thing on the seabed happens to be standing."
 }

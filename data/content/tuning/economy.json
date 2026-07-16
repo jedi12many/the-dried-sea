@@ -9,7 +9,7 @@
   "worship": {
     "riteRecoveryPerDayByChurchTier": { "shrine": 4, "chapel": 9, "church": 16, "basilica": 28 },
     "priestRankMult": [1.0, 1.25, 1.6],
-    "offeringBuydownMaxMult": 2.0,
+    "offeringBuydownMaxMult": 2.5,
     "devoutVillagerTricklePerDay": 0.5,
     "multiGodWorshipSplit": "per-god rites; time is the cost of breadth"
   },

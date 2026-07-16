@@ -495,9 +495,48 @@ def gen_shellback() -> Image.Image:
     return img
 
 
+def gen_altar() -> Image.Image:
+    """A votive altar: a squat pale stone slab table with a cloth runner and
+    tiny votive offerings on top. Kept in neutral stone tones (no strong hue
+    commitment) so it can be tinted per god at runtime (salt-pale for Halor,
+    storm-light for Maren)."""
+    w, h = 26, 22
+    img = new_canvas(w, h)
+
+    # two block legs (squat stone)
+    rect(img, 5, 13, 9, 19, PALETTE["HOUND_BODY"])
+    rect(img, 16, 13, 20, 19, PALETTE["HOUND_BODY"])
+    # leg shading -- darker edge column, same technique as the shrine pillars
+    rect(img, 8, 13, 9, 19, PALETTE["HOUND_SHADE"])
+    rect(img, 19, 13, 20, 19, PALETTE["HOUND_SHADE"])
+
+    # thicker top slab resting on the legs
+    rect(img, 2, 7, 23, 12, PALETTE["HOUND_BODY"])
+    hline(img, 2, 23, 7, PALETTE["SALT_WHITE"])    # top-edge highlight
+    hline(img, 2, 23, 12, PALETTE["HOUND_SHADE"])  # underside shadow
+
+    # thin cloth runner draped over the top center, down the front face
+    rect(img, 10, 5, 15, 6, PALETTE["CLOTH"])
+    rect(img, 9, 7, 16, 10, PALETTE["CLOTH"])
+    hline(img, 10, 15, 9, PALETTE["BRINE_SHADE"])  # fold crease
+
+    # votive candle nub with a single warm light pixel
+    rect(img, 5, 3, 6, 6, PALETTE["HAIR_DARK"])
+    px(img, 5, 2, PALETTE["GOLD"])
+
+    # tiny votive bowl
+    rect(img, 18, 5, 21, 6, PALETTE["BRONZE"])
+
+    # 1px outline in the altar's own darkest stone tone -- also reads as a
+    # slightly darker grounding line where the legs meet the base
+    add_outline(img, PALETTE["HOUND_SHADE"])
+    return img
+
+
 SPRITES = [
     # ground.png: UPGRADED to Gemini art (import_art.py --tile) â€” do not regenerate
     ("ground2.png", lambda: gen_ground(seed=2)),
+    ("altar.png", gen_altar),
     ("salt_pillar.png", gen_salt_pillar),
     # survivor.png: UPGRADED to Gemini art (import_art.py) â€” do not regenerate
     # villager.png: UPGRADED to Gemini art (import_art.py) ï¿½ do not regenerate
@@ -509,13 +548,13 @@ SPRITES = [
     ("bronze.png", gen_bronze),
     # shrine.png: UPGRADED to Gemini art (import_art.py) ï¿½ do not regenerate
     # chapel.png: UPGRADED to Gemini art (import_art.py) ï¿½ do not regenerate
-    # workbench.png: UPGRADED to Gemini art (import_art.py) — do not regenerate
+    # workbench.png: UPGRADED to Gemini art (import_art.py) ï¿½ do not regenerate
     ("brine_pool.png", gen_brine_pool),
     ("rope.png", gen_rope),
-    # crab.png: UPGRADED to Gemini art (import_art.py) — do not regenerate
+    # crab.png: UPGRADED to Gemini art (import_art.py) ï¿½ do not regenerate
     ("wall.png", gen_wall),
     # smokehouse.png: UPGRADED to Gemini art (import_art.py) ï¿½ do not regenerate
-    # hearth.png: UPGRADED to Gemini art (import_art.py) — do not regenerate
+    # hearth.png: UPGRADED to Gemini art (import_art.py) ï¿½ do not regenerate
     # shellback.png: UPGRADED to Gemini art (import_art.py) â€” do not regenerate
 ]
 

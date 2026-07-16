@@ -54,5 +54,9 @@
   },
   "flags": ["drains-caster", "strengthened-by-withdrawal", "expensive-to-leave"],
   "affinityLegendIds": ["item-the-unlit-crown"],
+  "offerings": {
+    "craves": ["item-crab-meat", "item-remnant-shellback"],
+    "offends": ["item-salt-votive"]
+  },
   "lore": "The forbidden patron. His magic is the strongest in the game and every cast costs what you'd expect. His build set is the grim works. His voice gets warmer every time you consume a remnant. He is very, very patient."
 }

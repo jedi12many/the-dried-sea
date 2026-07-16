@@ -87,8 +87,15 @@ func rite_day(player_id: int, god_id: String, church_tier: String, priest_rank: 
 	var w: Dictionary = econ.get("worship", {})
 	var base: float = w.get("riteRecoveryPerDayByChurchTier", {}).get(church_tier, 0.0)
 	var mult: float = w.get("priestRankMult", [1.0])[clampi(priest_rank - 1, 0, 2)]
-	_restore(player_id, god_id, base * mult * clampf(offering_mult, 1.0, float(w.get("offeringBuydownMaxMult", 2.0))))
+	# floor 0.5, not 1.0 — an offense laid on the altar (Sanctum) genuinely sours the rite
+	_restore(player_id, god_id, base * mult * clampf(offering_mult, 0.5, float(w.get("offeringBuydownMaxMult", 2.0))))
 	ledger_event.emit(player_id, "gods", base * mult * 0.01, "rite for %s" % god_id)
+
+## The Sanctum's dawn tithe: offerings the god took from an altar overnight
+## (sanctum_system computes the amount; sized well below rites — worship stays
+## the main verb).
+func tithe_day(player_id: int, god_id: String, amount: float) -> void:
+	_restore(player_id, god_id, amount)
 
 ## Devout-villager passive worship (village_system reports the count per god per day).
 func villager_trickle_day(player_id: int, god_id: String, devout_count: int) -> void:

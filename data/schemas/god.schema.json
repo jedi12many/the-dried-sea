@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "god.schema.json",
-  "$comment": "v1 — a member of the Pantheon of the Drowned",
+  "$comment": "v2 — a member of the Pantheon of the Drowned; adds offerings (the Sanctum, WORLD-SPEC)",
   "type": "object",
   "required": ["id", "name", "title", "domain", "voice", "blessing", "invocations", "priest"],
   "additionalProperties": false,
@@ -71,6 +71,16 @@
       "items": { "enum": ["drains-caster", "strengthened-by-withdrawal", "expensive-to-leave", "missing"] }
     },
     "affinityLegendIds": { "type": "array", "items": { "type": "string" } },
+    "offerings": {
+      "type": "object",
+      "description": "the Sanctum: this god's appetite table for the Offertory (craves x2, accepts x1, ignores x0, offends = negative + writes the Verdict ledgers)",
+      "properties": {
+        "craves": { "type": "array", "items": { "type": "string", "pattern": "^item-[a-z0-9-]+$" } },
+        "accepts": { "type": "array", "items": { "type": "string", "pattern": "^item-[a-z0-9-]+$" } },
+        "offends": { "type": "array", "items": { "type": "string", "pattern": "^item-[a-z0-9-]+$" } }
+      },
+      "additionalProperties": false
+    },
     "lore": { "type": "string" }
   }
 }

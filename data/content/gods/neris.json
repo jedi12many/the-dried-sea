@@ -43,5 +43,9 @@
   },
   "flags": [],
   "affinityLegendIds": ["item-neriss-hourglass"],
+  "offerings": {
+    "craves": ["item-bronze-salvage", "item-salt-votive"],
+    "accepts": ["item-salt"]
+  },
   "lore": "The patient one. Her sanctum is a drowned town's chapel where the water-clock still runs on nothing."
 }

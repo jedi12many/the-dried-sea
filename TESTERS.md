@@ -27,6 +27,7 @@ on a **shared server** with the other testers. Thanks for helping.
 | — | WARDENS (a villager trade): auto-run to danger and fight — they even subdue raiders for you |
 | G | pool your food into the village stores |
 | J | THE JOURNAL — read your callings and make their choices |
+| — | ALTARS (build menu, once you're attuned): stand at one, [E] opens THE OFFERTORY — lay offerings a god craves and display relics; splendor multiplies what your rites restore. Watch the annotations: each god wants different things, and some things OFFEND |
 | T | character sheet (the Tally) |
 | Q / R | miracles, once you've knelt to the right god |
 | X | consume a god-remnant (think first) |

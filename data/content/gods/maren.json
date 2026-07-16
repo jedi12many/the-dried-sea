@@ -43,5 +43,9 @@
   },
   "flags": [],
   "affinityLegendIds": ["item-marens-own-harpoon"],
+  "offerings": {
+    "craves": ["item-storm-glass", "item-ship-cloth"],
+    "accepts": ["item-rope"]
+  },
   "lore": "The angry one. War-priest energy. Her sanctum is a wreck-field where the lightning never quite stopped falling."
 }

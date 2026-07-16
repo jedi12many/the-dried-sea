@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "work.schema.json",
-  "$comment": "v1 — a buildable. Every work belongs to a god (or 'neutral'). Spells drain; works feed.",
+  "$comment": "v2 — a buildable. Every work belongs to a god (or 'neutral'). Spells drain; works feed. Adds sanctum (the Sanctum altar, WORLD-SPEC).",
   "type": "object",
   "required": ["id", "name", "godId", "category", "buildCost", "text"],
   "additionalProperties": false,
@@ -30,6 +30,16 @@
       }
     },
     "footprint": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 },
+    "sanctum": {
+      "type": "object",
+      "description": "marks this work as a god's Altar — relic display + Offertory (the Sanctum, WORLD-SPEC)",
+      "required": ["relicSlots", "slotsPerTier"],
+      "properties": {
+        "relicSlots": { "type": "integer", "minimum": 1 },
+        "slotsPerTier": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
     "purpose": { "type": "string", "description": "plain one-line function shown in menus (what it DOES), distinct from flavor text" },
     "text": { "type": "string" }
   }

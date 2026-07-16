@@ -150,6 +150,7 @@
     "tier": 1,
     "stackSize": 1,
     "remnantOf": "god-halor",
+    "relic": { "points": 0.4 },
     "text": "A divine fragment — the endurance of the old sea, shelled in something you can hold. Enshrine it at a chapel, or consume it, and hear a warm voice approve."
   },
   {
@@ -193,6 +194,7 @@
       "godAffinity": "god-neris",
       "history": "Filled with the last wet sand in the world. Turn it and, once a day, ten seconds agree to happen again."
     },
+    "relic": { "points": 0.5 },
     "text": "A legend of the tide-line."
   },
   {
@@ -205,6 +207,7 @@
       "godAffinity": "god-halor",
       "history": "A village heart. Set it in your hall and nothing within the walls spoils — food, stores, or resolve."
     },
+    "relic": { "points": 0.5 },
     "text": "A legend of the hearth-line."
   },
   {
