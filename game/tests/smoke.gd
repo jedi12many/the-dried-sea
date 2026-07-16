@@ -47,10 +47,25 @@ func _ready() -> void:
 		host.player.position = t.position
 		host.intent_harvest()
 	check(host.inventory.count(1, "item-wreck-timber") >= 6, "timber gathered")
+	# --- shelter first: a personal tent, pitched anywhere, is your respawn ----
+	host.inventory.add(1, "item-driftwood", 3)
+	host.inventory.add(1, "item-ship-cloth", 1)
+	var founding_menu := host.menu_works()
+	check("work-hearth" in founding_menu and "work-tent" in founding_menu, "before founding: raise a hearth, or pitch a tent")
+	check(not host.intent_build("work-workbench"), "but nothing else raises before the hearth")
+	check(host.camp_center == Vector2.INF, "and no ring exists yet")
+	host.player.position = Vector2(2000, 2000)   # out on the open flats, no village
+	check(host.intent_build("work-tent"), "a tent pitches anywhere — no hearth needed")
+	check(host.camp_center == Vector2.INF, "and pitching it founds no village")
+	var tent_pos := host.work_pos("work-tent")
+	host.player.position = tent_pos + Vector2(600, 0)   # wander off and fall
+	host.stats.actors[1].hp = 5.0
+	host.damage_player(999.0, 1)
+	check(host.player.position.distance_to(tent_pos) < 60.0, "fall on the flats and you wake at your tent")
+
 	# --- the village grows around its hearth ---------------------------------
 	host.inventory.add(1, "item-wreck-timber", 12)   # enough for hearth + workbench
 	host.inventory.add(1, "item-salt", 8)
-	check(host.menu_works() == ["work-hearth"], "before founding, the only build is the hearth")
 	check(not host.intent_build("work-workbench"), "nothing raises before the hearth")
 	check(host.camp_center == Vector2.INF, "and no ring exists yet")
 	check(host.intent_build("work-hearth"), "the Great Hearth founds the village")
@@ -607,12 +622,21 @@ func _ready() -> void:
 	host4.queue_free()
 
 	# --- Anna keeps a day ------------------------------------------------------
+	# gather the village around `center` for this test: the hearth is the heart
+	# (village_heart drives Anna's schedule), so put it — and the chapel — here
 	var center := Vector2(GameHost.WORLD.x * GameHost.TILE / 2.0, GameHost.WORLD.y * GameHost.TILE / 2.0)
-	host.survivor.position = center  # settled
+	for hid: Variant in host.works.placed:
+		var wid: String = str(host.works.placed[hid].work_id)
+		if wid == "work-hearth":
+			host.works.placed[hid].x = center.x; host.works.placed[hid].y = center.y
+		elif wid == "work-chapel":
+			host.works.placed[hid].x = center.x + 60; host.works.placed[hid].y = center.y + 60
+			host.chapels["god-halor"] = center + Vector2(60, 60)
+	host._recenter_on_hearth()
+	host.survivor.position = center  # settled at the heart
 	host.inventory.add(1, "item-wreck-timber", 8)
 	host.inventory.add(1, "item-salt", 12)
-	host.player.position = center + Vector2(-200, 0)
-	host.camp_center = host.player.position   # ring follows the player for the scattered build below
+	host.player.position = center + Vector2(-120, 0)   # in-ring, off the hearth
 	check(host.intent_build("work-smokehouse") or host.works.count_of("work-smokehouse") > 0, "a smokehouse stands")
 	host.clock.minute_of_day = 8 * 60  # working morning
 	var post := host.work_pos("work-smokehouse")

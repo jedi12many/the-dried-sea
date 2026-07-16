@@ -1,5 +1,24 @@
 [
  {
+  "id": "work-tent",
+  "name": "Sailcloth Tent",
+  "godId": "neutral",
+  "category": "structure",
+  "buildCost": [
+   {
+    "itemId": "item-driftwood",
+    "qty": 3
+   },
+   {
+    "itemId": "item-ship-cloth",
+    "qty": 1
+   }
+  ],
+  "respawn": true,
+  "text": "Tier-0. A sail slung over two poles. It won't turn a storm, but it's yours, and the flats feel smaller with a roof of your own.",
+  "purpose": "A cheap shelter you can pitch anywhere — no village needed. Fall on the flats and you wake here, not out in the cold."
+ },
+ {
   "id": "work-driftwood-wall",
   "name": "Driftwood Wall",
   "godId": "neutral",

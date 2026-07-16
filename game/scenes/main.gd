@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.6.3"
+const GAME_VERSION := "0.6.4"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -1172,10 +1172,14 @@ func intent_eat() -> bool:
 ## The build menu: what you can raise, grouped by whose it is. A god's works
 ## appear once you're attuned — recipes arrive with faith.
 func menu_works() -> Array:
-	# no village yet? the only build that matters is its heart — the Great Hearth
-	# founds it, even before you've knelt to Halor (raising it courts him anyway)
+	# no village yet? found it with the Great Hearth (buildable even before you
+	# kneel to Halor — raising it courts him anyway), or pitch a personal shelter
 	if work_pos("work-hearth") == Vector2.INF:
-		return ["work-hearth"]
+		var founding := ["work-hearth"]
+		for work: Dictionary in registry.all_of("work"):
+			if work.get("respawn", false):
+				founding.append(str(work.id))
+		return founding
 	var order := ["neutral", "god-halor", "god-maren", "god-neris", "god-vessa", "god-ghal"]
 	var visible_sets := ["neutral"]
 	visible_sets.append_array(attuned_for(my_pid))
@@ -1443,6 +1447,31 @@ func _flash_swing(toward: Vector2) -> void:
 	add_child(slash)
 	get_tree().create_timer(0.1).timeout.connect(slash.queue_free)
 
+## Where a fallen player wakes: their own nearest personal shelter (tent), else
+## the village hearth, else the middle of the flats. Per-player — your tent is
+## yours. Death position seeds "nearest" so several tents wake you at the closest.
+func _respawn_point(pid: int) -> Vector2:
+	var from: Vector2 = avatars.get(pid, player.position) if net_mode == "server" else player.position
+	var best := Vector2.INF
+	var best_d := INF
+	for inst_id: Variant in works.placed:
+		var inst: Dictionary = works.placed[inst_id]
+		if int(inst.get("owner", -1)) != pid:
+			continue
+		if not registry.get_entity(str(inst.work_id)).get("respawn", false):
+			continue
+		var p := Vector2(float(inst.get("x", 0)), float(inst.get("y", 0)))
+		var d: float = from.distance_to(p)
+		if d < best_d:
+			best_d = d
+			best = p
+	if best != Vector2.INF:
+		return best
+	var hearth := work_pos("work-hearth")
+	if hearth != Vector2.INF:
+		return hearth
+	return Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
+
 func damage_player(amount: float, pid: int = -1) -> void:
 	if pid < 0:
 		pid = my_pid
@@ -1467,12 +1496,13 @@ func damage_player(amount: float, pid: int = -1) -> void:
 	if stats.damage(pid, amount):
 		if pid == my_pid:
 			sfx("death")
-		# Death penalty is an open design question (GAME-SPEC); M1 placeholder:
-		# wake at the village center, hurt pride only.
+		# you wake where you're sheltered: your own tent, else the hearth, else
+		# the middle of the flats. (Death penalty otherwise stays pride-only.)
+		var wake := _respawn_point(pid)
 		if net_mode == "server":
-			avatars[pid] = Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
+			avatars[pid] = wake
 		elif pid == my_pid:
-			player.position = Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
+			player.position = wake
 		stats.heal_full(pid)
 	_net_push_state(pid)
 	_refresh_bars()
@@ -1557,18 +1587,19 @@ func intent_build(work_id: String) -> bool:
 	if work.is_empty():
 		return false
 	var pos := acting_pos() + Vector2(40, 0)
-	# the village grows around its hearth: found it by raising the Great Hearth,
-	# then every other piece must fall inside the ring the hearth centers
 	var has_hearth := work_pos("work-hearth") != Vector2.INF
-	if not has_hearth:
-		if work_id != "work-hearth":
-			message = "Raise a Great Hearth first — the village grows around its fire."
+	# a personal shelter (the tent) pitches anywhere — no village, no ring; it's
+	# your bedroll on the open flats. Everything else obeys the hearth's ring.
+	if not work.get("respawn", false):
+		if not has_hearth:
+			if work_id != "work-hearth":
+				message = "Raise a Great Hearth first — the village grows around its fire.  (or pitch a tent to shelter.)"
+				_refresh_hud()
+				return false
+		elif pos.distance_to(camp_center) > CAMP_RADIUS:
+			message = "Too far from the hearth. Build within the ring."
 			_refresh_hud()
 			return false
-	elif pos.distance_to(camp_center) > CAMP_RADIUS:
-		message = "Too far from the hearth. Build within the ring."
-		_refresh_hud()
-		return false
 	if not inventory.pay(acting_pid, work.get("buildCost", [])):
 		message = "Not enough to raise the %s." % str(work.name).to_lower()
 		_refresh_hud()
@@ -1579,6 +1610,8 @@ func intent_build(work_id: String) -> bool:
 		_recenter_on_hearth()   # the ring centers on the hearth, always
 		if not has_hearth:
 			message = "You raise the Great Hearth. The village will grow around its fire."
+	elif work.get("respawn", false):
+		message = "You pitch the %s. Fall out there and you'll wake here." % str(work.name).to_lower()
 	if sanctum.is_altar(inst_id):
 		message = "The %s stands. Stand at it [E] to lay relics and offerings — splendor bears your rites up." % str(work.name).to_lower()
 	sfx("build", pos)
@@ -2132,7 +2165,7 @@ func _spawn_work_visual(inst_id: int, work_id: String, pos: Vector2, chapel_hint
 		"work-salt-cellar": "salt_cellar", "work-lightning-rod": "lightning_rod",
 		"work-storm-cistern": "storm_cistern",
 		"work-altar-halor": "altar", "work-altar-maren": "altar",
-		"work-driftwood-cot": "cot_hut",
+		"work-driftwood-cot": "cot_hut", "work-tent": "tent",
 	}
 	var fallback := Color("6e5138") if not work.get("grim", false) else Color("5b3a6e")
 	if work_id == "work-altar-halor":

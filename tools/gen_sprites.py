@@ -575,6 +575,52 @@ def gen_cot_hut() -> Image.Image:
     return img
 
 
+def gen_tent() -> Image.Image:
+    """A humble A-frame travel tent: pale sailcloth stretched over crossed
+    driftwood poles poking out at the peak, a dark triangular entrance flap,
+    and a couple of seam creases down the pitched cloth. Smaller and cheaper
+    than the cot_hut -- a starter shelter, nothing more."""
+    w, h = 28, 22
+    img = new_canvas(w, h)
+
+    apex_x = 14
+
+    # crossed driftwood poles, poking out above the peak -- drawn first so
+    # the cloth painted over them below swallows everything but the tips
+    pole_a = [(11, 0), (12, 1), (12, 2), (13, 3), (13, 4), (14, 5), (14, 6), (15, 7)]
+    pole_b = [(17, 0), (16, 1), (16, 2), (15, 3), (15, 4), (14, 5), (14, 6), (13, 7)]
+    for x, y in pole_a + pole_b:
+        px(img, x, y, PALETTE["WOOD_MED"])
+    px(img, 11, 0, PALETTE["WOOD_DARK"])  # weathered pole tips
+    px(img, 17, 0, PALETTE["WOOD_DARK"])
+
+    # sailcloth stretched over the frame -- a plain A-frame triangle
+    roof_top, roof_bottom = 4, 19
+    left_reach, right_reach = 12, 13
+    for y in range(roof_top, roof_bottom + 1):
+        frac = (y - roof_top) / (roof_bottom - roof_top)
+        left = round(frac * left_reach)
+        right = round(frac * right_reach)
+        x0 = max(0, apex_x - left)
+        x1 = min(w - 1, apex_x + right)
+        hline(img, x0, x1, y, PALETTE["CLOTH"])
+
+    # fold/seam lines down the pitched cloth
+    for y in range(10, roof_bottom + 1):
+        px(img, 11, y, PALETTE["BRINE_SHADE"])
+        px(img, 17, y, PALETTE["BRINE_SHADE"])
+
+    # dark triangular entrance flap, centered front, 2-4px wide
+    hline(img, 12, 15, 19, PALETTE["WOOD_DARK"])
+    hline(img, 12, 15, 18, PALETTE["WOOD_DARK"])
+    hline(img, 13, 14, 17, PALETTE["WOOD_DARK"])
+    hline(img, 13, 14, 16, PALETTE["WOOD_DARK"])
+    hline(img, 13, 14, 15, PALETTE["WOOD_DARK"])
+
+    add_outline(img, PALETTE["WOOD_DARK"])
+    return img
+
+
 SPRITES = [
     # ground.png: UPGRADED to Gemini art (import_art.py --tile) — do not regenerate
     ("ground2.png", lambda: gen_ground(seed=2)),
@@ -589,6 +635,7 @@ SPRITES = [
     ("salt_mound.png", gen_salt_mound),
     ("bronze.png", gen_bronze),
     ("cot_hut.png", gen_cot_hut),
+    ("tent.png", gen_tent),
     # shrine.png: UPGRADED to Gemini art (import_art.py) � do not regenerate
     # chapel.png: UPGRADED to Gemini art (import_art.py) � do not regenerate
     # workbench.png: UPGRADED to Gemini art (import_art.py) � do not regenerate
