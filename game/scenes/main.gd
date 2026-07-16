@@ -1223,13 +1223,23 @@ func intent_rescue() -> bool:
 	_refresh_hud()
 	return true
 
+## Worship audio: play this god's own chant if its WAV is present in assets/sfx/,
+## otherwise fall back to the shared rite bell. Data-driven (god.worshipChant), so
+## dropping in a new chant file makes it play with no code change.
+func _play_worship(god_id: String) -> void:
+	var chant := str(registry.get_entity(god_id).get("worshipChant", ""))
+	if chant != "" and net_mode != "server" and SoundKit.stream(chant) != null:
+		sfx(chant)
+	else:
+		sfx("rite")
+
 func intent_rite(god_id: String) -> bool:
 	if rites_done_today.get(god_id, false):
 		message = "The rite is held once a day. The gods keep slow time."
 		_refresh_hud()
 		return false
 	rites_done_today[god_id] = true
-	sfx("rite")
+	_play_worship(god_id)   # this god's chant, if we have it — else the old rite bell
 	# the Sanctum: this god's altar bears the rite up (or sours it — offenses count)
 	var altar := sanctum.altar_for(god_id)
 	var splendor := sanctum.splendor(altar) if altar >= 0 else 1.0

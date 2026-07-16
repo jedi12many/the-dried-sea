@@ -1,51 +1,118 @@
 {
-  "id": "god-maren",
-  "name": "Maren",
-  "workingName": true,
-  "title": "the Storm-Mother",
-  "domain": "Storm, lightning, rage — the sea's weather never fully left, and neither did she.",
-  "voice": {
-    "tone": "thunder held behind teeth; loves you the way a gale loves a sail",
-    "imagery": ["split masts", "green sky before the squall", "rain on hot salt"],
-    "sampleLine": "You want calm? Marry a pond. Stand up."
-  },
-  "blessing": {
-    "name": "Storm-Sense",
-    "text": "You feel weather coming before the sky admits it.",
-    "effectsByRank": [
-      [{ "type": "weather-sense", "magnitude": 1, "target": "self" }],
-      [{ "type": "weather-sense", "magnitude": 2, "target": "self" }, { "type": "stat-mod", "params": { "stat": "stamina-regen", "condition": "storm-or-rain" }, "magnitude": 1.25, "target": "self" }],
-      [{ "type": "weather-sense", "magnitude": 3, "target": "self" }, { "type": "stat-mod", "params": { "stat": "stamina-regen", "condition": "storm-or-rain" }, "magnitude": 1.5, "target": "self" }]
-    ]
-  },
-  "invocations": [
+ "id": "god-maren",
+ "name": "Maren",
+ "workingName": true,
+ "title": "the Storm-Mother",
+ "domain": "Storm, lightning, rage — the sea's weather never fully left, and neither did she.",
+ "voice": {
+  "tone": "thunder held behind teeth; loves you the way a gale loves a sail",
+  "imagery": [
+   "split masts",
+   "green sky before the squall",
+   "rain on hot salt"
+  ],
+  "sampleLine": "You want calm? Marry a pond. Stand up."
+ },
+ "blessing": {
+  "name": "Storm-Sense",
+  "text": "You feel weather coming before the sky admits it.",
+  "effectsByRank": [
+   [
     {
-      "id": "inv-call-squall",
-      "name": "Call the Squall",
-      "rankRequired": 1,
-      "vigorCost": 0.45,
-      "text": "The sky remembers being an ocean. Briefly, violently, it acts like one.",
-      "effects": [{ "type": "aoe-knockdown", "radius": 8, "target": "area" }, { "type": "lightning-strikes", "magnitude": 3, "radius": 8, "target": "area" }]
+     "type": "weather-sense",
+     "magnitude": 1,
+     "target": "self"
+    }
+   ],
+   [
+    {
+     "type": "weather-sense",
+     "magnitude": 2,
+     "target": "self"
     },
     {
-      "id": "inv-wind-wall",
-      "name": "Wind-Wall",
-      "rankRequired": 2,
-      "vigorCost": 0.3,
-      "text": "A wall of shrieking air. Nothing thrown, shot, or spat crosses it.",
-      "effects": [{ "type": "projectile-denial", "duration": 12, "radius": 5, "target": "area" }]
+     "type": "stat-mod",
+     "params": {
+      "stat": "stamina-regen",
+      "condition": "storm-or-rain"
+     },
+     "magnitude": 1.25,
+     "target": "self"
     }
+   ],
+   [
+    {
+     "type": "weather-sense",
+     "magnitude": 3,
+     "target": "self"
+    },
+    {
+     "type": "stat-mod",
+     "params": {
+      "stat": "stamina-regen",
+      "condition": "storm-or-rain"
+     },
+     "magnitude": 1.5,
+     "target": "self"
+    }
+   ]
+  ]
+ },
+ "invocations": [
+  {
+   "id": "inv-call-squall",
+   "name": "Call the Squall",
+   "rankRequired": 1,
+   "vigorCost": 0.45,
+   "text": "The sky remembers being an ocean. Briefly, violently, it acts like one.",
+   "effects": [
+    {
+     "type": "aoe-knockdown",
+     "radius": 8,
+     "target": "area"
+    },
+    {
+     "type": "lightning-strikes",
+     "magnitude": 3,
+     "radius": 8,
+     "target": "area"
+    }
+   ]
+  },
+  {
+   "id": "inv-wind-wall",
+   "name": "Wind-Wall",
+   "rankRequired": 2,
+   "vigorCost": 0.3,
+   "text": "A wall of shrieking air. Nothing thrown, shot, or spat crosses it.",
+   "effects": [
+    {
+     "type": "projectile-denial",
+     "duration": 12,
+     "radius": 5,
+     "target": "area"
+    }
+   ]
+  }
+ ],
+ "priest": {
+  "title": "Storm-Caller",
+  "arrival": "Arrives during a great storm, soaked and delighted, asking who built the chapel with the good acoustics.",
+  "notes": "Half-cost Maren rites conducted during storms."
+ },
+ "flags": [],
+ "affinityLegendIds": [
+  "item-marens-own-harpoon"
+ ],
+ "offerings": {
+  "craves": [
+   "item-storm-glass",
+   "item-ship-cloth"
   ],
-  "priest": {
-    "title": "Storm-Caller",
-    "arrival": "Arrives during a great storm, soaked and delighted, asking who built the chapel with the good acoustics.",
-    "notes": "Half-cost Maren rites conducted during storms."
-  },
-  "flags": [],
-  "affinityLegendIds": ["item-marens-own-harpoon"],
-  "offerings": {
-    "craves": ["item-storm-glass", "item-ship-cloth"],
-    "accepts": ["item-rope"]
-  },
-  "lore": "The angry one. War-priest energy. Her sanctum is a wreck-field where the lightning never quite stopped falling."
+  "accepts": [
+   "item-rope"
+  ]
+ },
+ "lore": "The angry one. War-priest energy. Her sanctum is a wreck-field where the lightning never quite stopped falling.",
+ "worshipChant": "chant_maren"
 }

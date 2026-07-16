@@ -1,62 +1,152 @@
 {
-  "id": "god-ur-noth",
-  "name": "Ur-Noth",
-  "workingName": true,
-  "title": "the Unlit",
-  "domain": "The abyss, the dark, hunger — the one god the Withdrawal fed.",
-  "voice": {
-    "tone": "warm. That's the horrible part. Endlessly reasonable, endlessly patient, and always on your side",
-    "imagery": ["a light in the deep wood that knows your name", "the pressure of a mile of absent water", "an offer repeated until it sounds like your own idea"],
-    "sampleLine": "They ask you to feed them. Have you noticed? I only ever ask you to eat."
-  },
-  "blessing": {
-    "name": "Dark-Sight",
-    "text": "The dark is not empty to you. It is furnished.",
-    "effectsByRank": [
-      [{ "type": "dark-vision", "magnitude": 1, "target": "self" }],
-      [{ "type": "dark-vision", "magnitude": 2, "target": "self" }, { "type": "night-fauna-hesitation", "magnitude": 1, "target": "self" }],
-      [{ "type": "dark-vision", "magnitude": 3, "target": "self" }, { "type": "night-fauna-hesitation", "magnitude": 2, "target": "self" }]
-    ]
-  },
-  "invocations": [
-    {
-      "id": "inv-devouring-dark",
-      "name": "Devouring Dark",
-      "rankRequired": 1,
-      "vigorCost": 0.25,
-      "selfCost": [{ "type": "max-hp-scar", "magnitude": 3, "target": "self" }],
-      "text": "The dark eats their courage first. It is not picky about seconds.",
-      "effects": [{ "type": "fear-blind-aoe", "duration": 8, "radius": 10, "target": "area" }]
-    },
-    {
-      "id": "inv-anglerlight",
-      "name": "Anglerlight",
-      "rankRequired": 2,
-      "vigorCost": 0.3,
-      "selfCost": [{ "type": "max-hp-scar", "magnitude": 4, "target": "self" }],
-      "text": "A friendly light, in a dark place. You know better. They don't.",
-      "effects": [{ "type": "false-lure", "duration": 15, "target": "area", "params": { "enemiesAttackLure": true } }]
-    },
-    {
-      "id": "inv-the-swallowing",
-      "name": "The Swallowing",
-      "rankRequired": 3,
-      "vigorCost": 0.5,
-      "selfCost": [{ "type": "max-hp-scar", "magnitude": 8, "target": "self" }, { "type": "visible-transformation", "magnitude": 1, "target": "self" }],
-      "text": "Briefly, you are the trench. Things fall into you and do not come out.",
-      "effects": [{ "type": "devour-aoe", "magnitude": 100, "radius": 4, "target": "area" }]
-    }
+ "id": "god-ur-noth",
+ "name": "Ur-Noth",
+ "workingName": true,
+ "title": "the Unlit",
+ "domain": "The abyss, the dark, hunger — the one god the Withdrawal fed.",
+ "voice": {
+  "tone": "warm. That's the horrible part. Endlessly reasonable, endlessly patient, and always on your side",
+  "imagery": [
+   "a light in the deep wood that knows your name",
+   "the pressure of a mile of absent water",
+   "an offer repeated until it sounds like your own idea"
   ],
-  "priest": {
-    "title": "the Quiet Congregant",
-    "arrival": "No chapel summons them. One day a villager mentions the new arrival has been here a week, and everyone thought someone else invited them.",
-    "notes": "Hosting one raises village susceptibility drift and unlocks grim-recipe whispers. Scarring can be cleansed by OTHER gods' priests — at a price both of you feel."
+  "sampleLine": "They ask you to feed them. Have you noticed? I only ever ask you to eat."
+ },
+ "blessing": {
+  "name": "Dark-Sight",
+  "text": "The dark is not empty to you. It is furnished.",
+  "effectsByRank": [
+   [
+    {
+     "type": "dark-vision",
+     "magnitude": 1,
+     "target": "self"
+    }
+   ],
+   [
+    {
+     "type": "dark-vision",
+     "magnitude": 2,
+     "target": "self"
+    },
+    {
+     "type": "night-fauna-hesitation",
+     "magnitude": 1,
+     "target": "self"
+    }
+   ],
+   [
+    {
+     "type": "dark-vision",
+     "magnitude": 3,
+     "target": "self"
+    },
+    {
+     "type": "night-fauna-hesitation",
+     "magnitude": 2,
+     "target": "self"
+    }
+   ]
+  ]
+ },
+ "invocations": [
+  {
+   "id": "inv-devouring-dark",
+   "name": "Devouring Dark",
+   "rankRequired": 1,
+   "vigorCost": 0.25,
+   "selfCost": [
+    {
+     "type": "max-hp-scar",
+     "magnitude": 3,
+     "target": "self"
+    }
+   ],
+   "text": "The dark eats their courage first. It is not picky about seconds.",
+   "effects": [
+    {
+     "type": "fear-blind-aoe",
+     "duration": 8,
+     "radius": 10,
+     "target": "area"
+    }
+   ]
   },
-  "flags": ["drains-caster", "strengthened-by-withdrawal", "expensive-to-leave"],
-  "affinityLegendIds": ["item-the-unlit-crown"],
-  "offerings": {
-    "craves": ["item-crab-meat", "item-remnant-shellback"],
-    "offends": ["item-salt-votive"]
+  {
+   "id": "inv-anglerlight",
+   "name": "Anglerlight",
+   "rankRequired": 2,
+   "vigorCost": 0.3,
+   "selfCost": [
+    {
+     "type": "max-hp-scar",
+     "magnitude": 4,
+     "target": "self"
+    }
+   ],
+   "text": "A friendly light, in a dark place. You know better. They don't.",
+   "effects": [
+    {
+     "type": "false-lure",
+     "duration": 15,
+     "target": "area",
+     "params": {
+      "enemiesAttackLure": true
+     }
+    }
+   ]
   },
-  "lore": "The forbidden patron. His magic is the strongest in the game and every cast costs what you'd expect. His build set is the grim works. His voice gets warmer every time you consume a remnant. He is very, very patient."
+  {
+   "id": "inv-the-swallowing",
+   "name": "The Swallowing",
+   "rankRequired": 3,
+   "vigorCost": 0.5,
+   "selfCost": [
+    {
+     "type": "max-hp-scar",
+     "magnitude": 8,
+     "target": "self"
+    },
+    {
+     "type": "visible-transformation",
+     "magnitude": 1,
+     "target": "self"
+    }
+   ],
+   "text": "Briefly, you are the trench. Things fall into you and do not come out.",
+   "effects": [
+    {
+     "type": "devour-aoe",
+     "magnitude": 100,
+     "radius": 4,
+     "target": "area"
+    }
+   ]
+  }
+ ],
+ "priest": {
+  "title": "the Quiet Congregant",
+  "arrival": "No chapel summons them. One day a villager mentions the new arrival has been here a week, and everyone thought someone else invited them.",
+  "notes": "Hosting one raises village susceptibility drift and unlocks grim-recipe whispers. Scarring can be cleansed by OTHER gods' priests — at a price both of you feel."
+ },
+ "flags": [
+  "drains-caster",
+  "strengthened-by-withdrawal",
+  "expensive-to-leave"
+ ],
+ "affinityLegendIds": [
+  "item-the-unlit-crown"
+ ],
+ "offerings": {
+  "craves": [
+   "item-crab-meat",
+   "item-remnant-shellback"
+  ],
+  "offends": [
+   "item-salt-votive"
+  ]
+ },
+ "lore": "The forbidden patron. His magic is the strongest in the game and every cast costs what you'd expect. His build set is the grim works. His voice gets warmer every time you consume a remnant. He is very, very patient.",
+ "worshipChant": "chant_ur_noth"
 }

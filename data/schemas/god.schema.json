@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "god.schema.json",
-  "$comment": "v2 — a member of the Pantheon of the Drowned; adds offerings (the Sanctum, WORLD-SPEC)",
+  "$comment": "v3 — a member of the Pantheon of the Drowned; adds offerings (the Sanctum) and worshipChant (per-god rite audio)",
   "type": "object",
   "required": ["id", "name", "title", "domain", "voice", "blessing", "invocations", "priest"],
   "additionalProperties": false,
@@ -81,6 +81,7 @@
       },
       "additionalProperties": false
     },
+    "worshipChant": { "type": "string", "description": "sfx asset basename (in assets/sfx/) played at this god's rite; falls back to the generic rite bell if the file is absent" },
     "lore": { "type": "string" }
   }
 }
