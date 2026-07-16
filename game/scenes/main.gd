@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.6.4"
+const GAME_VERSION := "0.6.5"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -37,6 +37,7 @@ var village: VillageSystem
 var works: WorksSystem
 var verdict: VerdictSystem
 var sanctum: SanctumSystem
+var respawn_bind: Dictionary = {}   # pid -> work inst_id you chose as your rest point (tent/hearth)
 var offertory_open := false
 var offertory_inst := -1        # which altar the open Offertory is looking at
 var offertory_label: Label
@@ -352,6 +353,7 @@ func save_game() -> void:
 		"village_stock": village_stock.duplicate(),
 		"callings": callings.duplicate(true),
 		"callings_done": callings_done.duplicate(true),
+		"respawn_bind": respawn_bind.duplicate(),
 		"sanctum": sanctum.to_save(),
 		"message": message,
 	}
@@ -425,6 +427,7 @@ func load_game() -> void:
 	village_stock = g.get("village_stock", {})
 	callings = SaveSystem._int_keys(g.get("callings", {}))
 	callings_done = SaveSystem._int_keys(g.get("callings_done", {}))
+	respawn_bind = SaveSystem._int_keys(g.get("respawn_bind", {}))
 	sanctum.from_save(g.get("sanctum", {}))
 	_villager_nid = maxi(_villager_nid, int(g.get("villager_nid", _villager_nid)))
 	for pd: Dictionary in g.get("pool", []):
@@ -524,6 +527,9 @@ func current_prompt() -> String:
 		return "[E] Rescue her"
 	if _offertory_takes_e() >= 0:
 		return "[E] The offertory"
+	var rest := _rest_point_takes_e()
+	if rest >= 0:
+		return "(your rest point)" if int(respawn_bind.get(my_pid, -1)) == rest else "[E] Rest here"
 	for god_id: String in chapels:
 		if acting_pos().distance_to(chapels[god_id]) < interact_range():
 			if _carrying_remnant():
@@ -748,6 +754,10 @@ func intent_interact() -> bool:
 			return intent_capture(e)
 	if survivor != null and not survivor.rescued and acting_pos().distance_to(survivor.position) < interact_range():
 		return intent_rescue()
+	# a tent or hearth you're standing right on — bind your respawn here
+	var rest := _rest_point_takes_e()
+	if rest >= 0:
+		return intent_set_respawn(rest)
 	# a stranded stranger to rescue, or a villager to hear out
 	for v: DSVillager in all_villagers():
 		if acting_pos().distance_to(v.position) < interact_range():
@@ -760,6 +770,37 @@ func intent_interact() -> bool:
 	if near_work >= 0:
 		return intent_tend(near_work)
 	return intent_harvest()
+
+## A rest point (tent/hearth) claims [E] to set your respawn — but only when it's
+## the nearest thing under you, so a villager milling at the hearth still gets your
+## [E] to talk when you're right on them. Returns the inst id, or -1.
+func _rest_point_takes_e() -> int:
+	var best := -1
+	var best_d := interact_range()
+	for inst_id: Variant in works.placed:
+		if not registry.get_entity(str(works.placed[inst_id].work_id)).get("restPoint", false):
+			continue
+		var inst: Dictionary = works.placed[inst_id]
+		var d: float = acting_pos().distance_to(Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))))
+		if d < best_d:
+			best_d = d
+			best = int(inst_id)
+	if best < 0:
+		return -1
+	for v: DSVillager in all_villagers():
+		if v.rescued and acting_pos().distance_to(v.position) < best_d:
+			return -1   # a villager is closer — your [E] is theirs
+	return best
+
+## Bind this player's respawn to a rest point. You wake here on death until you
+## set another (drop a tent on a far quest, bind it; come home, re-bind the hearth).
+func intent_set_respawn(inst_id: int) -> bool:
+	respawn_bind[acting_pid] = inst_id
+	sfx("ui")
+	var work := registry.get_entity(str(works.placed[inst_id].work_id))
+	message = "Your rest point is set: the %s. Fall out there and you'll wake here." % str(work.name).to_lower()
+	_refresh_hud()
+	return true
 
 ## The Taken: bind a surrendered raider. They become a captive (origin "taken")
 ## — grievance and susceptibility maxed, Ur-Noth's easiest tinder — held at your
@@ -1451,6 +1492,12 @@ func _flash_swing(toward: Vector2) -> void:
 ## the village hearth, else the middle of the flats. Per-player — your tent is
 ## yours. Death position seeds "nearest" so several tents wake you at the closest.
 func _respawn_point(pid: int) -> Vector2:
+	# the rest point you chose, if it still stands
+	var bound := int(respawn_bind.get(pid, -1))
+	if bound >= 0 and works.placed.has(bound):
+		var b: Dictionary = works.placed[bound]
+		return Vector2(float(b.get("x", 0)), float(b.get("y", 0)))
+	# else fall back: your nearest tent, the hearth, the middle of the flats
 	var from: Vector2 = avatars.get(pid, player.position) if net_mode == "server" else player.position
 	var best := Vector2.INF
 	var best_d := INF
@@ -3197,6 +3244,7 @@ func _player_state(pid: int) -> Dictionary:
 		"equipped": equipped.get(pid, {}),
 		"callings": _active_callings(pid),
 		"petrify": int(petrify.get(pid, 0)),
+		"respawn_bind": int(respawn_bind.get(pid, -1)),
 		"message": message,
 	}
 
@@ -3273,6 +3321,7 @@ func cl_player_state(p: Dictionary) -> void:
 	equipped[my_pid] = p.get("equipped", {})
 	callings[my_pid] = p.get("callings", [])
 	petrify_frames = int(p.get("petrify", 0))
+	respawn_bind[my_pid] = int(p.get("respawn_bind", -1))   # for the "[E] Rest here" prompt
 	if journal_open:
 		_toggle_journal(true)
 	if doll_open:

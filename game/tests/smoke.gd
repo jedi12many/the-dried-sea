@@ -57,11 +57,24 @@ func _ready() -> void:
 	host.player.position = Vector2(2000, 2000)   # out on the open flats, no village
 	check(host.intent_build("work-tent"), "a tent pitches anywhere — no hearth needed")
 	check(host.camp_center == Vector2.INF, "and pitching it founds no village")
+	var tent_inst := -1
+	for iid: Variant in host.works.placed:
+		if str(host.works.placed[iid].work_id) == "work-tent":
+			tent_inst = int(iid)
 	var tent_pos := host.work_pos("work-tent")
-	host.player.position = tent_pos + Vector2(600, 0)   # wander off and fall
+	# with no rest point chosen yet, you fall back to your nearest tent
+	host.player.position = tent_pos + Vector2(600, 0)
 	host.stats.actors[1].hp = 5.0
 	host.damage_player(999.0, 1)
-	check(host.player.position.distance_to(tent_pos) < 60.0, "fall on the flats and you wake at your tent")
+	check(host.player.position.distance_to(tent_pos) < 60.0, "with no rest point set, you wake at your nearest tent")
+	# SET it: stand on the tent, [E] binds your respawn there
+	host.player.position = tent_pos
+	check(host.intent_interact(), "stand on the tent and [E] binds your respawn")
+	check(int(host.respawn_bind.get(1, -1)) == tent_inst, "the tent is now your chosen rest point")
+	host.player.position = tent_pos + Vector2(900, 0)
+	host.stats.actors[1].hp = 5.0
+	host.damage_player(999.0, 1)
+	check(host.player.position.distance_to(tent_pos) < 60.0, "and you wake at your bound tent when you fall")
 
 	# --- the village grows around its hearth ---------------------------------
 	host.inventory.add(1, "item-wreck-timber", 12)   # enough for hearth + workbench
@@ -70,6 +83,9 @@ func _ready() -> void:
 	check(host.camp_center == Vector2.INF, "and no ring exists yet")
 	check(host.intent_build("work-hearth"), "the Great Hearth founds the village")
 	check(host.camp_center != Vector2.INF and host.camp_center == host.work_pos("work-hearth"), "the ring centers on the hearth")
+	# home again — re-bind your respawn to the hearth, away from the far tent
+	host.player.position = host.work_pos("work-hearth")
+	check(host.intent_interact() and int(host.respawn_bind.get(1, -1)) != tent_inst, "stand at the hearth, [E] re-binds respawn home")
 	host.player.position = host.camp_center + Vector2(70, 0)   # a step off the hearth, still in-ring
 	check(host.intent_build("work-workbench"), "now the workbench raises, inside the ring")
 	check(host.works.count_of("work-workbench") == 1, "the sim knows the workbench stands")

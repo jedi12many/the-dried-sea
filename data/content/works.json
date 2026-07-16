@@ -16,7 +16,8 @@
   ],
   "respawn": true,
   "text": "Tier-0. A sail slung over two poles. It won't turn a storm, but it's yours, and the flats feel smaller with a roof of your own.",
-  "purpose": "A cheap shelter you can pitch anywhere — no village needed. Fall on the flats and you wake here, not out in the cold."
+  "purpose": "A cheap shelter you can pitch anywhere — no village needed. Fall on the flats and you wake here, not out in the cold.",
+  "restPoint": true
  },
  {
   "id": "work-driftwood-wall",
@@ -141,7 +142,8 @@
    }
   ],
   "text": "The center of every Halor village. Feeds him a little every evening it's warm.",
-  "purpose": "The village heart — settlers gather here. Tended, it feeds Halor favor."
+  "purpose": "The village heart — settlers gather here. Tended, it feeds Halor favor.",
+  "restPoint": true
  },
  {
   "id": "work-smokehouse",

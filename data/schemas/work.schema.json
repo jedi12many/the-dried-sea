@@ -41,7 +41,8 @@
       "additionalProperties": false
     },
     "houses": { "type": "integer", "minimum": 1, "description": "villager sleeping capacity — at night they go inside for rest and safety" },
-    "respawn": { "type": "boolean", "description": "a personal shelter — its owner wakes here on death; pitched anywhere, no village or ring required" },
+    "respawn": { "type": "boolean", "description": "a personal shelter — pitched anywhere, no village or ring required (the tent)" },
+    "restPoint": { "type": "boolean", "description": "you can bind your respawn here with [E] (tents, the hearth); on death you wake at your chosen one" },
     "purpose": { "type": "string", "description": "plain one-line function shown in menus (what it DOES), distinct from flavor text" },
     "text": { "type": "string" }
   }
