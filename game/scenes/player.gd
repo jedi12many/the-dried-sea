@@ -7,9 +7,12 @@ const SPEED := 140.0
 
 var facing := Vector2.DOWN
 var prompt: Label
+var name_label: Label
 
 func _ready() -> void:
 	add_child(SpriteKit.sprite("survivor", Vector2(22, 30), Color("c8865a")))
+	name_label = _make_name_tag()
+	add_child(name_label)
 	prompt = Label.new()
 	prompt.position = Vector2(-70, -44)
 	prompt.custom_minimum_size = Vector2(140, 0)
@@ -29,6 +32,23 @@ func _ready() -> void:
 	cam.position_smoothing_enabled = true
 	add_child(cam)
 	cam.make_current()
+
+## The name over your own head — who you are on the shared flats. Outlined so it
+## reads against the bright salt. Shared shape with the remote players' tags.
+static func _make_name_tag() -> Label:
+	var l := Label.new()
+	l.position = Vector2(-70, 16)
+	l.custom_minimum_size = Vector2(140, 0)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.add_theme_color_override("font_color", Color("4a3a28"))
+	l.add_theme_color_override("font_outline_color", Color("f2efe8"))
+	l.add_theme_constant_override("outline_size", 4)
+	l.add_theme_font_size_override("font_size", 11)
+	return l
+
+func set_display_name(n: String) -> void:
+	if name_label != null:
+		name_label.text = n
 
 func _physics_process(_delta: float) -> void:
 	var host := get_parent() as GameHost

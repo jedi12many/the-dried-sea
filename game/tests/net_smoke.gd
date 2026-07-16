@@ -46,6 +46,7 @@ func _ready() -> void:
 	check(host.my_pid >= 2, "the server knows us: pid %d" % host.my_pid)
 	check(host.stats.actors.has(host.my_pid), "our vitals arrived")
 	check(host.abilities.earned(host.my_pid) >= 6, "Temper arrived (%d)" % host.abilities.earned(host.my_pid))
+	check(host.player.name_label != null and host.player.name_label.text == "tester", "your join name rides over your own head")
 	check(host.enemies.size() > 0, "the server's beasts are mirrored here (%d)" % host.enemies.size())
 	check(host.enemies.all(func(e: DSEnemy) -> bool: return e.mirror), "and every one is a mirror, not a brain")
 

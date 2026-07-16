@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.6.1"
+const GAME_VERSION := "0.6.2"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -208,6 +208,8 @@ func _ready() -> void:
 		_start_client()
 	elif _active_callings(acting_pid).is_empty() and _done_callings(acting_pid).is_empty():
 		_draw_calling(acting_pid)   # a first calling, to show the journal exists
+	if net_mode != "server":
+		player.set_display_name(_local_display_name())   # your name over your own head
 	if "--screenshot-sheet" in OS.get_cmdline_user_args():
 		abilities.earn(acting_pid, 6)
 		for i in 4:
@@ -2278,6 +2280,20 @@ func _world_label(text: String, offset: Vector2) -> Label:
 	l.add_theme_font_size_override("font_size", 10)
 	return l
 
+## The name over a fellow player's head — outlined so it reads on the bright
+## flats, and distinct from the muted villager labels. Matches your own tag.
+func _player_name_tag(text: String) -> Label:
+	var l := DSPlayer._make_name_tag()
+	l.text = text
+	return l
+
+## Who you are on the flats: your join name (client), else your machine name, else "You".
+func _local_display_name() -> String:
+	if _username != "":
+		return _username
+	var u := OS.get_environment("USERNAME")
+	return u if u != "" else "You"
+
 func _spawn_survivor() -> void:
 	survivor = DSVillager.new()
 	survivor.host = self
@@ -3369,8 +3385,8 @@ func cl_positions(players: Array, enemy_nids: Array, ex: Array, ey: Array, vx: f
 			continue
 		if not remote_nodes.has(pid):
 			var av := Node2D.new()
-			av.add_child(SpriteKit.sprite("villager", Vector2(18, 26), Color("c8865a")))
-			av.add_child(_world_label(str(pd.get("name", "drifter")), Vector2(0, 16)))
+			av.add_child(SpriteKit.sprite("survivor", Vector2(22, 30), Color("c8865a")))
+			av.add_child(_player_name_tag(str(pd.get("name", "drifter"))))
 			add_child(av)
 			remote_nodes[pid] = av
 		var node := remote_nodes[pid] as Node2D
