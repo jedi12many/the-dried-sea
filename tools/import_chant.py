@@ -21,16 +21,30 @@ from pathlib import Path
 SFX_DIR = Path(__file__).resolve().parent.parent / "game" / "assets" / "sfx"
 
 
-def find_ffmpeg() -> str:
-    exe = shutil.which("ffmpeg")
+def _tool(name: str) -> str:
+    exe = shutil.which(name)
     if exe:
         return exe
     # winget's Gyan.FFmpeg install (not on PATH until a shell restart)
     base = Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Packages"
-    hits = list(base.glob("Gyan.FFmpeg*/**/bin/ffmpeg.exe"))
+    hits = list(base.glob(f"Gyan.FFmpeg*/**/bin/{name}.exe"))
     if hits:
         return str(hits[0])
-    sys.exit("ffmpeg not found. Install it (winget install Gyan.FFmpeg) and retry.")
+    sys.exit(f"{name} not found. Install ffmpeg (winget install Gyan.FFmpeg) and retry.")
+
+
+def find_ffmpeg() -> str:
+    return _tool("ffmpeg")
+
+
+def probe_duration(src: Path) -> float:
+    r = subprocess.run([_tool("ffprobe"), "-v", "error", "-show_entries",
+                        "format=duration", "-of", "csv=p=0", str(src)],
+                       capture_output=True, text=True)
+    try:
+        return float(r.stdout.strip())
+    except ValueError:
+        return 0.0
 
 
 def main() -> int:
@@ -48,7 +62,8 @@ def main() -> int:
         return sys.argv[sys.argv.index(flag) + 1] if flag in sys.argv else default
 
     start = float(opt("--start", "0"))
-    dur = float(opt("--dur", "16"))
+    # default: the whole track (past any --start), so worship plays the full chant
+    dur = float(opt("--dur", "0")) or max(probe_duration(src) - start, 0.5)
     gain = float(opt("--gain", "0"))
 
     SFX_DIR.mkdir(parents=True, exist_ok=True)
