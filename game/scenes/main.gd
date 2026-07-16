@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.6.5"
+const GAME_VERSION := "0.6.6"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -27,6 +27,10 @@ var enemy_net_ids: Dictionary = {}   # DSEnemy -> int (server)
 var _next_enemy_net_id := 1
 var _pos_timer := 0.0
 var work_visuals: Dictionary = {}    # works.placed id -> visual Node2D
+var _rest_glow: Node2D               # a warm halo on your bound rest point
+var _hut_markers: Dictionary = {}    # hut inst_id -> {glow, label} occupancy marker
+var _glow_t := 0.0                   # real-time accumulator for the gentle pulse
+var _marker_accum := 0.0             # throttle for the (heavier) marker refresh
 var sound: SoundKit
 var drag_work_id := -1               # click-and-drag: which work is in hand
 
@@ -284,6 +288,30 @@ func _ready() -> void:
 		_on_sim_day(1)
 		_toggle_village(true)
 		_screenshot_and_quit()
+	elif "--screenshot-home" in OS.get_cmdline_user_args():
+		inventory.add(acting_pid, "item-salt", 8)
+		inventory.add(acting_pid, "item-wreck-timber", 12)
+		inventory.add(acting_pid, "item-driftwood", 12)
+		inventory.add(acting_pid, "item-ship-cloth", 4)
+		_harness_found_village()
+		var heart := work_pos("work-hearth")
+		# bind the hearth as your rest point — it should glow
+		for hid: Variant in works.placed:
+			if str(works.placed[hid].work_id) == "work-hearth":
+				respawn_bind[acting_pid] = int(hid)
+		player.position = heart + Vector2(90, 30)
+		intent_build("work-driftwood-cot")   # a hut, off to the side
+		# rescue folk and tuck in whoever the hut actually has a bunk for
+		survivor.rescue()
+		for v: DSVillager in villagers:
+			v.rescue()
+		for v: DSVillager in all_villagers():
+			if house_slot_for(v) != Vector2.INF:
+				v.housed = true
+				v.visible = false
+		clock.minute_of_day = 22 * 60
+		player.position = heart
+		_screenshot_and_quit()
 	elif "--screenshot-doll" in OS.get_cmdline_user_args():
 		inventory.add(acting_pid, "item-bronze-knife", 1)
 		inventory.add(acting_pid, "item-salt-cloak", 1)
@@ -493,6 +521,13 @@ func _physics_process(delta: float) -> void:
 	_update_prompt()
 	_update_boss_bar()
 	_refresh_bars()
+	if net_mode != "server":
+		_glow_t += delta
+		_marker_accum += delta
+		if _marker_accum > 0.25:   # structure refresh is throttled; the pulse is per-frame
+			_marker_accum = 0.0
+			_update_markers()
+		_pulse_markers()
 
 ## The big red bar appears when you walk into a boss's world.
 func _update_boss_bar() -> void:
@@ -891,6 +926,95 @@ func intent_talk(v: DSVillager) -> bool:
 func _recenter_on_hearth() -> void:
 	camp_center = work_pos("work-hearth")
 	_update_camp_ring()
+
+## A soft additive halo — reads as a glow against the pale flats. Stacked rings
+## fake a falloff without a shader.
+func _make_glow(radius: float, color: Color) -> Node2D:
+	var root := Node2D.new()
+	var mat := CanvasItemMaterial.new()
+	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	for ring in 3:
+		var poly := Polygon2D.new()
+		var pts := PackedVector2Array()
+		var r := radius * (1.0 - ring * 0.28)
+		for i in 20:
+			var a := TAU * i / 20.0
+			pts.append(Vector2(cos(a), sin(a)) * r)
+		poly.polygon = pts
+		poly.color = Color(color.r, color.g, color.b, color.a)
+		poly.material = mat
+		root.add_child(poly)
+	return root
+
+## Markers on the world: your bound rest point glows warm, and any hut with
+## someone asleep inside shows a lit window + a sleeper count. Client-only,
+## rebuilt on a throttle from synced state.
+func _update_markers() -> void:
+	# --- your rest point, glowing so you can find it across the flats ---------
+	if _rest_glow == null:
+		_rest_glow = _make_glow(38.0, Color(1.0, 0.70, 0.32, 0.24))   # a hearth-warm ember, spottable from afar
+		_rest_glow.z_index = -6
+		add_child(_rest_glow)
+	var bound := int(respawn_bind.get(my_pid, -1))
+	if works.placed.has(bound):
+		var b: Dictionary = works.placed[bound]
+		_rest_glow.visible = true
+		_rest_glow.position = Vector2(float(b.get("x", 0)), float(b.get("y", 0)))
+	else:
+		_rest_glow.visible = false
+	# --- huts with sleepers: a lit window and how many are home ----------------
+	var occ := _occupied_huts()
+	for inst_id: int in _hut_markers.keys():
+		if not works.placed.has(inst_id) or not occ.has(inst_id):
+			var m: Dictionary = _hut_markers[inst_id]
+			if is_instance_valid(m.glow):
+				m.glow.queue_free()
+			if is_instance_valid(m.label):
+				m.label.queue_free()
+			_hut_markers.erase(inst_id)
+	for inst_id: int in occ:
+		var pos := Vector2(float(works.placed[inst_id].get("x", 0)), float(works.placed[inst_id].get("y", 0)))
+		if not _hut_markers.has(inst_id):
+			var glow := _make_glow(16.0, Color(1.0, 0.78, 0.42, 0.20))
+			glow.z_index = -5
+			add_child(glow)
+			var label := _world_label("", Vector2(0, -30))
+			label.add_theme_color_override("font_color", Color("c98a3a"))
+			add_child(label)
+			_hut_markers[inst_id] = {"glow": glow, "label": label}
+		var mk: Dictionary = _hut_markers[inst_id]
+		(mk.glow as Node2D).position = pos + Vector2(0, 2)   # low, like light from a doorway
+		(mk.label as Label).position = pos + Vector2(-70, -30)
+		(mk.label as Label).text = "· %d asleep ·" % int(occ[inst_id])
+
+## Which huts have someone sleeping inside, and how many. Derived from the same
+## deterministic bunk assignment the villagers walk to.
+func _occupied_huts() -> Dictionary:
+	var occ := {}
+	for v: DSVillager in all_villagers():
+		if not v.housed:
+			continue
+		var slot := house_slot_for(v)
+		if slot == Vector2.INF:
+			continue
+		for inst_id: Variant in works.placed:
+			if int(registry.get_entity(str(works.placed[inst_id].work_id)).get("houses", 0)) <= 0:
+				continue
+			var hp := Vector2(float(works.placed[inst_id].get("x", 0)), float(works.placed[inst_id].get("y", 0)))
+			if hp.distance_to(slot) < 2.0:
+				occ[int(inst_id)] = int(occ.get(inst_id, 0)) + 1
+				break
+	return occ
+
+## The gentle breathing of the glows — cheap, every frame.
+func _pulse_markers() -> void:
+	var pulse := 0.75 + 0.25 * sin(_glow_t * 2.2)
+	if _rest_glow != null and _rest_glow.visible:
+		_rest_glow.modulate.a = pulse
+	for inst_id: int in _hut_markers:
+		var g: Node2D = _hut_markers[inst_id].glow
+		if is_instance_valid(g):
+			g.modulate.a = pulse
 
 func _update_camp_ring() -> void:
 	if net_mode == "server":
