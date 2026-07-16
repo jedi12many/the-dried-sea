@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.5.4"
+const GAME_VERSION := "0.5.5"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -2891,11 +2891,17 @@ func _world_sync() -> Dictionary:
 		"works": works.placed, "chapels": _chapels_to_dict(),
 		"camp": [camp_center.x, camp_center.y] if camp_center != Vector2.INF else null,
 		"boss_dead": boss_dead, "enemies": enemy_list, "specials": specials,
-		"villager": {"rescued": survivor.rescued, "x": survivor.position.x, "y": survivor.position.y},
+		"villager": {"rescued": survivor.rescued, "tid": survivor.tribesman_id,
+			"bloomed": bool(village.tribesmen.get(survivor.tribesman_id, {}).get("bloomed", false)),
+			"mood": survivor.mood, "task": survivor.task, "help": survivor.needs_help,
+			"x": survivor.position.x, "y": survivor.position.y},
 		"pool": villagers.map(func(v: DSVillager) -> Dictionary:
+			var rec: Dictionary = village.tribesmen.get(v.tribesman_id, {})
 			return {"nid": int(v.get_meta("nid", 0)), "name": v.display_name, "cls": v.def_class,
 				"x": v.position.x, "y": v.position.y, "rescued": v.rescued, "mood": v.mood, "job": v.job_work_id,
-				"captive": v.is_captive, "held": v.days_held, "task": v.task, "help": v.needs_help}),
+				"captive": v.is_captive, "held": v.days_held, "task": v.task, "help": v.needs_help,
+				"tid": v.tribesman_id, "bloomed": bool(rec.get("bloomed", false)),
+				"covered": bool(rec.get("warden_covered", true))}),
 		"stock": village_stock,
 	}
 
@@ -3040,9 +3046,17 @@ func cl_world_sync(w: Dictionary) -> void:
 	# Anna
 	if survivor != null and w.has("villager"):
 		survivor.position = Vector2(float(w.villager.x), float(w.villager.y))
+		survivor.tribesman_id = int(w.villager.get("tid", survivor.tribesman_id))
+		survivor.task = str(w.villager.get("task", survivor.task))
+		survivor.needs_help = bool(w.villager.get("help", false))
 		if bool(w.villager.rescued) and not survivor.rescued:
 			survivor.rescued = true
 			survivor.set_label_name()
+		if survivor.rescued:
+			survivor.set_mood(str(w.villager.get("mood", "steady")))
+			# a display-only record so the modal's tribesman lookups resolve on the client
+			if survivor.tribesman_id >= 0:
+				village.tribesmen[survivor.tribesman_id] = {"bloomed": bool(w.villager.get("bloomed", false)), "warden_covered": true}
 	# the rest of the roster (client mirrors, keyed by nid)
 	village_stock = w.get("stock", {})
 	var seen := {}
@@ -3068,6 +3082,11 @@ func cl_world_sync(w: Dictionary) -> void:
 		body.days_held = int(pd.get("held", 0))
 		body.task = str(pd.get("task", ""))
 		body.needs_help = bool(pd.get("help", false))
+		body.tribesman_id = int(pd.get("tid", -1))   # WAS DROPPED: without it the modal's roster filter rejected every mirror
+		# a display-only tribesman record so the modal renders status on the client (the sim runs server-side)
+		if body.tribesman_id >= 0:
+			village.tribesmen[body.tribesman_id] = {"bloomed": bool(pd.get("bloomed", false)),
+				"warden_covered": bool(pd.get("covered", true)), "origin": "taken" if body.is_captive else "rescued"}
 		if bool(pd.rescued) and not body.rescued:
 			body.rescued = true
 		if body.rescued:

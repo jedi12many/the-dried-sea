@@ -72,6 +72,34 @@ func _ready() -> void:
 		waited += 0.2
 	check(cloth_idx in host.harvested_indices, "the world sync erased the node everywhere")
 
+	# 4.5 rescue a stranded villager over the wire — the roster MUST register them.
+	#     Regression: the pool sync dropped tribesman_id, so client mirrors failed
+	#     the modal's `rescued and tribesman_id >= 0` filter — villagers stood in
+	#     camp while the modal insisted "no one has joined you yet."
+	var stranger: DSVillager = null
+	for v in host.villagers:
+		if is_instance_valid(v) and not v.rescued and not v.is_captive:
+			stranger = v
+			break
+	check(stranger != null, "a stranded villager is mirrored to the client (%d in pool)" % host.villagers.size())
+	if stranger != null:
+		# Pool positions only ride the event-driven world_sync (lerp 0.5), so a fresh
+		# mirror is still far from the server truth. Pump a few syncs to converge it.
+		for _i in 8:
+			host.rpc_id(1, "srv_intent", "give_food", [])   # harmless; each reply is a world_sync
+			await get_tree().create_timer(0.15).timeout
+		host.player.position = stranger.position
+		await get_tree().create_timer(0.6).timeout   # let the position stream reach the server
+		host.intent_interact()                        # relays "interact" -> the server rescues
+		var registered := func() -> bool:
+			return not host.all_villagers().filter(func(v: DSVillager) -> bool:
+				return v.rescued and v.tribesman_id >= 0).is_empty()
+		waited = 0.0
+		while waited < 6.0 and not registered.call():
+			await get_tree().create_timer(0.2).timeout
+			waited += 0.2
+		check(registered.call(), "the rescued villager registers in the client roster (tribesman_id synced)")
+
 	# 5. the Tally over the wire
 	host.rpc_id(1, "srv_intent", "allocate", ["virtue-grit"])
 	waited = 0.0
