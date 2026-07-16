@@ -11,7 +11,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.5.0"
+const GAME_VERSION := "0.5.1"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -117,6 +117,8 @@ var message := "Something pale stands in the north flats. It looks like it is wa
 var menu_label: Label
 var menu_open := false
 var menu_mode := "build"   # "build" | "craft"
+var menu_page := 0          # pages of 9; [0] key advances (recipes can exceed 9)
+const MENU_PER_PAGE := 9
 
 # the camp: the first structure plants it; everything after builds within the ring
 const CAMP_RADIUS := 320.0
@@ -596,15 +598,23 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 	if menu_open and event is InputEventKey and event.pressed:
 		var key := (event as InputEventKey).physical_keycode
+		var options := menu_works() if menu_mode == "build" else craftable_recipes()
+		var page_count := int(max(1, ceil(float(options.size()) / MENU_PER_PAGE)))
+		if key == KEY_0 and page_count > 1:
+			menu_page = (menu_page + 1) % page_count
+			if menu_mode == "build":
+				_render_build_menu()
+			else:
+				_render_craft_menu()
+			return
 		if key >= KEY_1 and key <= KEY_9:
-			var idx := int(key - KEY_1)
-			var options := menu_works() if menu_mode == "build" else craftable_recipes()
+			var idx := menu_page * MENU_PER_PAGE + int(key - KEY_1)
 			if idx < options.size():
 				if menu_mode == "build":
 					intent_build(str(options[idx]))
 				else:
 					intent_craft(str(options[idx]))
-			_toggle_menu(false)
+				_toggle_menu(false)
 			return
 		if key == KEY_ESCAPE or (key == KEY_B and menu_mode == "build") or (key == KEY_C and menu_mode == "craft"):
 			_toggle_menu(false)
@@ -1092,6 +1102,7 @@ func craftable_recipes() -> Array:
 func _toggle_menu(open: bool, mode: String = "build") -> void:
 	menu_open = open
 	menu_mode = mode
+	menu_page = 0
 	if menu_label == null:
 		return
 	menu_label.visible = open
@@ -1103,17 +1114,24 @@ func _toggle_menu(open: bool, mode: String = "build") -> void:
 		_render_craft_menu()
 
 func _render_build_menu() -> void:
-	var lines := ["BUILD — number to raise it, [B] to close"]
 	var options := menu_works()
+	var page_count := int(max(1, ceil(float(options.size()) / MENU_PER_PAGE)))
+	menu_page = clamp(menu_page, 0, page_count - 1)
+	var start := menu_page * MENU_PER_PAGE
+	var end := int(min(start + MENU_PER_PAGE, options.size()))
+	var head := "BUILD — number to raise it, [B] to close"
+	if page_count > 1:
+		head += "   (page %d/%d — [0] for more)" % [menu_page + 1, page_count]
+	var lines := [head]
 	var last_god := ""
-	for i in options.size():
+	for i in range(start, end):
 		var work := registry.get_entity(str(options[i]))
 		var god_id: String = work.get("godId", "neutral")
 		if god_id != last_god:
 			last_god = god_id
 			lines.append("· %s ·" % ("salvage" if god_id == "neutral" else str(registry.get_entity(god_id).name) + "'s works"))
 		var afford := inventory.can_afford(acting_pid, work.get("buildCost", []))
-		lines.append("%d. %s%s" % [i + 1, str(work.name), "" if afford else "  (can't afford)"])
+		lines.append("%d. %s%s" % [i - start + 1, str(work.name), "" if afford else "  (can't afford)"])
 		lines.append("     %s" % str(work.get("purpose", work.get("text", ""))))
 		lines.append("     cost: %s" % _cost_str(work.get("buildCost", [])))
 	if attuned_for(my_pid).size() < 2:
@@ -1121,9 +1139,16 @@ func _render_build_menu() -> void:
 	menu_label.text = "\n".join(lines)
 
 func _render_craft_menu() -> void:
-	var lines := ["CRAFT — number to make it, [C] to close"]
 	var options := craftable_recipes()
-	for i in options.size():
+	var page_count := int(max(1, ceil(float(options.size()) / MENU_PER_PAGE)))
+	menu_page = clamp(menu_page, 0, page_count - 1)
+	var start := menu_page * MENU_PER_PAGE
+	var end := int(min(start + MENU_PER_PAGE, options.size()))
+	var head := "CRAFT — number to make it, [C] to close"
+	if page_count > 1:
+		head += "   (page %d/%d — [0] for more)" % [menu_page + 1, page_count]
+	var lines := [head]
+	for i in range(start, end):
 		var recipe := registry.get_entity(str(options[i]))
 		var item := registry.get_entity(str(recipe.output.itemId))
 		var station: String = recipe.get("stationWorkId", "")
@@ -1137,7 +1162,7 @@ func _render_craft_menu() -> void:
 		elif not afford:
 			tag = "  (can't afford)"
 		var where := "  @ %s" % str(registry.get_entity(station).name) if station != "" else "  (by hand)"
-		lines.append("%d. %s ×%d%s" % [i + 1, str(item.name), int(recipe.output.qty), tag])
+		lines.append("%d. %s ×%d%s" % [i - start + 1, str(item.name), int(recipe.output.qty), tag])
 		lines.append("     %s%s" % [_cost_str(recipe.get("inputs", [])), where])
 	if options.is_empty():
 		lines.append("Nothing to make yet — gather materials, raise a workbench.")
