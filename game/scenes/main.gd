@@ -6,12 +6,13 @@ extends Node2D
 
 const TILE := 32
 const WORLD := Vector2i(96, 64)
+const SCREEN := Vector2(1280, 720)   # design resolution; modals center on it
 const HARVEST_RANGE := 56.0
 const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.5.2"
+const GAME_VERSION := "0.5.3"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -41,13 +42,11 @@ var abilities: AbilitiesSystem
 
 # the Six Virtues (character sheet)
 var sheet_label: Label
-var sheet_back: ColorRect
 var sheet_open := false
 var consumed_hp: Dictionary = {}   # pid -> permanent strength eaten from gods
 var cheat_death_used: Dictionary = {}  # pid -> bool (resets at dawn)
 var equipped: Dictionary = {}      # pid -> {weapon: item_id, armor: item_id}
 var doll_label: Label
-var doll_back: ColorRect
 var doll_sprite: Node2D
 var doll_open := false
 
@@ -78,7 +77,6 @@ var _villager_nid := 100
 var callings: Dictionary = {}        # pid -> Array of {id, step}
 var callings_done: Dictionary = {}   # pid -> Array of calling ids
 var journal: Label
-var journal_back: ColorRect
 var journal_open := false
 var _calling_drawn_today := false
 
@@ -115,7 +113,9 @@ var petrify: Dictionary = {}           # pid -> frames; petrify_frames mirrors M
 var petrify_frames := 0
 var message := "Something pale stands in the north flats. It looks like it is waiting."
 var menu_label: Label
+var menu_title: Label       # the framed header of the craft/build modal
 var menu_open := false
+var modals: Dictionary = {}   # name -> {root, panel, title, body, footer}
 var menu_mode := "build"   # "build" | "craft"
 var menu_page := 0          # pages of 9; [0] key advances (recipes can exceed 9)
 const MENU_PER_PAGE := 9
@@ -1104,9 +1104,10 @@ func _toggle_menu(open: bool, mode: String = "build") -> void:
 	menu_open = open
 	menu_mode = mode
 	menu_page = 0
-	if menu_label == null:
+	var m: Dictionary = modals.get("menu", {})
+	if m.is_empty():
 		return
-	menu_label.visible = open
+	(m.root as Control).visible = open
 	if not open:
 		return
 	if mode == "build":
@@ -1114,16 +1115,23 @@ func _toggle_menu(open: bool, mode: String = "build") -> void:
 	else:
 		_render_craft_menu()
 
+## The footer of the craft/build modal: how to act, plus the page turn.
+func _menu_footer(verb: String, close_key: String, page: int, page_count: int) -> String:
+	var foot := "[1-9] %s   ·   [%s] close" % [verb, close_key]
+	if page_count > 1:
+		foot += "   ·   page %d/%d — [0] for more" % [page + 1, page_count]
+	(modals.menu.footer as Label).text = foot
+	return foot
+
 func _render_build_menu() -> void:
+	if menu_title != null:
+		menu_title.text = "BUILD"
 	var options := menu_works()
 	var page_count := int(max(1, ceil(float(options.size()) / MENU_PER_PAGE)))
 	menu_page = clamp(menu_page, 0, page_count - 1)
 	var start := menu_page * MENU_PER_PAGE
 	var end := int(min(start + MENU_PER_PAGE, options.size()))
-	var head := "BUILD — number to raise it, [B] to close"
-	if page_count > 1:
-		head += "   (page %d/%d — [0] for more)" % [menu_page + 1, page_count]
-	var lines := [head]
+	var lines: Array[String] = []
 	var last_god := ""
 	for i in range(start, end):
 		var work := registry.get_entity(str(options[i]))
@@ -1138,17 +1146,17 @@ func _render_build_menu() -> void:
 	if attuned_for(my_pid).size() < 2:
 		lines.append("· more works open when you kneel at new shrines ·")
 	menu_label.text = "\n".join(lines)
+	_menu_footer("raise it", "B", menu_page, page_count)
 
 func _render_craft_menu() -> void:
+	if menu_title != null:
+		menu_title.text = "CRAFT"
 	var options := craftable_recipes()
 	var page_count := int(max(1, ceil(float(options.size()) / MENU_PER_PAGE)))
 	menu_page = clamp(menu_page, 0, page_count - 1)
 	var start := menu_page * MENU_PER_PAGE
 	var end := int(min(start + MENU_PER_PAGE, options.size()))
-	var head := "CRAFT — number to make it, [C] to close"
-	if page_count > 1:
-		head += "   (page %d/%d — [0] for more)" % [menu_page + 1, page_count]
-	var lines := [head]
+	var lines: Array[String] = []
 	for i in range(start, end):
 		var recipe := registry.get_entity(str(options[i]))
 		var item := registry.get_entity(str(recipe.output.itemId))
@@ -1168,6 +1176,7 @@ func _render_craft_menu() -> void:
 	if options.is_empty():
 		lines.append("Nothing to make yet — gather materials, raise a workbench.")
 	menu_label.text = "\n".join(lines)
+	_menu_footer("make it", "C", menu_page, page_count)
 
 func intent_craft(recipe_id: String) -> bool:
 	if net_mode == "client":
@@ -1455,15 +1464,15 @@ func intent_build(work_id: String) -> bool:
 ## --- the sheet: what the sea left in you ------------------------------------------
 func _toggle_sheet(open: bool) -> void:
 	sheet_open = open
-	if sheet_label == null:
+	var m: Dictionary = modals.get("sheet", {})
+	if m.is_empty():
 		return
-	sheet_label.visible = open
-	sheet_back.visible = open
+	(m.root as Control).visible = open
 	if not open:
 		return
-	var lines := ["THE TALLY — what the sea left in you",
-		"Temper: %d unspent (of %d)   [1-6] +1  [SHIFT+1-6] take back  [T] close" % [
-			abilities.available(acting_pid), abilities.earned(acting_pid)]]
+	var lines := ["what the sea left in you",
+		"Temper: %d unspent (of %d)" % [abilities.available(acting_pid), abilities.earned(acting_pid)], ""]
+	(m.footer as Label).text = "[1-6] raise a virtue   ·   [SHIFT+1-6] take back   ·   [T] close"
 	var virtues := registry.all_of("virtue")
 	for i in virtues.size():
 		var v: Dictionary = virtues[i]
@@ -1493,16 +1502,16 @@ func equippable_list() -> Array:
 
 func _toggle_doll(open: bool) -> void:
 	doll_open = open
-	if doll_label == null:
+	var m: Dictionary = modals.get("doll", {})
+	if m.is_empty():
 		return
-	doll_label.visible = open
-	doll_back.visible = open
-	doll_sprite.visible = open
+	(m.root as Control).visible = open
 	if not open:
 		return
+	(m.footer as Label).text = "[1..] equip / unequip   ·   [I] close"
 	var weapon := equipped_item(acting_pid, "weapon")
 	var armor := equipped_item(acting_pid, "armor")
-	var lines := ["THE PACK & THE DOLL — number to equip/unequip, [I] to close", ""]
+	var lines: Array[String] = []
 	lines.append("        WEAPON: %s%s" % [
 		str(registry.get_entity(weapon).name) if weapon != "" else "— bare hands —",
 		"  (%d dmg)" % int(attack_damage()) if true else ""])
@@ -1549,31 +1558,32 @@ func intent_equip_index(i: int) -> void:
 ## --- the village panel ------------------------------------------------------
 func _toggle_village(open: bool) -> void:
 	village_panel_open = open
-	if village_panel == null:
+	var m: Dictionary = modals.get("village", {})
+	if m.is_empty():
 		return
-	village_panel.visible = open
-	(village_panel.get_meta("back") as ColorRect).visible = open
+	(m.root as Control).visible = open
 	if not open:
 		return
-	var lines := ["THE VILLAGE — the flats manage their own labor; [G] trade the stores, [V] to close", ""]
+	(m.footer as Label).text = "the flats manage their own labor   ·   [G] trade the stores   ·   [V] close"
+	var lines: Array[String] = []
 	var roster := all_villagers().filter(func(v: DSVillager) -> bool: return v.rescued and v.tribesman_id >= 0)
 	if roster.is_empty():
 		lines.append("No one has joined you yet. Strangers are stranded out on the flats — find them.")
 	else:
-		lines.append("%-10s %-11s %-13s %s" % ["NAME", "TRADE", "DOING", "STATUS"])
+		lines.append("%-10s %-12s %-16s %s" % ["NAME", "TRADE", "DOING", "STATUS"])
 		for v: DSVillager in roster:
 			var rec: Dictionary = village.tribesmen.get(v.tribesman_id, {})
 			var cls := str(registry.get_entity(v.def_class).get("name", "?"))
 			if v.is_captive:
 				var covered := bool(rec.get("warden_covered", true))
-				lines.append("%-10s %-11s %-13s %s" % [v.display_name.left(10), "CAPTIVE", ("warded" if covered else "UNWATCHED"),
+				lines.append("%-10s %-12s %-16s %s" % [v.display_name.left(10), "CAPTIVE", ("warded" if covered else "UNWATCHED"),
 					"break at the Salt-Wheel, or Unbind in %d day(s)" % maxi(0, 3 - v.days_held)])
 				continue
 			var doing: String = {"wood": "gathering wood", "food": "cooking", "salt": "boiling salt", "bronze": "salvaging bronze"}.get(v.task, "idle")
 			var status: String = "NEEDS HELP!" if v.needs_help else ("content" if bool(rec.get("bloomed", false)) else v._mood_word())
 			if not v.needs_help and not bool(rec.get("bloomed", false)):
 				status += " — " + _villager_need(v, rec)
-			lines.append("%-10s %-11s %-13s %s" % [v.display_name.left(10), cls.left(11), doing.left(13), status.left(40)])
+			lines.append("%-10s %-12s %-16s %s" % [v.display_name.left(10), cls.left(11), doing.left(16), status.left(40)])
 	lines.append("")
 	var pri := _need_priority()
 	var need_bits: Array[String] = []
@@ -1742,14 +1752,15 @@ func _complete_calling(pid: int, entry: Dictionary, calling: Dictionary) -> void
 
 func _toggle_journal(open: bool) -> void:
 	journal_open = open
-	if journal == null:
+	var m: Dictionary = modals.get("journal", {})
+	if m.is_empty():
 		return
-	journal.visible = open
-	journal_back.visible = open
+	(m.root as Control).visible = open
 	if not open:
 		return
+	(m.footer as Label).text = "[1..] choose or continue   ·   [J] close"
 	var active := _active_callings(my_pid)
-	var lines := ["THE JOURNAL — [1..] choose or continue, [J] to close", ""]
+	var lines: Array[String] = []
 	if active.is_empty():
 		lines.append("The flats have asked nothing of you yet.")
 		lines.append("Kneel to a god, take in survivors, walk far — and callings will find you.")
@@ -2459,6 +2470,59 @@ func _tint_for_minute(m: int) -> Color:
 		return DUSK.lerp(NIGHT, (h - 20.0) / 1.5)
 	return NIGHT
 
+## A framed, dimmed modal window on the UI layer — one shared frame so every
+## menu reads as the same object: the flats recede behind it, a bronze-rimmed
+## sheet of keepsake paper carries a title, a rule, the body, and a footer of
+## keys. Returns the pieces; starts hidden. Register it under `name` in `modals`.
+func _make_modal(layer: CanvasLayer, name: String, sizev: Vector2, title_text: String) -> Dictionary:
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP   # the world doesn't get clicks while a modal is up
+	root.visible = false
+	layer.add_child(root)
+	var dim := ColorRect.new()
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0.06, 0.05, 0.04, 0.55)       # the flats go to dusk behind the sheet
+	root.add_child(dim)
+	var panel := Panel.new()
+	panel.size = sizev
+	panel.position = ((SCREEN - sizev) / 2.0).round()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.949, 0.937, 0.910, 0.99)  # keepsake-paper cream
+	sb.border_color = Color("8a6a3c")               # a bronze rim, salvage-worn
+	sb.set_border_width_all(3)
+	sb.set_corner_radius_all(8)
+	sb.shadow_color = Color(0, 0, 0, 0.35)
+	sb.shadow_size = 14
+	panel.add_theme_stylebox_override("panel", sb)
+	root.add_child(panel)
+	var title := Label.new()
+	title.text = title_text
+	title.position = Vector2(24, 16)
+	title.add_theme_color_override("font_color", Color("6a4a24"))
+	title.add_theme_font_size_override("font_size", 20)
+	panel.add_child(title)
+	var rule := ColorRect.new()
+	rule.position = Vector2(24, 48)
+	rule.size = Vector2(sizev.x - 48, 2)
+	rule.color = Color("c9a648")                    # a votive-gold underline
+	panel.add_child(rule)
+	var body := Label.new()
+	body.position = Vector2(24, 62)
+	body.custom_minimum_size = Vector2(sizev.x - 48, 0)
+	body.add_theme_color_override("font_color", Color("3b3428"))
+	body.add_theme_font_size_override("font_size", 13)
+	panel.add_child(body)
+	var footer := Label.new()
+	footer.position = Vector2(24, sizev.y - 32)
+	footer.custom_minimum_size = Vector2(sizev.x - 48, 0)
+	footer.add_theme_color_override("font_color", Color("8a7a5c"))
+	footer.add_theme_font_size_override("font_size", 11)
+	panel.add_child(footer)
+	var m := {"root": root, "panel": panel, "title": title, "body": body, "footer": footer}
+	modals[name] = m
+	return m
+
 func _build_hud() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -2528,75 +2592,30 @@ func _build_hud() -> void:
 	boss_bar.visible = false
 	layer.add_child(boss_bar)
 	boss_bar.set_meta("back", boss_back)
-	sheet_back = ColorRect.new()
-	sheet_back.position = Vector2(560, 96)
-	sheet_back.size = Vector2(700, 608)
-	sheet_back.color = Color(0.949, 0.937, 0.910, 0.93)   # keepsake-paper cream
-	sheet_back.visible = false
-	layer.add_child(sheet_back)
-	sheet_label = Label.new()
-	sheet_label.position = Vector2(576, 106)
-	sheet_label.custom_minimum_size = Vector2(668, 0)
+	# Every menu is the same framed, dimmed modal — built once, filled on open.
+	var m_sheet := _make_modal(layer, "sheet", Vector2(840, 672), "THE TALLY")   # the fullest screen — all six virtues + talents
+	sheet_label = m_sheet.body
 	sheet_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	sheet_label.add_theme_color_override("font_color", Color("3b3428"))
 	sheet_label.add_theme_font_size_override("font_size", 12)
-	sheet_label.visible = false
-	layer.add_child(sheet_label)
-	menu_label = Label.new()
-	menu_label.position = Vector2(12, 200)
-	menu_label.add_theme_color_override("font_color", Color("3b3428"))
-	menu_label.add_theme_font_size_override("font_size", 14)
-	menu_label.visible = false
-	layer.add_child(menu_label)
-	# the pack & paper doll
-	doll_back = ColorRect.new()
-	doll_back.position = Vector2(360, 120)
-	doll_back.size = Vector2(560, 470)
-	doll_back.color = Color(0.949, 0.937, 0.910, 0.95)
-	doll_back.visible = false
-	layer.add_child(doll_back)
+
+	var m_menu := _make_modal(layer, "menu", Vector2(540, 600), "CRAFT")
+	menu_label = m_menu.body
+	menu_title = m_menu.title
+
+	var m_doll := _make_modal(layer, "doll", Vector2(660, 520), "THE PACK & THE DOLL")
+	doll_label = m_doll.body
+	doll_label.custom_minimum_size = Vector2(400, 0)   # leave the right third for the doll
 	doll_sprite = SpriteKit.sprite("survivor", Vector2(22, 30), Color("c8865a"))
-	doll_sprite.position = Vector2(790, 400)
-	doll_sprite.scale = Vector2(4.0, 4.0)
-	doll_sprite.visible = false
-	layer.add_child(doll_sprite)
-	doll_label = Label.new()
-	doll_label.position = Vector2(376, 132)
-	doll_label.custom_minimum_size = Vector2(528, 0)
-	doll_label.add_theme_color_override("font_color", Color("3b3428"))
-	doll_label.add_theme_font_size_override("font_size", 13)
-	doll_label.visible = false
-	layer.add_child(doll_label)
-	var vp_back := ColorRect.new()
-	vp_back.position = Vector2(330, 96)
-	vp_back.size = Vector2(620, 540)
-	vp_back.color = Color(0.949, 0.937, 0.910, 0.95)
-	vp_back.visible = false
-	vp_back.name = "VillageBack"
-	layer.add_child(vp_back)
-	village_panel = Label.new()
-	village_panel.position = Vector2(346, 108)
-	village_panel.custom_minimum_size = Vector2(588, 0)
-	village_panel.add_theme_color_override("font_color", Color("3b3428"))
-	village_panel.add_theme_font_size_override("font_size", 13)
-	village_panel.visible = false
-	village_panel.set_meta("back", vp_back)
-	layer.add_child(village_panel)
-	var jb := ColorRect.new()
-	jb.position = Vector2(300, 90)
-	jb.size = Vector2(680, 560)
-	jb.color = Color(0.949, 0.937, 0.910, 0.96)
-	jb.visible = false
-	layer.add_child(jb)
-	journal_back = jb
-	journal = Label.new()
-	journal.position = Vector2(318, 104)
-	journal.custom_minimum_size = Vector2(648, 0)
+	doll_sprite.position = Vector2(540, 300)
+	doll_sprite.scale = Vector2(4.5, 4.5)
+	(m_doll.panel as Panel).add_child(doll_sprite)
+
+	var m_village := _make_modal(layer, "village", Vector2(700, 560), "THE VILLAGE")
+	village_panel = m_village.body
+
+	var m_journal := _make_modal(layer, "journal", Vector2(720, 600), "THE JOURNAL")
+	journal = m_journal.body
 	journal.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	journal.add_theme_color_override("font_color", Color("3b3428"))
-	journal.add_theme_font_size_override("font_size", 13)
-	journal.visible = false
-	layer.add_child(journal)
 
 func _refresh_bars() -> void:
 	if hp_bar == null:

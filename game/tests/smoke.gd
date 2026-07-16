@@ -91,7 +91,7 @@ func _ready() -> void:
 	check("recipe-rope" in craftable, "the craft menu lists rope")
 	check("recipe-marens-own-harpoon" not in craftable, "but hides the legend until you hold its verses")
 	host._render_craft_menu()
-	check(host.menu_label.text.contains("CRAFT") and host.menu_label.text.contains("by hand"), "craft menu shows recipes + where")
+	check(host.menu_title.text.contains("CRAFT") and host.menu_label.text.contains("by hand"), "craft menu shows recipes + where")
 	host._render_build_menu()
 	check(host.menu_label.text.contains("Workbench") and host.menu_label.text.contains("Crafting station"), "build menu shows each building's PURPOSE")
 
