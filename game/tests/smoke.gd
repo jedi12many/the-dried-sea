@@ -749,6 +749,25 @@ func _ready() -> void:
 		await get_tree().physics_frame
 	check(host.survivor.position.distance_to(host.chapels["god-halor"]) <= chapel_gap, "evening: she turns toward the chapel")
 
+	# --- RISK: the leash breathes with need; full stores never idle the hands --
+	host.village_stock.erase("item-driftwood")
+	check(absf(host._task_leash("wood") - host.FORAGE_LEASH_FAR) < 1.0,
+		"empty stores: the wood leash runs far (%.0f)" % host._task_leash("wood"))
+	host.village_stock["item-driftwood"] = int(host.NEED_TARGETS["wood"])
+	check(absf(host._task_leash("wood") - host.FORAGE_LEASH_NEAR) < 1.0,
+		"full stores: it pulls in close to home (%.0f)" % host._task_leash("wood"))
+	# park a wood node by the hearth, fill EVERY store — and still nobody idles
+	var near_node := _node_of(host, "item-driftwood")
+	near_node.position = host.village_heart() + Vector2(150, 0)
+	for task_k: String in host.NEED_TARGETS:
+		host.village_stock[host.TASK_ITEM[task_k]] = int(host.NEED_TARGETS[task_k]) + 4
+	host._assign_village_tasks()
+	var idle_hands := 0
+	for v in host.all_villagers():
+		if v.rescued and not v.is_captive and v.tribesman_id >= 0 and v.task == "":
+			idle_hands += 1
+	check(idle_hands == 0, "idle hands feed no gods: stores full, wood near — everyone still works (%d idle)" % idle_hands)
+
 	# --- CALLINGS: the journal runtime ---------------------------------------
 	host.callings.clear(); host.callings_done.clear()
 	host._active_callings(1).append({"id": "calling-the-letter-still-walking", "step": "s1"})

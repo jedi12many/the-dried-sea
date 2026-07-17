@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.7.3"
+const GAME_VERSION := "0.7.4"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -104,7 +104,12 @@ const NEED_TARGETS := {"food": 12, "wood": 14, "salt": 14, "bronze": 10}
 const TASK_ITEM := {"food": "item-smoked-crab", "wood": "item-driftwood", "salt": "item-salt", "bronze": "item-bronze-salvage"}
 const TASK_STATION := {"food": "work-smokehouse", "wood": "", "salt": "work-workbench", "bronze": "work-workbench"}
 const TASK_FORAGE_ITEM := {"wood": "item-driftwood", "salt": "item-salt", "bronze": "item-bronze-salvage"}   # tasks that gather from world nodes
-const FORAGE_LEASH := 720.0   # how far from the heart a villager will venture for a node
+# RISK: how far a villager ventures scales with how badly the village needs it.
+# Full stores — work only what's near home (surplus, safe, feeds the gods).
+# Empty stores — range far out into the flats, past warden cover, and chance it.
+const FORAGE_LEASH_NEAR := 360.0
+const FORAGE_LEASH_FAR := 1100.0
+const SURPLUS_PRIORITY := 0.12   # idle hands feed no gods: near nodes get worked even when full
 const TASK_BASE := 2.0
 const CLASS_SUIT := {
 	"class-reef-runner": {"food": 0.9, "wood": 1.6, "salt": 0.7, "bronze": 0.4},
@@ -1375,6 +1380,12 @@ func _apply_node_left(d: Dictionary) -> void:
 			var hits := maxi(int(node.get_meta("hits", 1)), 1)
 			node.scale = Vector2.ONE * (0.55 + 0.45 * float(left) / float(hits))
 
+## The risk dial: how far this task's workers will range right now. Desperation
+## stretches the leash; comfort shortens it to the home fields.
+func _task_leash(task: String) -> float:
+	var need := clampf(float(_need_priority().get(task, 0.0)), 0.0, 1.0)
+	return lerpf(FORAGE_LEASH_NEAR, FORAGE_LEASH_FAR, need)
+
 ## The nearest live node bearing this item within `leash` of `from` — how a
 ## villager decides whether the wood is worth the walk.
 func _nearest_node_of(item_id: String, from: Vector2, leash: float) -> Area2D:
@@ -2031,6 +2042,7 @@ func _toggle_village(open: bool) -> void:
 	lines.append("WHY THEY WORK OR REST:")
 	for task: String in NEED_TARGETS:
 		lines.append("  " + _task_debug_line(task, pri))
+	lines.append("  the leash is the RISK dial: full stores = short (safe, surplus for the gods); low = far (danger)")
 	lines.append("  idle = no task scores above 0.05 for them; tasks reassess at dawn (or when you build/rescue)")
 	village_panel.text = "\n".join(lines)
 
@@ -2040,16 +2052,17 @@ func _task_debug_line(task: String, pri: Dictionary) -> String:
 	var have: int = _stock_food_total() if task == "food" else int(village_stock.get(TASK_ITEM[task], 0))
 	var bits: Array[String] = []
 	bits.append("%-6s need %.2f (%d/%d%s)" % [task, float(pri[task]), have, NEED_TARGETS[task],
-		" — stores full, resting" if float(pri[task]) <= 0.0 else ""])
+		" — full: surplus work, near nodes only" if float(pri[task]) <= 0.0 and TASK_FORAGE_ITEM.has(task) else ""])
 	var station: String = TASK_STATION.get(task, "")
 	if station != "":
 		bits.append(("station ✓" if works.count_of(station) > 0 else "station ✗ needs %s" % str(registry.get_entity(station).name).to_lower()))
 	if TASK_FORAGE_ITEM.has(task):
-		var node := _nearest_node_of(TASK_FORAGE_ITEM[task], village_heart(), FORAGE_LEASH)
+		var leash := _task_leash(task)
+		var node := _nearest_node_of(TASK_FORAGE_ITEM[task], village_heart(), leash)
 		if node != null:
-			bits.append("node ✓ %dpx away (%d left)" % [int(village_heart().distance_to(node.position)), int(node.get_meta("left", 1))])
+			bits.append("node ✓ %dpx (%d left) of %dpx leash" % [int(village_heart().distance_to(node.position)), int(node.get_meta("left", 1)), int(leash)])
 		else:
-			bits.append("node ✗ none within %dpx" % int(FORAGE_LEASH))
+			bits.append("node ✗ none within %dpx leash" % int(leash))
 	return "   ".join(bits)
 
 func _villager_need(v: DSVillager, rec: Dictionary) -> String:
@@ -2802,7 +2815,7 @@ func _village_dawn() -> void:
 		# gather tasks work a REAL node: the nearest within the forage leash, worn
 		# down by the day's labor. Nothing in reach = nothing gathered.
 		if TASK_FORAGE_ITEM.has(task):
-			var node := _nearest_node_of(TASK_FORAGE_ITEM[task], village_heart(), FORAGE_LEASH)
+			var node := _nearest_node_of(TASK_FORAGE_ITEM[task], village_heart(), _task_leash(task))
 			if node == null:
 				var note := "no %s within the village's reach" % str(registry.get_entity(TASK_FORAGE_ITEM[task]).name).to_lower()
 				if note not in dawn_notes:
@@ -2932,9 +2945,13 @@ func _assign_village_tasks() -> void:
 			var station: String = TASK_STATION[task]
 			if station != "" and works.count_of(station) == 0:
 				continue   # can't cook without a smokehouse, etc.
-			if TASK_FORAGE_ITEM.has(task) and _nearest_node_of(TASK_FORAGE_ITEM[task], village_heart(), FORAGE_LEASH) == null:
-				continue   # nothing to gather in reach — don't send anyone to nowhere
-			var score: float = float(pri[task]) * float(suit.get(task, 0.5))
+			var eff_pri := float(pri[task])
+			if TASK_FORAGE_ITEM.has(task):
+				if _nearest_node_of(TASK_FORAGE_ITEM[task], village_heart(), _task_leash(task)) == null:
+					continue   # nothing in this task's reach — don't send anyone to nowhere
+				# idle hands feed no gods: near nodes get worked even on full stores
+				eff_pri = maxf(eff_pri, SURPLUS_PRIORITY)
+			var score: float = eff_pri * float(suit.get(task, 0.5))
 			if score > best_score:
 				best_score = score
 				best_task = task
@@ -2946,7 +2963,7 @@ func task_work_zone(task: String) -> Vector2:
 	# gather tasks work a real node: the one the dawn labor is draining (nearest
 	# in the leash) — the villager stands at the wood they're cutting
 	if TASK_FORAGE_ITEM.has(task):
-		var node := _nearest_node_of(TASK_FORAGE_ITEM[task], village_heart(), FORAGE_LEASH)
+		var node := _nearest_node_of(TASK_FORAGE_ITEM[task], village_heart(), _task_leash(task))
 		if node != null:
 			return node.position
 	var station: String = TASK_STATION.get(task, "")
