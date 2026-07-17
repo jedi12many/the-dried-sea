@@ -797,10 +797,11 @@ func _ready() -> void:
 	host._toggle_offertory(true, altar)
 	check(host.offertory_open and host.offertory_label.text.contains("RELICS"), "the Offertory opens with the god's slots")
 	check(host.offertory_label.text.contains("craves"), "the appetite annotation is the tutorial")
-	# lay a craved offering through the real intent
+	# lay a craved offering through the real intent — ONE per press (no stack dump)
 	var pack_salt := host.inventory.count(1, "item-salt")
 	check(host.intent_sanctum(altar, "item-salt"), "salt is laid before the Salt-Father")
-	check(host.inventory.count(1, "item-salt") == 0 and int(host.sanctum.state[altar].bag["item-salt"]) == pack_salt, "the whole stack moves to the altar")
+	check(host.inventory.count(1, "item-salt") == pack_salt - 1 and int(host.sanctum.state[altar].bag["item-salt"]) == 1, "one press lays exactly one")
+	check(host.intent_sanctum(altar, "item-salt", "lay") and int(host.sanctum.state[altar].bag["item-salt"]) == 2, "the pack row lays a second (explicit op, not the toggle)")
 	var spl := host.sanctum.splendor(altar)
 	check(spl > 1.0, "the altar takes on splendor (x%.2f)" % spl)
 	# the rite is borne up by it

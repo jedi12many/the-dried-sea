@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.7.4"
+const GAME_VERSION := "0.7.5"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -723,7 +723,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if okey >= KEY_1 and okey <= KEY_9:
 			var oidx := int(okey - KEY_1)
 			if oidx < offertory_items.size():
-				intent_sanctum(offertory_inst, str(offertory_items[oidx]))
+				var entry: Dictionary = offertory_items[oidx]
+				intent_sanctum(offertory_inst, str(entry.id), str(entry.op))
 			return
 		if okey == KEY_ESCAPE or okey == KEY_E:
 			sfx("ui")
@@ -1273,22 +1274,27 @@ func intent_rite(god_id: String) -> bool:
 ## The Offertory: one toggle verb, server-authoritative. If the item is on the
 ## altar (relic slot or bag) it comes back to your pack; if it's in your pack it
 ## goes to the altar — relics to the god's worn slots, goods to the bag.
-func intent_sanctum(inst_id: int, item_id: String) -> bool:
+func intent_sanctum(inst_id: int, item_id: String, op: String = "auto") -> bool:
 	if net_mode == "client":
-		rpc_id(1, "srv_intent", "sanctum", [inst_id, item_id])
+		rpc_id(1, "srv_intent", "sanctum", [inst_id, item_id, op])
 		return true
 	if not sanctum.is_altar(inst_id):
 		return false
 	var god_id := str(sanctum.state[inst_id].god_id)
-	if sanctum.take_relic(inst_id, item_id):
+	# an item can sit on the altar AND in your pack, so the modal says which way
+	# it means ("take" from the altar rows, "lay" from the pack rows); "auto"
+	# keeps the old toggle order for callers that don't care
+	if op != "lay" and sanctum.take_relic(inst_id, item_id):
 		inventory.add(acting_pid, item_id, 1)
 		message = "You lift %s from the altar." % str(registry.get_entity(item_id).name)
-	else:
+	elif op == "take" or (op == "auto" and int(sanctum.state[inst_id].bag.get(item_id, 0)) > 0):
 		var back := sanctum.withdraw(inst_id, item_id)
-		if back > 0:
-			inventory.add(acting_pid, item_id, back)
-			message = "You take back what was laid out (×%d)." % back
-		elif inventory.count(acting_pid, item_id) > 0:
+		if back <= 0:
+			return false
+		inventory.add(acting_pid, item_id, back)
+		message = "You take back what was laid out (×%d)." % back
+	else:
+		if inventory.count(acting_pid, item_id) > 0:
 			if sanctum.relic_points(item_id) > 0.0:
 				if not sanctum.place_relic(inst_id, item_id, devotion.favor_tier(acting_pid, god_id)):
 					message = "The altar's slots are full — %s holds only so many stories." % str(registry.get_entity(god_id).name)
@@ -1297,14 +1303,14 @@ func intent_sanctum(inst_id: int, item_id: String) -> bool:
 				inventory.pay(acting_pid, [{"itemId": item_id, "qty": 1}])
 				message = "You set %s on the altar. It belongs to a story now." % str(registry.get_entity(item_id).name)
 			else:
-				var qty := inventory.count(acting_pid, item_id)
-				inventory.pay(acting_pid, [{"itemId": item_id, "qty": qty}])
-				sanctum.deposit(acting_pid, inst_id, item_id, qty)
+				# one per press, for now — stack-splitting can come later
+				inventory.pay(acting_pid, [{"itemId": item_id, "qty": 1}])
+				sanctum.deposit(acting_pid, inst_id, item_id, 1)
 				var lane := sanctum.lane(god_id, item_id)
 				match lane:
-					"craves": message = "You lay it out (×%d). %s is pleased — this is craved." % [qty, str(registry.get_entity(god_id).name)]
-					"accepts": message = "You lay it out (×%d). It is accepted." % qty
-					"ignores": message = "You lay it out (×%d). %s does not stoop to notice." % [qty, str(registry.get_entity(god_id).name)]
+					"craves": message = "You lay one out. %s is pleased — this is craved." % str(registry.get_entity(god_id).name)
+					"accepts": message = "You lay one out. It is accepted."
+					"ignores": message = "You lay one out. %s does not stoop to notice." % str(registry.get_entity(god_id).name)
 		else:
 			return false
 	sfx("rite")
@@ -2358,7 +2364,7 @@ func _toggle_offertory(open: bool, inst_id: int = -1) -> void:
 	# the god's worn equipment
 	lines.append("RELICS  (%d of %d slots — the god's worn stories)" % [(s.relics as Array).size(), slots])
 	for relic_id: String in s.relics:
-		offertory_items.append(relic_id)
+		offertory_items.append({"id": relic_id, "op": "take"})
 		lines.append("  %d. %s   — displayed; press to take back" % [offertory_items.size(), str(registry.get_entity(relic_id).name)])
 	if (s.relics as Array).is_empty():
 		lines.append("  (bare stone — relics come from callings and great deeds)")
@@ -2367,8 +2373,8 @@ func _toggle_offertory(open: bool, inst_id: int = -1) -> void:
 	lines.append("LAID OUT  (the dawn tithe takes a little each day)")
 	var bag: Dictionary = s.bag
 	for item_id: String in bag:
-		offertory_items.append(item_id)
-		lines.append("  %d. %s ×%d   — %s; press to take back" % [offertory_items.size(),
+		offertory_items.append({"id": item_id, "op": "take"})
+		lines.append("  %d. %s ×%d   — %s; press to take ALL back" % [offertory_items.size(),
 			str(registry.get_entity(item_id).name), int(bag[item_id]), sanctum.lane(god_id, item_id)])
 	if bag.is_empty():
 		lines.append("  (nothing — a dry altar is just furniture)")
@@ -2385,8 +2391,8 @@ func _toggle_offertory(open: bool, inst_id: int = -1) -> void:
 			lines.append("      %s ×%d — %s ignores this" % [str(registry.get_entity(item_id).name),
 				inventory.count(my_pid, item_id), god_name])
 			continue
-		offertory_items.append(item_id)
-		var note := "a relic — display it" if is_relic else lane
+		offertory_items.append({"id": item_id, "op": "lay"})
+		var note := "a relic — display it" if is_relic else lane + "; press to lay one"
 		if lane == "offends":
 			note = "OFFENDS — the flats will remember"
 		lines.append("  %d. %s ×%d   — %s" % [offertory_items.size(),
@@ -2396,7 +2402,7 @@ func _toggle_offertory(open: bool, inst_id: int = -1) -> void:
 		lines.append("  (nothing %s wants — gather what they crave)" % god_name)
 	offertory_label.text = "\n".join(lines)
 	var spl := sanctum.splendor(inst_id)
-	(modals.offertory.footer as Label).text = "splendor ×%.1f — rites to %s return %s   ·   [1-%d] move   ·   [E] close" % [
+	(modals.offertory.footer as Label).text = "splendor ×%.1f — rites to %s return %s   ·   [1-%d] lay ONE / take back   ·   [E] close" % [
 		spl, god_name, ("more" if spl > 1.05 else ("LESS — something offends" if spl < 0.95 else "the usual")), maxi(offertory_items.size(), 1)]
 
 ## --- One-shot audio, guarded for the headless server.
@@ -3598,7 +3604,7 @@ func srv_intent(kind: String, args: Array) -> void:
 		"equip": equip_toggle(acting_pid, str(args[0]))
 		"give_food": intent_give_food()
 		"journal": journal_interact(acting_pid, int(args[0]))
-		"sanctum": intent_sanctum(int(args[0]), str(args[1]))
+		"sanctum": intent_sanctum(int(args[0]), str(args[1]), str(args[2]) if args.size() > 2 else "auto")
 		"move_work": _move_work(int(args[0]), Vector2(float(args[1]), float(args[2])))
 		"rotate_work": _rotate_work(int(args[0]))
 		"demolish_work": _demolish_work(int(args[0]))
