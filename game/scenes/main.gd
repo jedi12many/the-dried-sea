@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.7.2"
+const GAME_VERSION := "0.7.3"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -2017,7 +2017,40 @@ func _toggle_village(open: bool) -> void:
 		need_bits.append("%s %d/%d%s" % [task, have, NEED_TARGETS[task], mark])
 	lines.append("NEEDS: %s   (!! = short, drives who does what)" % "   ".join(need_bits))
 	lines.append("Your people eat %d food a day. Danger sends them home; clear it or post a warden." % roster.size())
+	# — the community stores, itemized ————————————————————————————————
+	lines.append("")
+	var store_bits: Array[String] = []
+	var store_keys := village_stock.keys()
+	store_keys.sort()
+	for item_id: String in store_keys:
+		if int(village_stock[item_id]) > 0:
+			store_bits.append("%s ×%d" % [str(registry.get_entity(item_id).get("name", item_id)), int(village_stock[item_id])])
+	lines.append("STORES: %s" % ("   ".join(store_bits) if store_bits.size() > 0 else "(bare shelves — [G] to pool your pack)"))
+	# — the why of it: what each task scores and what gates it (debug) ————————
+	lines.append("")
+	lines.append("WHY THEY WORK OR REST:")
+	for task: String in NEED_TARGETS:
+		lines.append("  " + _task_debug_line(task, pri))
+	lines.append("  idle = no task scores above 0.05 for them; tasks reassess at dawn (or when you build/rescue)")
 	village_panel.text = "\n".join(lines)
+
+## One diagnostic line per task: its need score and every gate that could stop a
+## villager taking it — the answer to "why is everyone standing around?"
+func _task_debug_line(task: String, pri: Dictionary) -> String:
+	var have: int = _stock_food_total() if task == "food" else int(village_stock.get(TASK_ITEM[task], 0))
+	var bits: Array[String] = []
+	bits.append("%-6s need %.2f (%d/%d%s)" % [task, float(pri[task]), have, NEED_TARGETS[task],
+		" — stores full, resting" if float(pri[task]) <= 0.0 else ""])
+	var station: String = TASK_STATION.get(task, "")
+	if station != "":
+		bits.append(("station ✓" if works.count_of(station) > 0 else "station ✗ needs %s" % str(registry.get_entity(station).name).to_lower()))
+	if TASK_FORAGE_ITEM.has(task):
+		var node := _nearest_node_of(TASK_FORAGE_ITEM[task], village_heart(), FORAGE_LEASH)
+		if node != null:
+			bits.append("node ✓ %dpx away (%d left)" % [int(village_heart().distance_to(node.position)), int(node.get_meta("left", 1))])
+		else:
+			bits.append("node ✗ none within %dpx" % int(FORAGE_LEASH))
+	return "   ".join(bits)
 
 func _villager_need(v: DSVillager, rec: Dictionary) -> String:
 	if rec.is_empty():
