@@ -281,11 +281,12 @@ guttered god:
 - yields their **remnant** — feeding directly into the Verdict economy that
   already exists (enshrine / trade / **consume**). This is where remnants
   *come from*; the Verdict system finally gets its supply chain.
-- kills their domain **permanently, for everyone** (the WORLD-SPEC promise:
-  consume the Tide-Keeper and the tide-rhythm buffs die world-wide, forever).
-  Their works go inert, their priest leaves or breaks, their Acolytes lose
-  their class (grief-drift for every villager whose patron dies), their
-  invocations become memory.
+- kills their domain **world-wide, for everyone**: their works go inert, their
+  priest leaves or breaks, their Acolytes lose their class (grief-drift for
+  every villager whose patron dies), their invocations become memory. Death
+  holds until the **Waking** (below) — it becomes *forever* only if the
+  remnant is then consumed (the WORLD-SPEC promise, now precise: consume the
+  Tide-Keeper and the tide-rhythm buffs die world-wide, permanently).
 - writes the heaviest single entry the `gods` ledger will ever take.
 
 The mercy path is the mirror quest: a **Rekindling** chain to haul a guttered
@@ -294,6 +295,50 @@ too. Both quests are authored Callings content (2 per god is too much for EA;
 ship God-Death for 2 gods + Rekindling generic, grow the rest post-EA).
 
 In co-op, god-death is Verdict-grade: **vote-or-host**, same rule as the fork.
+
+### The Waking — death is not the end; consumption is
+
+*(Decision 2026-07-17: losing a god forever in a many-hour save is too cruel
+to leave un-doored — but the door must be earned, and ONE act must still close
+it for good.)*
+
+A dead god is not gone **while their remnant survives**. The remnant is the
+god's seed, and the three Verdict verbs now mean exactly what they say:
+
+| Remnant fate | Can the god return? |
+|---|---|
+| **Enshrined** (or sitting in your stores) | Yes — via the Waking, below |
+| **Traded away** | Yes — but first win it back (the buyer knows what they hold, and the price has gone up) |
+| **Consumed** | **Never. This is the game's one truly irreversible act**, and the UI says so in exactly those words at the moment of choice — a full-stop confirmation, the only one in the game |
+
+**The Rite of Waking** is an endgame-scale project chain (authored Calling,
+one generic spine reskinned per god), deliberately priced like building a
+basilica, not like buying a potion:
+
+1. **Carry the remnant to the god's First Shrine** — the same site where the
+   God-Death ended; the walk itself is a pilgrimage, and the remnant in your
+   pack draws the dark biomes' attention (Ur-Noth wants it back on the market).
+2. **Rebuild the shrine** — a one-off construction stage using that god's
+   deepest-tier work materials.
+3. **Lay the feast** — a Splendor gate: an altar at that shrine stocked to a
+   high threshold with the god's craved offerings, plus one relic of their
+   affinity line surrendered permanently (the only relic sink in the game).
+4. **Hold the vigil** — N in-game days of attended rites; a priest of that god
+   if any survives (one always wanders back for this), every willing Acolyte
+   of theirs kneeling. The village literally prays a god back to life.
+
+**What wakes is not quite what died.** The god returns at 10% Godhead — the
+flicker again, cap wherever the world's keystones currently hold it — with
+their domain effects, works, priest, and Acolytes restored (Acolytes regain
+their class; their levels were banked, per Part I §1). But a woken god
+*remembers*: permanent voice/dialogue pool shift, and the ledger carries both
+entries forever — the hand that killed them and the hand that woke them,
+which may be the same hand. That arc (kill a god for the remnant's power,
+keep the remnant, wake them later in regret) is the Verdict system's best
+redemption story and it emerges from these rules for free.
+
+Waking needs no vote in co-op — restoration is never gated; only destruction
+is.
 
 ## 5. The interlock: Acolytes are Godhead made visible
 
@@ -332,14 +377,25 @@ pitch.
   classes + leveling + equipment, party-of-1 road test.
 - **M3:** party cap 2, downed/death/memorial, shrine-restoration POIs, first
   keystone dedication moment.
-- **M4:** God-Death + Rekindling Callings, guttered-world states, Acolyte
-  Intercession tier.
+- **M4:** God-Death + Rekindling + the Waking Callings, guttered- and
+  dead-god world states, Acolyte Intercession tier.
+
+## Decisions taken (2026-07-17)
+
+- **Villager permadeath is permanent** — no softer "carried home" tier. Dead
+  is dead; the memorial work and the corpse-run for their gear are the whole
+  of the consolation.
+- **God death is NOT permanent — consumption is.** A killed god can be woken
+  via the Rite of Waking so long as their remnant survives; consuming the
+  remnant is the game's one truly irreversible act, said in exactly those
+  words at the moment of choice.
 
 ## Open questions (for Jeff)
 
 1. **Keystone dedication** — +8% to ONE god per boss is a strong
    favorite-picking moment; or split-allowed (weaker moment, kinder to broad
-   builds)? Lean: one god, no split — the game is better when it makes you choose.
+   builds)? Lean: one god, no split — the game is better when it makes you
+   choose. *(Jeff: no opinion yet — parked.)*
 2. **Godhead per-player vs. world:** spec'd world-level (it's the god's body,
    and co-op sharing one pantheon is the point). Confirm you don't want
    per-player godhead — it would read as six private gods.
@@ -349,5 +405,5 @@ pitch.
    tail? Lean: 10; villagers should max out and *be* maxed companions, not
    treadmills.
 5. **Party cap 2** at EA — confirm (4 doubles pathing + netcode surface).
-6. **Downed timer 30s / permadeath** — or a "gravely wounded, carried home,
-   out for a week" softer tier between downed and dead?
+6. **Waking vigil length** — how many attended in-game days? Lean 5: long
+   enough to be a story, short enough to not be a second job.
