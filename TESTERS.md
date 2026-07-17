@@ -16,7 +16,7 @@ on a **shared server** with the other testers. Thanks for helping.
 | Key | Does |
 |---|---|
 | WASD / arrows | move |
-| E | interact — kneel, rescue, hold rites, gather (the prompt over your head tells you) |
+| E | interact — kneel, rescue, hold rites, CUT/MINE salvage nodes swing by swing (the prompt shows what's left) |
 | SPACE | attack |
 | F | eat (food raises your maximums — eat BEFORE trouble) |
 | C | CRAFT MENU — every recipe, its cost, and where to make it |

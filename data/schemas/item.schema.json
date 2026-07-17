@@ -1,41 +1,124 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "item.schema.json",
-  "$comment": "v2 — adds relic (the Sanctum's Splendor score, WORLD-SPEC)",
-  "type": "object",
-  "required": ["id", "name", "category", "text"],
-  "additionalProperties": false,
-  "properties": {
-    "id": { "type": "string", "pattern": "^item-[a-z0-9-]+$" },
-    "name": { "type": "string" },
-    "workingName": { "type": "boolean" },
-    "category": { "enum": ["material", "tool", "weapon", "armor", "food", "offering", "remnant", "relic", "misc"] },
-    "tier": { "type": "integer", "minimum": 0, "maximum": 3 },
-    "stackSize": { "type": "integer", "minimum": 1, "default": 20 },
-    "slot": { "enum": ["weapon", "armor", "trinket"], "description": "if set, the item is equippable into this doll slot" },
-    "stats": { "type": "object", "additionalProperties": { "type": "number" } },
-    "effects": { "$ref": "common.schema.json#/$defs/effectList" },
-    "offeringValue": { "type": "number", "description": "worship-rate buydown value; offerings only" },
-    "remnantOf": { "type": "string", "description": "remnants only: the god this fragment belongs to — consuming it dims THEM, world-wide" },
-    "legend": {
-      "type": "object",
-      "description": "Track-2 named artifacts only",
-      "required": ["godAffinity", "history"],
-      "properties": {
-        "godAffinity": { "type": "string", "description": "god-* id; rank-2+ attunement to wield" },
-        "history": { "type": "string", "description": "every legend is named and has a paragraph of history" }
-      },
-      "additionalProperties": false
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "item.schema.json",
+ "$comment": "v3 — adds relic (the Sanctum's Splendor score, WORLD-SPEC); adds gather (multi-hit world nodes)",
+ "type": "object",
+ "required": [
+  "id",
+  "name",
+  "category",
+  "text"
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "id": {
+   "type": "string",
+   "pattern": "^item-[a-z0-9-]+$"
+  },
+  "name": {
+   "type": "string"
+  },
+  "workingName": {
+   "type": "boolean"
+  },
+  "category": {
+   "enum": [
+    "material",
+    "tool",
+    "weapon",
+    "armor",
+    "food",
+    "offering",
+    "remnant",
+    "relic",
+    "misc"
+   ]
+  },
+  "tier": {
+   "type": "integer",
+   "minimum": 0,
+   "maximum": 3
+  },
+  "stackSize": {
+   "type": "integer",
+   "minimum": 1,
+   "default": 20
+  },
+  "slot": {
+   "enum": [
+    "weapon",
+    "armor",
+    "trinket"
+   ],
+   "description": "if set, the item is equippable into this doll slot"
+  },
+  "stats": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "number"
+   }
+  },
+  "effects": {
+   "$ref": "common.schema.json#/$defs/effectList"
+  },
+  "offeringValue": {
+   "type": "number",
+   "description": "worship-rate buydown value; offerings only"
+  },
+  "remnantOf": {
+   "type": "string",
+   "description": "remnants only: the god this fragment belongs to — consuming it dims THEM, world-wide"
+  },
+  "legend": {
+   "type": "object",
+   "description": "Track-2 named artifacts only",
+   "required": [
+    "godAffinity",
+    "history"
+   ],
+   "properties": {
+    "godAffinity": {
+     "type": "string",
+     "description": "god-* id; rank-2+ attunement to wield"
     },
-    "relic": {
-      "type": "object",
-      "description": "quest-won singulars displayable in a god's Altar relic slots (the Sanctum, WORLD-SPEC)",
-      "required": ["points"],
-      "properties": {
-        "points": { "type": "number", "minimum": 0, "description": "fixed Splendor chunk contributed while displayed" }
-      },
-      "additionalProperties": false
-    },
-    "text": { "type": "string" }
+    "history": {
+     "type": "string",
+     "description": "every legend is named and has a paragraph of history"
+    }
+   },
+   "additionalProperties": false
+  },
+  "relic": {
+   "type": "object",
+   "description": "quest-won singulars displayable in a god's Altar relic slots (the Sanctum, WORLD-SPEC)",
+   "required": [
+    "points"
+   ],
+   "properties": {
+    "points": {
+     "type": "number",
+     "minimum": 0,
+     "description": "fixed Splendor chunk contributed while displayed"
+    }
+   },
+   "additionalProperties": false
+  },
+  "text": {
+   "type": "string"
+  },
+  "gather": {
+   "type": "object",
+   "description": "this item scatters as a workable node: cut/mined hit by hit (players [E], villagers by the day) until its hits are spent",
+   "properties": {
+    "hits": {
+     "type": "integer",
+     "minimum": 1
+    }
+   },
+   "required": [
+    "hits"
+   ],
+   "additionalProperties": false
   }
+ }
 }

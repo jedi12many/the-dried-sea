@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.7.1"
+const GAME_VERSION := "0.7.2"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -103,7 +103,8 @@ const JOBS := {
 const NEED_TARGETS := {"food": 12, "wood": 14, "salt": 14, "bronze": 10}
 const TASK_ITEM := {"food": "item-smoked-crab", "wood": "item-driftwood", "salt": "item-salt", "bronze": "item-bronze-salvage"}
 const TASK_STATION := {"food": "work-smokehouse", "wood": "", "salt": "work-workbench", "bronze": "work-workbench"}
-const TASK_FORAGE_ITEM := {"wood": "item-driftwood"}   # tasks that gather from world nodes
+const TASK_FORAGE_ITEM := {"wood": "item-driftwood", "salt": "item-salt", "bronze": "item-bronze-salvage"}   # tasks that gather from world nodes
+const FORAGE_LEASH := 720.0   # how far from the heart a villager will venture for a node
 const TASK_BASE := 2.0
 const CLASS_SUIT := {
 	"class-reef-runner": {"food": 0.9, "wood": 1.6, "salt": 0.7, "bronze": 0.4},
@@ -383,6 +384,7 @@ func save_game() -> void:
 		"callings": callings.duplicate(true),
 		"callings_done": callings_done.duplicate(true),
 		"respawn_bind": respawn_bind.duplicate(),
+		"node_left": _node_left_dict(),
 		"sanctum": sanctum.to_save(),
 		"message": message,
 	}
@@ -457,6 +459,7 @@ func load_game() -> void:
 	callings = SaveSystem._int_keys(g.get("callings", {}))
 	callings_done = SaveSystem._int_keys(g.get("callings_done", {}))
 	respawn_bind = SaveSystem._int_keys(g.get("respawn_bind", {}))
+	_apply_node_left(g.get("node_left", {}))
 	sanctum.from_save(g.get("sanctum", {}))
 	_villager_nid = maxi(_villager_nid, int(g.get("villager_nid", _villager_nid)))
 	for pd: Dictionary in g.get("pool", []):
@@ -580,13 +583,18 @@ func current_prompt() -> String:
 			return "(the %s is working)" % str(registry.get_entity(str(winst.work_id)).name).to_lower()
 		return "[E] Tend the %s" % str(registry.get_entity(str(winst.work_id)).name).to_lower()
 	var best := harvest_range()
-	var best_item := ""
+	var best_node: Area2D = null
 	for node in resource_nodes:
 		if is_instance_valid(node) and player.position.distance_to(node.position) < best:
 			best = player.position.distance_to(node.position)
-			best_item = str(registry.get_entity(node.get_meta("item_id")).get("name", ""))
-	if best_item != "":
-		return "[E] Gather %s" % best_item
+			best_node = node
+	if best_node != null:
+		var item_id := str(best_node.get_meta("item_id"))
+		var item_name := str(registry.get_entity(item_id).get("name", ""))
+		if int(best_node.get_meta("hits", 1)) > 1:
+			var verb := "Cut" if item_id in ["item-driftwood", "item-wreck-timber"] else "Mine"
+			return "[E] %s %s (%d left)" % [verb, item_name, int(best_node.get_meta("left", 1))]
+		return "[E] Gather %s" % item_name
 	for e in enemies:
 		if is_instance_valid(e) and player.position.distance_to(e.position) < ATTACK_RANGE:
 			return "[SPACE] Attack"
@@ -1313,6 +1321,14 @@ func intent_harvest() -> bool:
 	if nearest == null:
 		return false
 	sfx("harvest", nearest.position)
+	# a workable node yields one unit per swing and wears down; a simple pickup
+	# (cloth, storm-glass) comes up whole like it always did
+	if int(nearest.get_meta("hits", 1)) > 1:
+		inventory.add(acting_pid, nearest.get_meta("item_id"),
+			1 + int(abilities.mod_add(acting_pid, "harvest-bonus-qty")))
+		_deplete_node(nearest, 1)
+		_refresh_hud()
+		return true
 	inventory.add(acting_pid, nearest.get_meta("item_id"),
 		int(nearest.get_meta("qty")) + int(abilities.mod_add(acting_pid, "harvest-bonus-qty")))
 	if str(nearest.get_meta("item_id")) == "item-storm-glass" and inventory.count(acting_pid, "item-harpoon-verse") == 2:
@@ -1323,6 +1339,55 @@ func intent_harvest() -> bool:
 	nearest.queue_free()
 	_refresh_hud()
 	return true
+
+## Wear a workable node down by `amount` hits. Spent nodes vanish (and rejoin the
+## dawn-respawn pool via harvested_indices); live ones shrink so you can read
+## how much is left at a glance.
+func _deplete_node(node: Area2D, amount: int) -> void:
+	var left := int(node.get_meta("left", 1)) - amount
+	if left <= 0:
+		harvested_indices.append(int(node.get_meta("idx", -1)))
+		resource_nodes.erase(node)
+		node.queue_free()
+		return
+	node.set_meta("left", left)
+	var hits := maxi(int(node.get_meta("hits", 1)), 1)
+	node.scale = Vector2.ONE * (0.55 + 0.45 * float(left) / float(hits))
+
+## Partially-worked nodes, for save + sync: {idx: hits left}. Fresh nodes derive
+## from item data and spent ones ride harvested_indices, so only the in-between
+## state needs carrying.
+func _node_left_dict() -> Dictionary:
+	var out := {}
+	for node in resource_nodes:
+		if is_instance_valid(node) and int(node.get_meta("left", 1)) < int(node.get_meta("hits", 1)):
+			out[int(node.get_meta("idx", -1))] = int(node.get_meta("left", 1))
+	return out
+
+func _apply_node_left(d: Dictionary) -> void:
+	for node in resource_nodes:
+		if not is_instance_valid(node):
+			continue
+		var idx := int(node.get_meta("idx", -1))
+		if d.has(idx) or d.has(str(idx)):   # JSON round-trips keys to strings
+			var left := int(d.get(idx, d.get(str(idx), 1)))
+			node.set_meta("left", left)
+			var hits := maxi(int(node.get_meta("hits", 1)), 1)
+			node.scale = Vector2.ONE * (0.55 + 0.45 * float(left) / float(hits))
+
+## The nearest live node bearing this item within `leash` of `from` — how a
+## villager decides whether the wood is worth the walk.
+func _nearest_node_of(item_id: String, from: Vector2, leash: float) -> Area2D:
+	var best_d := leash
+	var best: Area2D = null
+	for node in resource_nodes:
+		if not is_instance_valid(node) or str(node.get_meta("item_id")) != item_id:
+			continue
+		var d := from.distance_to(node.position)
+		if d < best_d:
+			best_d = d
+			best = node
+	return best
 
 ## F eats the first food in your pack. Two slots; a full belly refuses.
 func intent_eat() -> bool:
@@ -2521,6 +2586,10 @@ func _spawn_one_node(item_id: String, pos: Vector2, idx: int) -> Area2D:
 	node.set_meta("item_id", item_id)
 	node.set_meta("qty", 3)
 	node.set_meta("idx", idx)
+	# a workable node (gather.hits in item data) is cut/mined down hit by hit
+	var hits := int(registry.get_entity(item_id).get("gather", {}).get("hits", 1))
+	node.set_meta("hits", hits)
+	node.set_meta("left", hits)
 	var visual := SpriteKit.sprite(NODE_SPRITES.get(item_id, "none"),
 		Vector2(16, 16), ITEM_COLORS.get(item_id, Color("c9a648")))
 	if item_id == "item-storm-glass":
@@ -2677,6 +2746,7 @@ func _village_dawn() -> void:
 	_assign_village_tasks()
 	var produced := {}   # item_id -> total qty
 	var scared := 0
+	var dawn_notes: Array[String] = []
 	for v: DSVillager in all_villagers():
 		if not v.rescued or v.tribesman_id < 0 or v.is_captive or v.task == "":
 			continue
@@ -2696,12 +2766,22 @@ func _village_dawn() -> void:
 		var qty := int(round(TASK_BASE * suit * village.output_per_hour(v.tribesman_id)))
 		if qty <= 0:
 			continue
+		# gather tasks work a REAL node: the nearest within the forage leash, worn
+		# down by the day's labor. Nothing in reach = nothing gathered.
+		if TASK_FORAGE_ITEM.has(task):
+			var node := _nearest_node_of(TASK_FORAGE_ITEM[task], village_heart(), FORAGE_LEASH)
+			if node == null:
+				var note := "no %s within the village's reach" % str(registry.get_entity(TASK_FORAGE_ITEM[task]).name).to_lower()
+				if note not in dawn_notes:
+					dawn_notes.append(note)
+				continue
+			qty = mini(qty, int(node.get_meta("left", 1)))
+			_deplete_node(node, qty)
 		var item_id: String = TASK_ITEM[task]
 		village_stock[item_id] = int(village_stock.get(item_id, 0)) + qty
 		produced[item_id] = int(produced.get(item_id, 0)) + qty
 	# 1b. THE KITCHEN: raw meat in the stores gets smoked before breakfast —
 	# villagers craft the basics they need without being told
-	var dawn_notes: Array[String] = []
 	if works.count_of("work-smokehouse") > 0 and int(village_stock.get("item-crab-meat", 0)) > 0:
 		var cooks := 4
 		for v: DSVillager in all_villagers():
@@ -2819,6 +2899,8 @@ func _assign_village_tasks() -> void:
 			var station: String = TASK_STATION[task]
 			if station != "" and works.count_of(station) == 0:
 				continue   # can't cook without a smokehouse, etc.
+			if TASK_FORAGE_ITEM.has(task) and _nearest_node_of(TASK_FORAGE_ITEM[task], village_heart(), FORAGE_LEASH) == null:
+				continue   # nothing to gather in reach — don't send anyone to nowhere
 			var score: float = float(pri[task]) * float(suit.get(task, 0.5))
 			if score > best_score:
 				best_score = score
@@ -2828,22 +2910,17 @@ func _assign_village_tasks() -> void:
 ## Where a task is done: a station building, else a forage spot (nearest matching
 ## world node — which is where the danger is).
 func task_work_zone(task: String) -> Vector2:
+	# gather tasks work a real node: the one the dawn labor is draining (nearest
+	# in the leash) — the villager stands at the wood they're cutting
+	if TASK_FORAGE_ITEM.has(task):
+		var node := _nearest_node_of(TASK_FORAGE_ITEM[task], village_heart(), FORAGE_LEASH)
+		if node != null:
+			return node.position
 	var station: String = TASK_STATION.get(task, "")
 	if station != "":
 		var post := work_pos(station)
 		if post != Vector2.INF:
 			return post
-	if TASK_FORAGE_ITEM.has(task):
-		var best := INF
-		var spot := Vector2.INF
-		for node in resource_nodes:
-			if is_instance_valid(node) and str(node.get_meta("item_id")) == TASK_FORAGE_ITEM[task]:
-				var d := village_heart().distance_to(node.position)
-				if d < best:
-					best = d
-					spot = node.position
-		if spot != Vector2.INF:
-			return spot
 	return village_heart() + Vector2(90, -60)   # camp edge
 
 ## Distance to the nearest hostile (hound/raider) — used by villagers to flee.
@@ -3542,6 +3619,7 @@ func _world_sync() -> Dictionary:
 				"covered": bool(rec.get("warden_covered", true)),
 				"warm": v.warden_weapon, "warr": v.warden_armor}),
 		"stock": village_stock,
+		"node_left": _node_left_dict(),
 		"sanctum": sanctum.to_save(),
 	}
 
@@ -3618,6 +3696,8 @@ func cl_world_sync(w: Dictionary) -> void:
 		if idx < STORM_GLASS_IDX_BASE and idx in harvested_indices:
 			resource_nodes.erase(node)
 			node.queue_free()
+	# partially-worked nodes carry their wear (mirror shrinks to match)
+	_apply_node_left(w.get("node_left", {}))
 	# storm-glass and other ephemerals
 	var have_specials := {}
 	for node in resource_nodes:

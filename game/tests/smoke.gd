@@ -41,12 +41,20 @@ func _ready() -> void:
 	check(host.intent_craft("recipe-rope"), "hand-crafted rope from cloth")
 	check(host.inventory.count(1, "item-rope") == 2, "rope in hand, cloth spent")
 
-	# build: gather timber the honest way, then found the village on a hearth
-	for i in 3:
+	# build: CUT timber the honest way — nodes are worked swing by swing now
+	var t0 := _node_of(host, "item-wreck-timber")
+	host.player.position = t0.position
+	host.intent_harvest()
+	check(host.inventory.count(1, "item-wreck-timber") == 1, "a swing yields one timber — nodes are worked, not scooped")
+	check(int(t0.get_meta("left", 0)) == 4, "and the wreck wears down (4 of 5 left)")
+	var cut_swings := 0
+	while host.inventory.count(1, "item-wreck-timber") < 6 and cut_swings < 40:
 		var t := _node_of(host, "item-wreck-timber")
 		host.player.position = t.position
 		host.intent_harvest()
-	check(host.inventory.count(1, "item-wreck-timber") >= 6, "timber gathered")
+		cut_swings += 1
+	check(host.inventory.count(1, "item-wreck-timber") >= 6, "timber gathered, swing by swing")
+	check(host.harvested_indices.size() > 0, "a spent stand is gone from the flats")
 	# --- shelter first: a personal tent, pitched anywhere, is your respawn ----
 	host.inventory.add(1, "item-driftwood", 3)
 	host.inventory.add(1, "item-ship-cloth", 1)
@@ -580,8 +588,15 @@ func _ready() -> void:
 
 	# --- the flats remember: full save -> fresh world -> load ----------------
 	var take_one := _node_of(host, "item-salt")
-	host.player.position = take_one.position
-	host.intent_harvest()  # dawns respawn salvage now: ensure something is missing AT save time
+	var take_pos := take_one.position
+	for j in int(take_one.get_meta("hits", 1)):
+		host.player.position = take_pos
+		host.intent_harvest()  # mine the crust to nothing: something must be MISSING at save time
+	var partial := _node_of(host, "item-driftwood")
+	host.player.position = partial.position
+	host.intent_harvest()   # and one node left half-worked — its wear must survive the save
+	var partial_left := int(partial.get_meta("left", 0))
+	var partial_idx := int(partial.get_meta("idx", -1))
 	host.save_game()
 	var host2: GameHost = load("res://scenes/main.tscn").instantiate()
 	host2.skip_autoload = true
@@ -596,15 +611,23 @@ func _ready() -> void:
 	check(host2.village.tribesmen.size() == host.village.tribesmen.size(), "Anna is still yours")
 	check(host2.survivor.rescued, "and she knows it")
 	check(host2.resource_nodes.size() < host2.node_defs.size(), "harvested nodes stay harvested")
+	var partial2_ok := false
+	for n2 in host2.resource_nodes:
+		if is_instance_valid(n2) and int(n2.get_meta("idx", -1)) == partial_idx:
+			partial2_ok = int(n2.get_meta("left", -1)) == partial_left
+	check(partial2_ok, "a half-worked node keeps its wear across save/load (%d left)" % partial_left)
 	check(_enemy_of(host2, "creature-old-shellback") == null, "Old Shellback stays dead")
 	check(absf(float(host2.verdict.god_world_strength["god-halor"]) - float(host.verdict.god_world_strength["god-halor"])) < 0.01, "the world remembers what you consumed")
 	host2.queue_free()
 
 	# --- the great storm ------------------------------------------------------
-	# (dawns now respawn salvage, so guarantee something is freshly missing)
+	# (dawns now respawn salvage, so guarantee something is freshly missing —
+	# a workable node must be cut to NOTHING before it counts as taken)
 	var fresh_node := _node_of(host, "item-driftwood")
-	host.player.position = fresh_node.position
-	host.intent_harvest()
+	var fresh_pos := fresh_node.position
+	for j in int(fresh_node.get_meta("hits", 1)):
+		host.player.position = fresh_pos
+		host.intent_harvest()
 	var taken_before := host.harvested_indices.size()
 	check(taken_before > 0, "some salvage is gone (we took it)")
 	host.clock.day = 3
@@ -657,7 +680,7 @@ func _ready() -> void:
 	if salt_node != null:
 		host.player.position = salt_node.position
 		host.intent_harvest()
-		check(host.inventory.count(1, "item-salt") - salt_before == 4, "Take More: +1 to every harvest (got %d)" % (host.inventory.count(1, "item-salt") - salt_before))
+		check(host.inventory.count(1, "item-salt") - salt_before == 2, "Take More: +1 per swing at the crust (got %d)" % (host.inventory.count(1, "item-salt") - salt_before))
 	# free respec: drain HUNGER, the Temper returns
 	var avail_before := host.abilities.available(1)
 	for i in 3:
