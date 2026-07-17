@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.7.6"
+const GAME_VERSION := "0.7.7"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -82,6 +82,7 @@ var villagers: Array[DSVillager] = []  # additional rescued/stranded survivors
 var village_stock: Dictionary = {}     # the shared storehouse: item_id -> qty
 var village_panel: Label
 var village_panel_open := false
+var village_tab := "roster"   # "roster" | "stores" — [TAB] switches while the panel is open
 var _villager_nid := 100
 
 # CALLINGS — the per-player quest journal
@@ -296,6 +297,17 @@ func _ready() -> void:
 		village.tribesmen[survivor.tribesman_id].bloomed = true
 		_on_sim_day(1)
 		_toggle_village(true)
+		_screenshot_and_quit()
+	elif "--screenshot-village-stores" in OS.get_cmdline_user_args():
+		_harness_found_village()
+		# a deliberately long, varied inventory — the case that used to run off the panel
+		village_stock = {"item-driftwood": 12, "item-wreck-timber": 22, "item-salt": 34,
+			"item-bronze-salvage": 9, "item-rope": 6, "item-ship-cloth": 3, "item-storm-glass": 2,
+			"item-smoked-crab": 15, "item-crab-meat": 4, "item-salt-ration": 5, "item-driftwood-club": 1}
+		survivor.rescue()
+		_toggle_village(true)
+		village_tab = "stores"
+		_render_village()
 		_screenshot_and_quit()
 	elif "--screenshot-home" in OS.get_cmdline_user_args():
 		inventory.add(acting_pid, "item-salt", 8)
@@ -672,6 +684,11 @@ func _unhandled_input(event: InputEvent) -> void:
 				rpc_id(1, "srv_intent", "give_food", [])
 			else:
 				intent_give_food()
+			return
+		if vkey == KEY_TAB:
+			sfx("ui")
+			village_tab = "stores" if village_tab == "roster" else "roster"
+			_render_village()
 			return
 	if doll_open and event is InputEventKey and event.pressed:
 		var dkey := (event as InputEventKey).physical_keycode
@@ -1996,6 +2013,7 @@ func intent_equip_index(i: int) -> void:
 
 ## --- the village panel ------------------------------------------------------
 func _toggle_village(open: bool) -> void:
+	var was_open := village_panel_open
 	village_panel_open = open
 	var m: Dictionary = modals.get("village", {})
 	if m.is_empty():
@@ -2003,7 +2021,26 @@ func _toggle_village(open: bool) -> void:
 	(m.root as Control).visible = open
 	if not open:
 		return
-	(m.footer as Label).text = "the flats manage their own labor   ·   [G] pool your goods into the stores   ·   [V] close"
+	if open and not was_open:
+		village_tab = "roster"   # a fresh open always starts on the roster; refreshes-while-open keep your tab
+	_render_village()
+
+## Redraws whichever tab is active. Called both on open and as a refresh (dawn,
+## world_sync, after [G]) — must NEVER reset village_tab itself, or a background
+## refresh would yank you off the tab you're reading.
+func _render_village() -> void:
+	var m: Dictionary = modals.get("village", {})
+	if m.is_empty() or not village_panel_open:
+		return
+	var tab_hint := "[TAB] %s" % ("view the stores" if village_tab == "roster" else "back to the roster")
+	(m.footer as Label).text = "the flats manage their own labor   ·   %s   ·   [G] pool your goods   ·   [V] close" % tab_hint
+	(m.title as Label).text = "THE VILLAGE — STORES" if village_tab == "stores" else "THE VILLAGE"
+	if village_tab == "stores":
+		_render_village_stores()
+	else:
+		_render_village_roster()
+
+func _render_village_roster() -> void:
 	var lines: Array[String] = []
 	var roster := all_villagers().filter(func(v: DSVillager) -> bool: return v.rescued and v.tribesman_id >= 0)
 	if roster.is_empty():
@@ -2039,15 +2076,7 @@ func _toggle_village(open: bool) -> void:
 		need_bits.append("%s %d/%d%s" % [task, have, NEED_TARGETS[task], mark])
 	lines.append("NEEDS: %s   (!! = short, drives who does what)" % "   ".join(need_bits))
 	lines.append("Your people eat %d food a day. Danger sends them home; clear it or post a warden." % roster.size())
-	# — the community stores, itemized ————————————————————————————————
-	lines.append("")
-	var store_bits: Array[String] = []
-	var store_keys := village_stock.keys()
-	store_keys.sort()
-	for item_id: String in store_keys:
-		if int(village_stock[item_id]) > 0:
-			store_bits.append("%s ×%d" % [str(registry.get_entity(item_id).get("name", item_id)), int(village_stock[item_id])])
-	lines.append("STORES: %s" % ("   ".join(store_bits) if store_bits.size() > 0 else "(bare shelves — [G] to pool your pack)"))
+	lines.append("STORES: %d kinds of goods held — [TAB] to see the full list" % _store_kinds_held())
 	# — the why of it: what each task scores and what gates it (debug) ————————
 	lines.append("")
 	lines.append("WHY THEY WORK OR REST:")
@@ -2056,6 +2085,45 @@ func _toggle_village(open: bool) -> void:
 	lines.append("  the leash is the RISK dial: full stores = short (safe, surplus for the gods); low = far (danger)")
 	lines.append("  idle = no task scores above 0.05 for them; tasks reassess at dawn (or when you build/rescue)")
 	village_panel.text = "\n".join(lines)
+
+func _store_kinds_held() -> int:
+	var n := 0
+	for item_id: String in village_stock:
+		if int(village_stock[item_id]) > 0:
+			n += 1
+	return n
+
+## The full community inventory — a fixed-width grid so it always fits the
+## modal instead of one unbroken line running off the edge of the window.
+func _render_village_stores() -> void:
+	var lines: Array[String] = []
+	var store_keys := village_stock.keys()
+	store_keys.sort()
+	var entries: Array[String] = []
+	for item_id: String in store_keys:
+		if int(village_stock[item_id]) > 0:
+			entries.append("%s ×%d" % [str(registry.get_entity(item_id).get("name", item_id)), int(village_stock[item_id])])
+	if entries.is_empty():
+		lines.append("Bare shelves. [G] at the hearth pools your pack into the stores.")
+	else:
+		lines.append("%d kind(s) of goods, %d unit(s) total:" % [entries.size(), _store_units_held()])
+		lines.append("")
+		const PER_ROW := 3
+		const COL_W := 20   # wide enough for the longest item name + qty; keeps 3 columns inside the panel
+		for i in range(0, entries.size(), PER_ROW):
+			var row: Array[String] = []
+			for j in range(i, mini(i + PER_ROW, entries.size())):
+				row.append(entries[j].rpad(COL_W))
+			lines.append("  " + "".join(row).strip_edges(false, true))
+	lines.append("")
+	lines.append("Everything here feeds building, crafting, the kitchen, wardens' arms, and the Offertory.")
+	village_panel.text = "\n".join(lines)
+
+func _store_units_held() -> int:
+	var total := 0
+	for item_id: String in village_stock:
+		total += int(village_stock[item_id])
+	return total
 
 ## One diagnostic line per task: its need score and every gate that could stop a
 ## villager taking it — the answer to "why is everyone standing around?"
@@ -3391,6 +3459,7 @@ func _build_hud() -> void:
 
 	var m_village := _make_modal(layer, "village", Vector2(700, 560), "THE VILLAGE")
 	village_panel = m_village.body
+	village_panel.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # defensive: a stray long line wraps instead of overflowing the panel
 
 	var m_journal := _make_modal(layer, "journal", Vector2(720, 600), "THE JOURNAL")
 	journal = m_journal.body

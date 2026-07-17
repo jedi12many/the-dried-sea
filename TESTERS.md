@@ -22,7 +22,7 @@ on a **shared server** with the other testers. Thanks for helping.
 | C | CRAFT MENU — every recipe, its cost, and where to make it |
 | B | BUILD MENU — every building and what it does |
 | I | your PACK & paper doll — equip weapons and armor |
-| V | THE VILLAGE — your people, their jobs, moods, and needs |
+| V | THE VILLAGE — your people, their jobs, moods, and needs. [TAB] switches to the STORES tab — the full community inventory |
 | — | RAIDERS: beat one low and it surrenders — [E] to bind it for the yoke |
 | — | WARDENS (a villager trade): auto-run to danger and fight — they even subdue raiders for you |
 | — | HOUSING: build a Driftwood Cot-Hut (sleeps 2). After dinner at the hearth, villagers go inside for the night — hidden and safe — and step out at dawn for breakfast. No room = they huddle at the hearth like before |

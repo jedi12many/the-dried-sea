@@ -391,6 +391,29 @@ func _ready() -> void:
 	check(armsman.warden_weapon == "item-driftwood-club", "no weapon stocked → the warden crafted one")
 	check(int(host.village_stock.get("item-rope", 0)) == 0, "from the stores' rope (spent — and no task restocks rope)")
 
+	# --- THE VILLAGE MODAL: a stores tab, so the inventory never runs off the panel ---
+	host.village_stock["item-bronze-salvage"] = 7
+	host.village_stock["item-storm-glass"] = 2
+	host._toggle_village(true)   # a fresh open always starts on the roster
+	check(host.village_tab == "roster", "the village modal opens on the roster")
+	check(host.village_panel.text.contains("NAME") and host.village_panel.text.contains("TRADE"), "roster tab shows the roster table")
+	check(host.village_panel.text.contains("kinds of goods held"), "roster tab points at the stores tab, doesn't dump the list")
+	check(host.village_panel.autowrap_mode == TextServer.AUTOWRAP_WORD_SMART, "the panel wraps instead of running off the window")
+	# [TAB] switches to the itemized stores list
+	host.village_tab = "stores"
+	host._render_village()
+	check(host.village_panel.text.contains("kind(s) of goods"), "the stores tab lists the full community inventory")
+	check(host.village_panel.text.contains("Bronze Salvage") and host.village_panel.text.contains("Storm-Glass"), "every stocked good appears, however long the list")
+	# a background refresh (dawn, world_sync, [G]) must NOT yank you off the tab you're reading
+	host._toggle_village(true)
+	check(host.village_tab == "stores", "a refresh-while-open keeps your tab")
+	check(host.village_panel.text.contains("kind(s) of goods"), "...and keeps showing it")
+	# closing and reopening returns to the roster
+	host._toggle_village(false)
+	host._toggle_village(true)
+	check(host.village_tab == "roster", "closing and reopening resets to the roster")
+	host._toggle_village(false)
+
 	# talk-to-bloom: a grievance-heard villager blooms when you hear them
 	var talker_id := host.village.add_tribesman("Test", "class-reef-runner", "rescued", ["trait-bitter"], "god-halor")
 	var talker = DSVillager.new(); talker.host = host; talker.tribesman_id = talker_id
