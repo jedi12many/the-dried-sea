@@ -254,7 +254,7 @@ sits near floor):
 | Boss keystone **dedicated** to one god | +8% one-time | The kneel-at-the-altar choice after each boss; one god only — a real favorite-picking moment |
 | Their Deep Callings completed | +3–5% | Big quests are big meals |
 | Devout villager trickle | +0.01%/day each | The congregation matters, barely but truly |
-| **Player death** (Ur-Noth ONLY) | +0.4%, ×0.6 per repeat in 3 days, floor +0.05% | The Waker's tithe — see §5; the one source no one has to choose |
+| **Player death** (Ur-Noth ONLY) | +0.4%, ×0.6 per repeat in 3 days, floor +0.05% — **±0 if the dead player is his own** | The Waker's tithe — see §5; the one source no one has to choose |
 
 **Sinks**
 | Sink | Δ Godhead | Notes |
@@ -343,9 +343,11 @@ is.
 
 ## 5. The Waker of the Drowned — player death powers Ur-Noth
 
-*(Jeff, 2026-07-17. This answers GAME-SPEC design question #2 — the death
-penalty is "patron-flavored: your god pulls you back... for a price" — with
-the twist that makes it this game: it is always the WRONG god.)*
+*(Jeff, 2026-07-17; revised same day — death penalty NEUTRAL for now, keep
+it simple. This answers GAME-SPEC design question #2 — the death penalty is
+"patron-flavored: your god pulls you back... for a price" — with the twist
+that makes it this game: it is always the WRONG god, and the price is paid
+in Godhead, not in you.)*
 
 Every player death in the Dried Sea ends the same way: the dark takes you,
 and **Ur-Noth hands you back**. The Withdrawal broke the other gods' claim on
@@ -364,36 +366,45 @@ plus milestone lines and occasional nudges toward whatever grim option is
 nearest your current situation. Pure data; growing the pools is a content
 patch, and the writing budget here is the best flavor spend in the game.
 
-**The feed — the world cost.** Every death is a meal. On the death screen,
-in numbers (the UI law holds even here — *especially* here):
+**The player pays nothing — this is the decision.** Death is **neutral** for
+the player at the moment: no stat scar, no debt, no XP loss. You drop your
+gear where you fell (the corpse-run stays — that's inventory pressure, not
+punishment) and you wake whole. Keep it simple; if playtests ever want a
+personal sting, it gets designed then, not now.
+
+**The price is paid in Godhead, and who pays depends on whose you are:**
+
+| The dying player | The accounting | Net to Ur-Noth |
+|---|---|---|
+| **Attuned to Ur-Noth** (any rank — an Unlit build) | The revival costs him exactly what the death feeds him | **A wash — ±0%** |
+| **Anyone else** | The feed is his, the cost is nobody's | **He benefits — +feed** |
+
+The theology writes itself: carrying his own is *duty* — he already holds
+them, there is nothing new to take. Carrying a stranger is *income*. Which
+means the pantheon's cruelest joke is structural: **the players who refuse
+him are the ones who feed him**, and his faithful die for free. The death
+screen shows the ledger either way (the UI law holds even here —
+*especially* here):
 
 ```
 THE DARK TAKES YOU.        UR-NOTH  +0.4% Godhead  (now 23.1%)
+THE DARK TAKES YOU.        UR-NOTH  carries his own  (±0%)
 ```
 
-Per-player diminishing decay so the feed can't be farmed: first death +0.4%,
-each subsequent death by the same player within a 3-day window ×0.6 (so
-+0.24%, +0.14%, …), floor +0.05%. Window resets after 3 deathless days.
-Economy-model assertion: a full day of deliberate suicide-diving feeds
-Ur-Noth less than one grim rite — death-farming is *allowed* (it's a
-legitimately dark Unlit-build lever) but never the efficient road.
+**Feed size, still guarded:** first death +0.4%, each subsequent death by
+the same player within a 3-day window ×0.6 (so +0.24%, +0.14%, …), floor
++0.05%; window resets after 3 deathless days. With a neutral death penalty
+the decay is the *only* farm-guard, so it stays. Economy-model assertions:
+a full day of deliberate suicide-diving feeds Ur-Noth less than one grim
+rite; an Ur-Noth-attuned player's deaths sum to exactly zero over any run.
 
-**The scar — the personal diminishing returns.** Ur-Noth's magic always
-draws on the vessel, and resurrection is his biggest spell. Each wake adds a
-**Drowning-Scar**: −10% max HP, stacking to 5. One scar lifts per dawn slept
-at your rest point; any priest can cleanse them for offerings (the existing
-"cleanse Ur-Noth scarring" service — it was always this system). So a bad
-night compounds: wake at 90%, die again, wake at 80%... each time there is a
-little less of you, because he keeps a little as payment. This is the real
-limit on respawn-usefulness: corpse-runs (gear still drops where you fell)
-get harder the more you need them.
+Design law: **dying is ledger-neutral** — being bad at the game is not a
+moral failing; the ledgers never count deaths.
 
-**The debt — the story fun.** At lifetime-death milestones (5 / 15 / 30) the
-whisper becomes a **Calling** — Ur-Noth asks for something, always refusable,
-always grim-adjacent. Refusal costs nothing and he keeps waking you anyway:
-*he is not kind, he is patient.* Design law: **dying is ledger-neutral** —
-being bad at the game is not a moral failing, and the ledgers never count
-deaths. Only *accepting his asks* writes ink.
+*(Parked, explicitly NOT in scope now: Drowning-Scars (personal max-HP cost)
+and debt-milestone Callings at 5/15/30 deaths — both spec'd 2026-07-17 and
+same-day cut to keep death simple. They live in git history if death ever
+needs teeth.)*
 
 **Killing the Waker.** Guttering Ur-Noth is nearly impossible — every death
 anywhere feeds him back above zero. **You cannot keep the dark down while
@@ -404,12 +415,13 @@ dead — the honest gods take up the burden, at the honest price:
 - Each death drains your **highest-attuned living god −1% Godhead** and
   empties your Vigor pool with them. They can do what he did; they just
   can't do it cheaply. Dying now taxes the gods you kept.
-- No attuned gods left? You wash up anyway — at 25% HP with 2 scars and
+- No attuned gods left? You wash up anyway — at 25% HP, and with
   **no whisper**. The silence after his voice is the story beat: you never
   liked the whispers, and now the wake is so much worse without them.
 
-**Co-op:** scars, decay windows, and death counts are per-player; the feed
-is global (per-player decay keeps one dying player from carrying the farm).
+**Co-op:** decay windows and death counts are per-player; the feed is
+global (per-player decay keeps one dying player from carrying the farm),
+and the wash rule reads each dying player's own attunement.
 Death of *villagers* feeds nothing — Ur-Noth collects players; the village's
 dead go to their own gods, and the memorial (Part I §4) keeps them.
 
@@ -430,7 +442,7 @@ pitch.
   player-death events; emits `godhead_changed`, `god_guttered`,
   `god_rekindled`) · `tuning/godhead.json` (base, perBiomeCap, all
   source/sink rates, floor, plus a `waker` block: feed/decay/window,
-  scar depth+cap+heal rate, debt milestones, no-waker fallback costs) ·
+  wash-if-attuned flag, no-waker fallback costs) ·
   `wakerWhispers` pools in `ur-noth.json` (early/familiar/proprietary/
   milestones/nudges).
 - **Touch points:** `devotion_system.cast()` and `blessing_strength()` multiply
@@ -451,12 +463,12 @@ pitch.
 
 - **M2 (the Soul):** Godhead core (cap, formula, rite/tithe sources, UI
   numbers) — it deepens the worship loop M2 exists to prove. **The Waker
-  (§5) core ships here too**: whisper-on-wake, the feed, Drowning-Scars —
+  (§5) core ships here too**: whisper-on-wake, the feed with the wash rule —
   it's cheap (respawn already exists; this is one event handler + flavor
   data) and it makes every death on day one already mean something. Villager
   Arms classes + leveling + equipment, party-of-1 road test.
 - **M3:** party cap 2, downed/death/memorial, shrine-restoration POIs, first
-  keystone dedication moment, debt-milestone Callings.
+  keystone dedication moment.
 - **M4:** God-Death + Rekindling + the Waking Callings, guttered- and
   dead-god world states (including the no-Waker death fallback), Acolyte
   Intercession tier.
@@ -471,10 +483,12 @@ pitch.
   remnant is the game's one truly irreversible act, said in exactly those
   words at the moment of choice.
 - **Player death powers Ur-Noth (the Waker, §5)** — he alone restores dead
-  players, whispering as they wake; the world cost is his Godhead feed
-  (per-player diminishing, floored), the personal cost is Drowning-Scars.
-  This closes GAME-SPEC design question #2 (death penalty): corpse-run +
-  patron-flavored resurrection, by the wrong patron.
+  players, whispering as they wake. **Death is NEUTRAL for the player**
+  (revised same day: no scars, no debt — keep it simple; corpse-run stays as
+  inventory pressure). The accounting is all Godhead: an Ur-Noth-attuned
+  player's revival is **a wash** (cost = feed, ±0); everyone else's death is
+  pure income to him. The refusers feed him; his faithful die free. Closes
+  GAME-SPEC design question #2.
 
 ## Open questions (for Jeff)
 
@@ -493,10 +507,7 @@ pitch.
 5. **Party cap 2** at EA — confirm (4 doubles pathing + netcode surface).
 6. **Waking vigil length** — how many attended in-game days? Lean 5: long
    enough to be a story, short enough to not be a second job.
-7. **Scar depth** — −10% max HP per stack, cap 5 (worst wake = half of you)?
-   Or shallower (−5%, cap 4) if playtests show death spirals? The scar is
-   the anti-zerg lever, so tune it against boss retry feel in M3.
-8. **Does high Ur-Noth Godhead do anything AMBIENT?** His feed means careless
+7. **Does high Ur-Noth Godhead do anything AMBIENT?** His feed means careless
    servers fatten him passively. Options: nothing (he's just ready when his
    faithful call — cheapest, fine); or a soft pressure tell (darker nights,
    +whisper frequency, villager susceptibility drift +) so a fat Ur-Noth is

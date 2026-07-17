@@ -102,7 +102,7 @@ All six v0.1 world questions are resolved in WORLD-SPEC.md (bottom section): no 
 
 ## Remaining design questions (for the Fable architecture pass)
 1. Inventory model: weight vs. slots (decide in slice by feel).
-2. ~~Death penalty: Valheim corpse-run, softer, or patron-flavored (your god pulls you back... for a price)?~~ **ANSWERED 2026-07-17 (VILLAGER-AND-GODHEAD-SPEC §5, the Waker):** patron-flavored by the *wrong* patron — Ur-Noth alone restores dead players (whispering as they wake), corpse-run stays, each death feeds his Godhead (diminishing, floored) and scars the player's max HP (stacking, cleansable).
+2. ~~Death penalty: Valheim corpse-run, softer, or patron-flavored (your god pulls you back... for a price)?~~ **ANSWERED 2026-07-17 (VILLAGER-AND-GODHEAD-SPEC §5, the Waker):** patron-flavored by the *wrong* patron — Ur-Noth alone restores dead players (whispering as they wake); death itself is NEUTRAL for the player (corpse-run stays as inventory pressure, no stat cost). The price is Godhead: his own attuned die for free (revival cost = feed, a wash); everyone else's death feeds him (+diminishing, floored).
 3. Vigor tuning targets: casts-per-game-day, rite duration, offering economy — needs a spreadsheet model before implementation.
 4. Pantheon size at EA: all 6 patrons, or ship 4 and add 2 (Ur-Noth late = a content beat)?
 5. Difficulty/onboarding: how punishing are the Shallows on night one?
