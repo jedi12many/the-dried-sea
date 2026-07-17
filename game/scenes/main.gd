@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.7.0"
+const GAME_VERSION := "0.7.1"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -376,7 +376,8 @@ func save_game() -> void:
 			return {"nid": int(v.get_meta("nid", 0)), "rescued": v.rescued, "tid": v.tribesman_id,
 				"cls": v.def_class, "job": v.job_work_id, "x": v.position.x, "y": v.position.y,
 				"name": v.display_name, "traits": v.def_traits, "patron": v.def_patron,
-				"captive": v.is_captive, "held": v.days_held, "task": v.task, "help": v.needs_help}),
+				"captive": v.is_captive, "held": v.days_held, "task": v.task, "help": v.needs_help,
+				"warm": v.warden_weapon, "warr": v.warden_armor}),
 		"villager_nid": _villager_nid,
 		"village_stock": village_stock.duplicate(),
 		"callings": callings.duplicate(true),
@@ -479,6 +480,8 @@ func load_game() -> void:
 		v.is_captive = bool(pd.get("captive", false))
 		v.days_held = int(pd.get("held", 0))
 		v.task = str(pd.get("task", ""))
+		v.warden_weapon = str(pd.get("warm", ""))
+		v.warden_armor = str(pd.get("warr", ""))
 		if bool(pd.rescued):
 			v.rescued = true
 			v.tribesman_id = int(pd.get("tid", -1))
@@ -1483,6 +1486,7 @@ func intent_craft(recipe_id: String) -> bool:
 	if net_mode == "client":
 		rpc_id(1, "srv_intent", "craft", [recipe_id])
 		return true
+	_stores_cover(registry.get_entity(recipe_id).get("inputs", []))   # in camp, the stores chip in
 	var ok := inventory.craft(acting_pid, recipe_id, works)
 	if ok:
 		sfx("craft")
@@ -1781,8 +1785,9 @@ func intent_build(work_id: String) -> bool:
 			message = "Too far from the hearth. Build within the ring."
 			_refresh_hud()
 			return false
+	_stores_cover(work.get("buildCost", []))   # in camp, the community stores chip in
 	if not inventory.pay(acting_pid, work.get("buildCost", [])):
-		message = "Not enough to raise the %s." % str(work.name).to_lower()
+		message = "Not enough to raise the %s — your pack and the stores together." % str(work.name).to_lower()
 		_refresh_hud()
 		return false
 	var inst_id := works.place(work_id, acting_pid, pos)
@@ -1911,7 +1916,7 @@ func _toggle_village(open: bool) -> void:
 	(m.root as Control).visible = open
 	if not open:
 		return
-	(m.footer as Label).text = "the flats manage their own labor   ·   [G] trade the stores   ·   [V] close"
+	(m.footer as Label).text = "the flats manage their own labor   ·   [G] pool your goods into the stores   ·   [V] close"
 	var lines: Array[String] = []
 	var roster := all_villagers().filter(func(v: DSVillager) -> bool: return v.rescued and v.tribesman_id >= 0)
 	if roster.is_empty():
@@ -1932,7 +1937,12 @@ func _toggle_village(open: bool) -> void:
 			var status: String = "NEEDS HELP!" if v.needs_help else ("content" if bool(rec.get("bloomed", false)) else v._mood_word())
 			if not v.needs_help and not bool(rec.get("bloomed", false)):
 				status += " — " + _villager_need(v, rec)
-			lines.append("%-10s %-12s %-16s %s" % [v.display_name.left(10), cls.left(11), doing.left(16), status.left(40)])
+			if v.def_class == "class-warden":
+				var arms := (str(registry.get_entity(v.warden_weapon).get("name", "?")) if v.warden_weapon != "" else "bare hands")
+				if v.warden_armor != "":
+					arms += " + " + str(registry.get_entity(v.warden_armor).name)
+				status = ("armed: %s — " % arms.to_lower()) + status
+			lines.append("%-10s %-12s %-16s %s" % [v.display_name.left(10), cls.left(11), doing.left(16), status.left(46)])
 	lines.append("")
 	var pri := _need_priority()
 	var need_bits: Array[String] = []
@@ -1965,26 +1975,52 @@ func _villager_need(v: DSVillager, rec: Dictionary) -> String:
 ## Pool the player's food into the shared stores (feed the village).
 ## Manage the stores: pour your food IN (feed the village), draw the materials
 ## your people gathered OUT into your pack.
+## [G] pools your pack into the community stores. Everything goes except what's
+## yours alone: equipped gear, relics, legends, god-remnants. The stores give
+## back through use — building and crafting draw on them while you stand in camp,
+## the kitchen cooks from them, wardens arm from them.
 func intent_give_food() -> void:
+	var kept: Array[String] = []
+	for slot: String in ["weapon", "armor", "trinket"]:
+		var cur := equipped_item(acting_pid, slot)
+		if cur != "":
+			kept.append(cur)
 	var given := 0
 	for item_id: String in inventory._inv(acting_pid).keys():
-		if str(registry.get_entity(item_id).get("category", "")) == "food":
-			var n := inventory.count(acting_pid, item_id)
-			village_stock[item_id] = int(village_stock.get(item_id, 0)) + n
-			inventory.pay(acting_pid, [{"itemId": item_id, "qty": n}])
-			given += n
-	var took := 0
-	for item_id: String in village_stock.keys():
-		if str(registry.get_entity(item_id).get("category", "")) != "food":
-			var n := int(village_stock[item_id])
-			inventory.add(acting_pid, item_id, n)
-			village_stock.erase(item_id)
-			took += n
+		var item := registry.get_entity(item_id)
+		if item_id in kept or not item.get("legend", {}).is_empty() \
+				or str(item.get("remnantOf", "")) != "" or not item.get("relic", {}).is_empty():
+			continue   # your story stays in your pack
+		var n := inventory.count(acting_pid, item_id)
+		if n <= 0:
+			continue
+		village_stock[item_id] = int(village_stock.get(item_id, 0)) + n
+		inventory.pay(acting_pid, [{"itemId": item_id, "qty": n}])
+		given += n
 	sfx("build")
-	message = "Stores: you gave %d food, drew %d salvage. A fed camp is a loyal one." % [given, took]
+	if given > 0:
+		message = "You pool %d goods into the stores. The village builds, cooks, and arms from them." % given
+	else:
+		message = "Nothing to pool — your pack holds only what's yours (worn gear, relics, legends)."
 	if village_panel_open:
 		_toggle_village(true)
 	_refresh_hud()
+
+## The stores provide: while you stand in the hearth's ring, costs you can't
+## cover from your pack are drawn from the community stock.
+func _stores_cover(cost: Array) -> void:
+	if camp_center == Vector2.INF or acting_pos().distance_to(camp_center) > CAMP_RADIUS:
+		return
+	for c: Dictionary in cost:
+		var item_id := str(c.itemId)
+		var short := int(c.qty) - inventory.count(acting_pid, item_id)
+		var have := int(village_stock.get(item_id, 0))
+		var take := clampi(short, 0, have)
+		if take > 0:
+			inventory.add(acting_pid, item_id, take)
+			village_stock[item_id] = have - take
+			if village_stock[item_id] <= 0:
+				village_stock.erase(item_id)
 
 ## --- CALLINGS: the per-player journal ---------------------------------------
 func _active_callings(pid: int) -> Array:
@@ -2576,6 +2612,34 @@ func all_villagers() -> Array:
 	out.append_array(villagers)
 	return out
 
+## The best claimable gear of a slot sitting in the stores (legends stay communal-
+## never; they're player stories, not rack stock).
+func _stock_best_gear(slot: String) -> String:
+	var best := ""
+	var best_stat := -1
+	for item_id: String in village_stock:
+		var item := registry.get_entity(item_id)
+		if str(item.get("slot", "")) != slot or not item.get("legend", {}).is_empty():
+			continue
+		var stat := int(item.get("stats", {}).get("damage", item.get("stats", {}).get("defense", 0)))
+		if stat > best_stat:
+			best_stat = stat
+			best = item_id
+	return best
+
+func _stock_covers(cost: Array) -> bool:
+	for c: Dictionary in cost:
+		if int(village_stock.get(str(c.itemId), 0)) < int(c.qty):
+			return false
+	return true
+
+func _stock_pay(cost: Array) -> void:
+	for c: Dictionary in cost:
+		var item_id := str(c.itemId)
+		village_stock[item_id] = int(village_stock.get(item_id, 0)) - int(c.qty)
+		if int(village_stock[item_id]) <= 0:
+			village_stock.erase(item_id)
+
 func _stock_food_total() -> int:
 	var n := 0
 	for item_id: String in village_stock:
@@ -2635,6 +2699,51 @@ func _village_dawn() -> void:
 		var item_id: String = TASK_ITEM[task]
 		village_stock[item_id] = int(village_stock.get(item_id, 0)) + qty
 		produced[item_id] = int(produced.get(item_id, 0)) + qty
+	# 1b. THE KITCHEN: raw meat in the stores gets smoked before breakfast —
+	# villagers craft the basics they need without being told
+	var dawn_notes: Array[String] = []
+	if works.count_of("work-smokehouse") > 0 and int(village_stock.get("item-crab-meat", 0)) > 0:
+		var cooks := 4
+		for v: DSVillager in all_villagers():
+			if v.rescued and not v.is_captive and v.task == "food":
+				cooks += 2   # someone on the cooking task keeps the fires hotter
+				break
+		var raw := mini(cooks, int(village_stock.get("item-crab-meat", 0)))
+		village_stock["item-crab-meat"] = int(village_stock["item-crab-meat"]) - raw
+		if int(village_stock["item-crab-meat"]) <= 0:
+			village_stock.erase("item-crab-meat")
+		village_stock["item-smoked-crab"] = int(village_stock.get("item-smoked-crab", 0)) + raw
+		for inst_id: Variant in works.placed:
+			if str(works.placed[inst_id].work_id) == "work-smokehouse":
+				works.set_in_use(int(inst_id), true)   # the kitchen's labor feeds Halor too
+				break
+		dawn_notes.append("the kitchen smoked %d crab" % raw)
+	# 1c. THE ARMORY: wardens arm themselves from the stores — claim the best
+	# weapon and armor lying there, or craft a simple club when the racks are bare
+	for v: DSVillager in all_villagers():
+		if not v.rescued or v.is_captive or v.def_class != "class-warden":
+			continue
+		if v.warden_weapon == "":
+			var best := _stock_best_gear("weapon")
+			if best == "" and _stock_covers(registry.get_entity("recipe-driftwood-club").get("inputs", [])):
+				_stock_pay(registry.get_entity("recipe-driftwood-club").get("inputs", []))
+				best = "item-driftwood-club"
+				dawn_notes.append("%s lashed together a club" % v.display_name)
+			elif best != "":
+				village_stock[best] = int(village_stock.get(best, 0)) - 1
+				if int(village_stock[best]) <= 0:
+					village_stock.erase(best)
+				dawn_notes.append("%s took up the %s" % [v.display_name, str(registry.get_entity(best).name).to_lower()])
+			v.warden_weapon = best
+		if v.warden_armor == "":
+			var plate := _stock_best_gear("armor")
+			if plate != "":
+				village_stock[plate] = int(village_stock.get(plate, 0)) - 1
+				if int(village_stock[plate]) <= 0:
+					village_stock.erase(plate)
+				v.warden_armor = plate
+				dawn_notes.append("%s donned the %s" % [v.display_name, str(registry.get_entity(plate).name).to_lower()])
+		v._refresh_label()
 	# 2. EAT + MOOD: each villager eats from the stores; hunger and neglect sour them
 	var deserters: Array[DSVillager] = []
 	for v: DSVillager in all_villagers():
@@ -2655,6 +2764,10 @@ func _village_dawn() -> void:
 	# 3. CONSEQUENCE: the truly neglected walk off into the flats
 	for v: DSVillager in deserters:
 		message = "%s has left the village. The flats keep what a poor camp cannot." % v.display_name
+		# a deserting warden leaves the village's arms on the rack
+		for gear in [v.warden_weapon, v.warden_armor]:
+			if str(gear) != "":
+				village_stock[str(gear)] = int(village_stock.get(str(gear), 0)) + 1
 		village.tribesmen.erase(v.tribesman_id)
 		villagers.erase(v)
 		if v == survivor:
@@ -2664,11 +2777,14 @@ func _village_dawn() -> void:
 		var bits: Array[String] = []
 		for item_id: String in produced:
 			bits.append("%d %s" % [int(produced[item_id]), str(registry.get_entity(item_id).name)])
+		var notes := ("  " + "; ".join(dawn_notes) + "." if dawn_notes.size() > 0 else "")
 		if bits.size() > 0:
-			message = "Dawn. The village worked: %s.%s" % [", ".join(bits),
-				"  (%d hid from danger)" % scared if scared > 0 else ""]
+			message = "Dawn. The village worked: %s.%s%s" % [", ".join(bits),
+				"  (%d hid from danger)" % scared if scared > 0 else "", notes]
 		elif scared > 0:
-			message = "Dawn. Danger kept your people home — nothing got done. Clear the flats."
+			message = "Dawn. Danger kept your people home — nothing got done. Clear the flats." + notes
+		elif dawn_notes.size() > 0:
+			message = "Dawn." + notes
 	if village_panel_open:
 		_toggle_village(true)
 
@@ -2767,20 +2883,30 @@ func warden_duty(_warden: DSVillager) -> Vector2:
 	return near.position if near != null else Vector2.INF
 
 ## A warden strikes the beast in front of them.
+## What a warden's swing is worth: bare hands, or the weapon they claimed
+## from the stores at dawn.
+func warden_damage(warden: DSVillager) -> float:
+	if warden.warden_weapon != "":
+		var dmg := float(registry.get_entity(warden.warden_weapon).get("stats", {}).get("damage", 0))
+		if dmg > 0.0:
+			return dmg
+	return WARDEN_DAMAGE
+
 func warden_strike(warden: DSVillager) -> void:
 	var e := _nearest_hostile(warden.position, DSVillager.WARDEN_STRIKE_RANGE)
 	if e == null:
 		return
+	var dmg := warden_damage(warden)
 	_flash_swing(e.position)
 	sfx("hit", e.position)
 	e.on_hit()
 	if e.subduable and not e.surrendered:
 		var mh := float(registry.get_entity(e.creature_id).get("stats", {}).get("hp", 60))
-		if stats.hp(e) - WARDEN_DAMAGE <= mh * 0.25:
+		if stats.hp(e) - dmg <= mh * 0.25:
 			stats.actors[e].hp = mh * 0.25
 			e.surrender()   # wardens subdue raiders — a captive for the yoke
 			return
-	if stats.damage(e, WARDEN_DAMAGE):
+	if stats.damage(e, dmg):
 		_on_enemy_killed(e)
 
 ## Is a warden standing guard over this spot? A covered worker doesn't flee.
@@ -3413,7 +3539,8 @@ func _world_sync() -> Dictionary:
 				"x": v.position.x, "y": v.position.y, "rescued": v.rescued, "mood": v.mood, "job": v.job_work_id,
 				"captive": v.is_captive, "held": v.days_held, "task": v.task, "help": v.needs_help,
 				"housed": v.housed, "tid": v.tribesman_id, "bloomed": bool(rec.get("bloomed", false)),
-				"covered": bool(rec.get("warden_covered", true))}),
+				"covered": bool(rec.get("warden_covered", true)),
+				"warm": v.warden_weapon, "warr": v.warden_armor}),
 		"stock": village_stock,
 		"sanctum": sanctum.to_save(),
 	}
@@ -3601,6 +3728,8 @@ func cl_world_sync(w: Dictionary) -> void:
 		body.housed = bool(pd.get("housed", false))
 		body.visible = not body.housed   # inside a hut, the mirror vanishes too
 		body.tribesman_id = int(pd.get("tid", -1))   # WAS DROPPED: without it the modal's roster filter rejected every mirror
+		body.warden_weapon = str(pd.get("warm", ""))
+		body.warden_armor = str(pd.get("warr", ""))
 		# a display-only tribesman record so the modal renders status on the client (the sim runs server-side)
 		if body.tribesman_id >= 0:
 			village.tribesmen[body.tribesman_id] = {"bloomed": bool(pd.get("bloomed", false)),

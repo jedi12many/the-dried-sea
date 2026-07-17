@@ -330,6 +330,59 @@ func _ready() -> void:
 	check(host._stock_food_total() >= 5, "you stocked the village larder")
 	host._on_sim_day(3)
 	check(host._stock_food_total() < 5, "your people ate from the stores")
+
+	# --- the village economy: pool everything, stores provide, kitchen, armory ---
+	# [G] pools your whole pack (not just food); worn gear and legends stay yours
+	host.inventory.add(1, "item-driftwood", 6)
+	host.inventory.add(1, "item-rope", 2)
+	host.inventory.add(1, "item-bronze-knife", 1)
+	if host.equipped_item(1, "weapon") != "item-bronze-knife":
+		host.equip_toggle(1, "item-bronze-knife")   # ensure worn — must NOT be pooled
+	host.intent_give_food()
+	check(int(host.village_stock.get("item-driftwood", 0)) >= 6, "[G] pools materials into the stores")
+	check(host.inventory.count(1, "item-driftwood") == 0, "and your pack let them go")
+	check(host.equipped_item(1, "weapon") == "item-bronze-knife" and host.inventory.count(1, "item-bronze-knife") == 1,
+		"but the knife you wear stays yours")
+	# the stores provide: craft in camp with an empty pack, stock covers it
+	host.player.position = host.camp_center + Vector2(30, 0)
+	host.village_stock["item-ship-cloth"] = 2
+	var cloth_short := host.inventory.count(1, "item-ship-cloth")
+	check(cloth_short == 0, "no cloth in the pack")
+	check(host.intent_craft("recipe-rope"), "yet rope crafts — the community stores covered it")
+	check(int(host.village_stock.get("item-ship-cloth", 0)) < 2, "and the stock paid the cloth")
+	# the kitchen: raw meat in the stores gets smoked at dawn
+	host.inventory.add(1, "item-wreck-timber", 8)
+	host.inventory.add(1, "item-salt", 12)
+	if host.works.count_of("work-smokehouse") == 0:
+		check(host.intent_build("work-smokehouse"), "a smokehouse for the kitchen")
+	host.village_stock["item-crab-meat"] = 3
+	host.village_stock["item-smoked-crab"] = int(host.village_stock.get("item-smoked-crab", 0)) + 10  # keep bellies full
+	var smoked_b := int(host.village_stock.get("item-smoked-crab", 0))
+	host._on_sim_day(4)
+	check(not host.village_stock.has("item-crab-meat"), "dawn: the kitchen took the raw meat")
+	check(int(host.village_stock.get("item-smoked-crab", 0)) > smoked_b - 8, "and smoked it into food (stores grew)")
+	# the armory: an unarmed warden claims the best weapon from the stores
+	# (a FRESH warden — earlier hungry dawns may have soured or deserted old ones)
+	var arms_id := host.village.add_tribesman("Armsman", "class-warden", "rescued", [], "god-halor")
+	var armsman = DSVillager.new()
+	armsman.host = host; armsman.tribesman_id = arms_id; armsman.def_class = "class-warden"
+	armsman.rescued = true; armsman.position = host.village_heart()
+	host.add_child(armsman); host.villagers.append(armsman)
+	host.village_stock["item-driftwood-club"] = 1
+	host.village_stock["item-smoked-crab"] = int(host.village_stock.get("item-smoked-crab", 0)) + 10
+	host._on_sim_day(5)
+	check(armsman.warden_weapon == "item-driftwood-club", "dawn: the warden took up the club from the stores")
+	check(not host.village_stock.has("item-driftwood-club"), "and it left the rack")
+	check(host.warden_damage(armsman) > host.WARDEN_DAMAGE, "an armed warden hits harder than bare hands")
+	# bare racks: the warden lashes together a club from raw stores
+	armsman.warden_weapon = ""
+	host.village_stock["item-driftwood"] = 4
+	host.village_stock["item-rope"] = 1
+	host.village_stock["item-smoked-crab"] = int(host.village_stock.get("item-smoked-crab", 0)) + 10
+	host._on_sim_day(6)
+	check(armsman.warden_weapon == "item-driftwood-club", "no weapon stocked → the warden crafted one")
+	check(int(host.village_stock.get("item-rope", 0)) == 0, "from the stores' rope (spent — and no task restocks rope)")
+
 	# talk-to-bloom: a grievance-heard villager blooms when you hear them
 	var talker_id := host.village.add_tribesman("Test", "class-reef-runner", "rescued", ["trait-bitter"], "god-halor")
 	var talker = DSVillager.new(); talker.host = host; talker.tribesman_id = talker_id
@@ -655,6 +708,11 @@ func _ready() -> void:
 	host.player.position = center + Vector2(-120, 0)   # in-ring, off the hearth
 	check(host.intent_build("work-smokehouse") or host.works.count_of("work-smokehouse") > 0, "a smokehouse stands")
 	host.clock.minute_of_day = 8 * 60  # working morning
+	# the economy tests above overstuffed the larder — starve it so the food task
+	# (Anna's calling as a brinewife) is short and hers again
+	host.village_stock.erase("item-smoked-crab")
+	host.village_stock.erase("item-salt-ration")
+	host._assign_village_tasks()
 	var post := host.work_pos("work-smokehouse")
 	var gap0 := host.survivor.position.distance_to(post)
 	for i in 40:

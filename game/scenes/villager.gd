@@ -24,6 +24,8 @@ var is_captive := false     # a bound raider (origin "taken") — held, not free
 var days_held := 0
 var task := ""              # dynamically assigned: wood/food/salt/bronze
 var needs_help := false     # fled danger — waiting at home for the flats to clear
+var warden_weapon := ""     # item_id claimed from the village stores (wardens arm at dawn)
+var warden_armor := ""      # claimed armor — worn against the day villager wounds arrive
 var housed := false         # tucked into a cot-hut for the night — hidden, safe
 var _strike_cd := 0.0
 const DANGER_RADIUS := 150.0
@@ -93,6 +95,8 @@ func _refresh_label() -> void:
 	if task != "":
 		job = " · " + {"wood": "gathering wood", "food": "cooking", "salt": "boiling salt",
 			"bronze": "salvaging bronze"}.get(task, task)
+	if def_class == "class-warden" and warden_weapon != "":
+		job += " · armed"
 	var moodword := "" if mood == "steady" else " (%s)" % _mood_word()
 	_label.text = "%s%s%s" % [display_name, job, moodword]
 

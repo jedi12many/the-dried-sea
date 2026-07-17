@@ -28,7 +28,7 @@ on a **shared server** with the other testers. Thanks for helping.
 | — | HOUSING: build a Driftwood Cot-Hut (sleeps 2). After dinner at the hearth, villagers go inside for the night — hidden and safe — and step out at dawn for breakfast. No room = they huddle at the hearth like before |
 | — | TENT (your first build): a cheap Sailcloth Tent pitches ANYWHERE — no village needed. Pitch one on night 1 before you can afford a hearth |
 | E | REST POINT: stand on a tent or the hearth and press [E] to make it your respawn ("[E] Rest here"). Fall anywhere and you wake there. On a far quest? Drop a tent, bind it. Home again? Re-bind the hearth. Each player sets their own |
-| G | pool your food into the village stores |
+| G | pool your PACK into the village stores (worn gear, relics & legends stay yours) — the village builds, cooks, and ARMS from them; in camp, your crafting draws on the stores too |
 | J | THE JOURNAL — read your callings and make their choices |
 | — | ALTARS (build menu, once you're attuned): stand at one, [E] opens THE OFFERTORY — lay offerings a god craves and display relics; splendor multiplies what your rites restore. Watch the annotations: each god wants different things, and some things OFFEND |
 | T | character sheet (the Tally) |
