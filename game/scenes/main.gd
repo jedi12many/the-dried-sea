@@ -85,6 +85,13 @@ var village_panel_open := false
 var village_tab := "roster"   # "roster" | "stores" — [TAB] switches while the panel is open
 var _villager_nid := 100
 
+# THE DRILL-YARD (VILLAGER-AND-GODHEAD-SPEC Part I §1): train a villager's Arms class
+var drill_open := false
+var drill_inst := -1
+var drill_step := "villager"    # "villager" | "class"
+var drill_villager_id := -1
+var drill_items: Array = []     # numbered choices for the current step
+
 # CALLINGS — the per-player quest journal
 var callings: Dictionary = {}        # pid -> Array of {id, step}
 var callings_done: Dictionary = {}   # pid -> Array of calling ids
@@ -364,6 +371,23 @@ func _ready() -> void:
 	elif "--screenshot-boss" in OS.get_cmdline_user_args():
 		player.position = Vector2(TILE * 9.0, TILE * 7.0)
 		_screenshot_and_quit()
+	elif "--screenshot-drill" in OS.get_cmdline_user_args():
+		inventory.add(acting_pid, "item-wreck-timber", 8)
+		inventory.add(acting_pid, "item-rope", 4)
+		inventory.add(acting_pid, "item-salt", 10)
+		inventory.add(acting_pid, "item-bronze-salvage", 2)
+		_harness_found_village()
+		intent_build("work-drill-yard")
+		survivor.rescue()
+		village.tribesmen[survivor.tribesman_id].faith = 60.0
+		survivor.def_patron = "god-halor"
+		var drill_inst_id := -1
+		for iid: Variant in works.placed:
+			if str(works.placed[iid].work_id) == "work-drill-yard":
+				drill_inst_id = int(iid)
+		player.position = work_pos("work-drill-yard")
+		_toggle_drill(true, drill_inst_id)
+		_screenshot_and_quit()
 	elif "--screenshot" in OS.get_cmdline_user_args():
 		_screenshot_and_quit()
 
@@ -398,7 +422,8 @@ func save_game() -> void:
 				"cls": v.def_class, "job": v.job_work_id, "x": v.position.x, "y": v.position.y,
 				"name": v.display_name, "traits": v.def_traits, "patron": v.def_patron,
 				"captive": v.is_captive, "held": v.days_held, "task": v.task, "help": v.needs_help,
-				"warm": v.warden_weapon, "warr": v.warden_armor}),
+				"warm": v.warden_weapon, "warr": v.warden_armor,
+				"on_road": v.on_road, "comp_pid": v.companion_pid}),
 		"villager_nid": _villager_nid,
 		"village_stock": village_stock.duplicate(),
 		"callings": callings.duplicate(true),
@@ -449,6 +474,7 @@ func load_game() -> void:
 	for inst_id: Variant in works.placed:
 		var inst: Dictionary = works.placed[inst_id]
 		_spawn_work_visual(int(inst_id), str(inst.work_id), Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))), chapel_dict)
+	_recompute_memorial()
 	boss_dead = bool(g.get("boss_dead", false))
 	if g.has("abilities"):
 		abilities.state = SaveSystem._int_keys(g.get("abilities", {}))
@@ -505,11 +531,15 @@ func load_game() -> void:
 		v.task = str(pd.get("task", ""))
 		v.warden_weapon = str(pd.get("warm", ""))
 		v.warden_armor = str(pd.get("warr", ""))
+		v.on_road = bool(pd.get("on_road", false))
+		v.companion_pid = int(pd.get("comp_pid", -1))
 		if bool(pd.rescued):
 			v.rescued = true
 			v.tribesman_id = int(pd.get("tid", -1))
 			var rec: Dictionary = village.tribesmen.get(v.tribesman_id, {})
 			v.set_mood(str(rec.get("expression", "steady")))
+			if v.on_road:
+				stats.register(v, village.villager_max_hp(v.tribesman_id))
 		v.set_label_name()
 	_refresh_hud()
 
@@ -751,6 +781,31 @@ func _unhandled_input(event: InputEvent) -> void:
 			_toggle_offertory(false)
 			return
 		return   # the altar holds your attention; other keys wait
+	if drill_open and event is InputEventKey and event.pressed:
+		var dkey := (event as InputEventKey).physical_keycode
+		if dkey >= KEY_1 and dkey <= KEY_9:
+			var didx := int(dkey - KEY_1)
+			if didx < drill_items.size():
+				if drill_step == "villager":
+					drill_villager_id = int(drill_items[didx])
+					drill_step = "class"
+					_render_drill()
+				else:
+					intent_drill_train(drill_villager_id, str(drill_items[didx]))
+					_toggle_drill(false)
+			return
+		if dkey == KEY_ESCAPE:
+			if drill_step == "class":
+				drill_step = "villager"
+				_render_drill()
+			else:
+				_toggle_drill(false)
+			return
+		if dkey == KEY_E:
+			sfx("ui")
+			_toggle_drill(false)
+			return
+		return   # the yard holds your attention; other keys wait
 	if event.is_action_pressed("interact"):
 		# standing at an altar, E opens the Offertory (the god's inventory);
 		# a pending chapel rite that's closer keeps its claim on E
@@ -758,6 +813,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		if altar >= 0 and not menu_open:
 			sfx("ui")
 			_toggle_offertory(true, altar)
+			return
+		var drill := _drill_takes_e()
+		if drill >= 0 and not menu_open and altar < 0:
+			sfx("ui")
+			_toggle_drill(true, drill)
 			return
 		intent_interact()
 	elif event.is_action_pressed("craft"):
@@ -837,7 +897,9 @@ func intent_interact() -> bool:
 				return intent_hold_captive(v)
 			if not v.rescued:
 				return intent_rescue_villager(v)
-			return intent_talk(v)
+			if v.on_road and v.downed:
+				return intent_revive_companion(v)
+			return intent_interact_villager(v)
 	var near_work := nearest_work(acting_pos())
 	if near_work >= 0:
 		return intent_tend(near_work)
@@ -891,7 +953,7 @@ func intent_capture(raider: DSEnemy) -> bool:
 	v.position = raider.position
 	v.rescued = true
 	v.is_captive = true
-	v.tribesman_id = village.add_tribesman(v.display_name, v.def_class, "taken", ["trait-bitter"], "")
+	v.tribesman_id = village.add_tribesman(v.display_name, v.def_class, "taken", ["trait-bitter"], "", _starting_arms_for(v.def_class))
 	add_child(v)
 	villagers.append(v)
 	stats.unregister(raider)
@@ -928,6 +990,136 @@ func intent_rescue_villager(v: DSVillager) -> bool:
 	message = "%s, a %s, follows you home. Give them work and a full belly and they'll keep the flats at bay." % [v.display_name, cls]
 	_refresh_hud()
 	return true
+
+## The [E] verb on a rescued, free villager: talk (unchanged), or — if they
+## hold an Arms class and aren't already someone's companion — a second [E]
+## on the same visit asks them to walk with you instead of talking again.
+func intent_interact_villager(v: DSVillager) -> bool:
+	if v.on_road and v.companion_pid == acting_pid:
+		return intent_dismiss_companion(v)
+	if _recruit_eligible(v):
+		if v._recruit_armed:
+			return intent_recruit(v)
+		v._recruit_armed = true
+		intent_talk(v)
+		message += "\n[E] them again: 'Walk with me?'"
+		_refresh_hud()
+		return true
+	return intent_talk(v)
+
+func _party_has_room(pid: int) -> bool:
+	var cap := int(village.vtune.get("partyCap", 1))
+	var n := 0
+	for v: DSVillager in all_villagers():
+		if v.on_road and v.companion_pid == pid:
+			n += 1
+	return n < cap
+
+func _recruit_eligible(v: DSVillager) -> bool:
+	return v.rescued and not v.is_captive and not v.on_road \
+		and village.arms_level(v.tribesman_id) > 0 and _party_has_room(acting_pid)
+
+## Recruit: party cap from tuning (villagers.json partyCap). They pack food
+## (a provisioning cost is flavor text at EA — no larder debit yet), drop their
+## task, and fall in beside you.
+func intent_recruit(v: DSVillager) -> bool:
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "recruit", [int(v.get_meta("nid", 0))])
+		return true
+	if not _recruit_eligible(v):
+		return false
+	v.on_road = true
+	v.companion_pid = acting_pid
+	v.fought_on_road = false
+	v._recruit_armed = false
+	v.task = ""
+	village.tribesmen[v.tribesman_id].on_road = true
+	stats.register(v, village.villager_max_hp(v.tribesman_id))
+	message = "%s packs food and falls in beside you. 'Walk with me' — and they do." % v.display_name
+	_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+	return true
+
+## "Stay here" (or walking home and toggling off): back to the task pool at
+## the next dawn. A safe return after fighting earns expeditionReturn XP.
+func intent_dismiss_companion(v: DSVillager) -> bool:
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "dismiss", [int(v.get_meta("nid", 0))])
+		return true
+	var at_home := v.position.distance_to(village_heart()) < DSVillager.SETTLE_RADIUS
+	if v.fought_on_road and at_home:
+		village.grant_xp(v.tribesman_id, "expeditionReturn")
+	v.on_road = false
+	v.companion_pid = -1
+	v.fought_on_road = false
+	village.tribesmen[v.tribesman_id].on_road = false
+	stats.unregister(v)
+	message = "%s stays here." % v.display_name
+	_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+	return true
+
+## Revive a downed companion at 30% HP — stand over them and press [E].
+func intent_revive_companion(v: DSVillager) -> bool:
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "revive", [int(v.get_meta("nid", 0))])
+		return true
+	if not village.is_downed(v.tribesman_id):
+		return false
+	village.revive(v.tribesman_id)
+	if stats.actors.has(v):
+		stats.actors[v].hp = village.villager_max_hp(v.tribesman_id) * 0.3
+	v.downed = false
+	v.apply_downed_visual()
+	message = "%s comes back around." % v.display_name
+	_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+	return true
+
+## Some arrivals come pre-trained (VILLAGER-AND-GODHEAD-SPEC Part I §1): wardens
+## arrive Warrior 1; a god's priest arrives Acolyte 1 (they meet the faith/patron
+## gate by construction — priests serve a god). Everyone else starts untrained.
+func _starting_arms_for(class_id: String) -> String:
+	match class_id:
+		"class-warden": return "arms-warrior"
+		"class-priest": return "arms-acolyte"
+		_: return ""
+
+func _villager_by_tid(tid: int) -> DSVillager:
+	for v: DSVillager in all_villagers():
+		if v.tribesman_id == tid:
+			return v
+	return null
+
+## A companion action arrives over the wire keyed by nid (stable across client/
+## server instances, unlike array indices); resolve and dispatch, or no-op if
+## the mirror hasn't caught up yet.
+func _net_villager_intent(nid: int, kind: String) -> void:
+	var v := _villager_by_nid(nid)
+	if v == null:
+		return
+	match kind:
+		"recruit": intent_recruit(v)
+		"dismiss": intent_dismiss_companion(v)
+		"revive": intent_revive_companion(v)
+
+func _villager_by_nid(nid: int) -> DSVillager:
+	for v: DSVillager in villagers:
+		if int(v.get_meta("nid", -1)) == nid:
+			return v
+	return null
+
+func _villager_name(tid: int) -> String:
+	var v := _villager_by_tid(tid)
+	return v.display_name if v != null else "someone"
+
+## has_memorial is presentation-set (sim never reads works directly, per its own
+## comment) — recomputed wherever works are counted: build, reclaim, load, dawn.
+func _recompute_memorial() -> void:
+	village.has_memorial = works.count_of("work-memorial") > 0
 
 ## Talk to a villager: hear them, and — if their door is a heard grievance —
 ## opening up IS meeting their Key. They bloom.
@@ -1276,6 +1468,12 @@ func intent_rite(god_id: String) -> bool:
 		_refresh_hud()
 		return false
 	rites_done_today[god_id] = true
+	# an Acolyte of this god, present at their own chapel, calls it their sparring —
+	# worship IS training (VILLAGER-AND-GODHEAD-SPEC Part I §2, XP source riteLed)
+	for v: DSVillager in all_villagers():
+		if v.rescued and not v.is_captive and v.def_patron == god_id \
+				and str(village.tribesmen.get(v.tribesman_id, {}).get("arms", {}).get("class_id", "")) == "arms-acolyte":
+			village.grant_xp(v.tribesman_id, "riteLed")
 	_play_worship(god_id)   # this god's chant, if we have it — else the old rite bell
 	# the Sanctum: this god's altar bears the rite up (or sours it — offenses count)
 	var altar := sanctum.altar_for(god_id)
@@ -1829,10 +2027,27 @@ func _on_enemy_killed(enemy: DSEnemy) -> void:
 	if remnant_id != "":
 		inventory.add(acting_pid, remnant_id, 1)
 		message = "%s falls — the oldest sailor left, out of his depth at last. His wreck-ring is yours to salvage.\nSomething divine remains in him. A warm, reasonable voice: 'They'd ask you to feed it to them. I only ever ask you to eat.'\n[E] at a chapel to ENSHRINE it — or [X] to consume it. Some doors only open once." % str(creature.name)
+	# Arms XP (VILLAGER-AND-GODHEAD-SPEC Part I §2): the killing blow OR simply
+	# being in the fight earns kill-assist credit — covers wardens on duty,
+	# road companions, and anyone else classed and close enough to have helped.
+	var tier := _creature_tier(enemy.creature_id)
+	for v: DSVillager in all_villagers():
+		if v.rescued and not v.is_captive and village.arms_level(v.tribesman_id) > 0 \
+				and v.position.distance_to(enemy.position) < WARDEN_DEFEND_RADIUS:
+			village.grant_xp(v.tribesman_id, "killAssist", tier)
 	stats.unregister(enemy)
 	enemies.erase(enemy)
 	enemy.queue_free()
 	_refresh_hud()
+
+## Tier for kill-assist XP: small fauna (crabs) barely count, hounds/raiders are
+## the main verb, bosses are the big meal. Derived from the creature's own
+## archetype — no new data field needed.
+func _creature_tier(creature_id: String) -> int:
+	match str(registry.get_entity(creature_id).get("archetype", "")):
+		"boss": return 2
+		"ambient": return 0
+		_: return 1
 
 ## The Verdict, in your hands: consume a remnant for permanent strength —
 ## and the god it belonged to dims, for everyone, forever.
@@ -1914,6 +2129,7 @@ func intent_build(work_id: String) -> bool:
 	_spawn_work_visual(inst_id, work_id, pos, {})
 	_reassign_all_jobs()
 	_check_village_keys()
+	_recompute_memorial()
 	_refresh_hud()
 	return true
 
@@ -2040,6 +2256,44 @@ func _render_village() -> void:
 	else:
 		_render_village_roster()
 
+## The [V] panel's Arms line: "Warrior 4 — 610/625 XP  (1 talent lit)". Reads
+## purely off the tribesman record (real or the client's mirrored fake one), so
+## it renders identically for host and client (UI law: no hidden math).
+func _arms_display(tid: int) -> String:
+	var rec: Dictionary = village.tribesmen.get(tid, {})
+	var arms: Dictionary = rec.get("arms", {})
+	var cls_id := str(arms.get("class_id", ""))
+	if cls_id == "":
+		return ""
+	var level := village.arms_level(tid)
+	var xp := float(arms.get("xp", 0.0))
+	var xp_tune: Dictionary = village.vtune.get("xp", {})
+	var c: float = float(xp_tune.get("curveConstant", 25))
+	var cap: int = int(xp_tune.get("maxLevel", 10))
+	var txt := "%s %d" % [str(registry.get_entity(cls_id).name), level]
+	if level < cap:
+		var floor_xp := c * pow(level, 2)
+		var next_xp := c * pow(level + 1, 2)
+		txt += " — %d/%d XP" % [int(xp - floor_xp), int(next_xp - floor_xp)]
+	else:
+		txt += " — MAX"
+	var ignited := village.ignited_talents(tid).size()
+	if ignited > 0:
+		txt += "  (%d talent%s lit)" % [ignited, "" if ignited == 1 else "s"]
+	return txt
+
+## Claimed gear, generalized from the warden-only note (dawn ARMORY, §4 above)
+## to every Arms-classed villager.
+func _villager_gear_note(v: DSVillager) -> String:
+	if v.def_class != "class-warden" and village.arms_level(v.tribesman_id) <= 0:
+		return ""
+	if v.warden_weapon == "" and v.warden_armor == "":
+		return ""
+	var arms := str(registry.get_entity(v.warden_weapon).get("name", "?")) if v.warden_weapon != "" else "bare hands"
+	if v.warden_armor != "":
+		arms += " + " + str(registry.get_entity(v.warden_armor).name)
+	return "armed: %s" % arms.to_lower()
+
 func _render_village_roster() -> void:
 	var lines: Array[String] = []
 	var roster := all_villagers().filter(func(v: DSVillager) -> bool: return v.rescued and v.tribesman_id >= 0)
@@ -2058,14 +2312,19 @@ func _render_village_roster() -> void:
 			var doing: String = {"wood": "gathering wood", "food": "cooking", "salt": "boiling salt", "bronze": "salvaging bronze"}.get(v.task, "idle")
 			if v.housed:
 				doing = "asleep"
+			if v.on_road:
+				doing = "DOWN" if v.downed else "walking with you"
 			var status: String = "NEEDS HELP!" if v.needs_help else ("content" if bool(rec.get("bloomed", false)) else v._mood_word())
-			if not v.needs_help and not bool(rec.get("bloomed", false)):
+			if v.on_road:
+				status = "DOWN — bring them home" if v.downed else "on the road"
+			elif not v.needs_help and not bool(rec.get("bloomed", false)):
 				status += " — " + _villager_need(v, rec)
-			if v.def_class == "class-warden":
-				var arms := (str(registry.get_entity(v.warden_weapon).get("name", "?")) if v.warden_weapon != "" else "bare hands")
-				if v.warden_armor != "":
-					arms += " + " + str(registry.get_entity(v.warden_armor).name)
-				status = ("armed: %s — " % arms.to_lower()) + status
+			var arms_txt := _arms_display(v.tribesman_id)
+			if arms_txt != "":
+				status = arms_txt + "  ·  " + status
+			var gear := _villager_gear_note(v)
+			if gear != "":
+				status = gear + "  ·  " + status
 			lines.append("%-10s %-12s %-16s %s" % [v.display_name.left(10), cls.left(11), doing.left(16), status.left(46)])
 	lines.append("")
 	var pri := _need_priority()
@@ -2492,6 +2751,97 @@ func _toggle_offertory(open: bool, inst_id: int = -1) -> void:
 	(modals.offertory.footer as Label).text = "splendor ×%.1f — rites to %s return %s   ·   [1-%d] lay ONE / take back   ·   [E] close" % [
 		spl, god_name, ("more" if spl > 1.05 else ("LESS — something offends" if spl < 0.95 else "the usual")), maxi(offertory_items.size(), 1)]
 
+## --- the Drill-Yard: train a villager's Arms class (VILLAGER-AND-GODHEAD-SPEC Part I §1) ---
+func _drill_takes_e() -> int:
+	var best := -1
+	var best_d := interact_range()
+	for inst_id: Variant in works.placed:
+		if str(works.placed[inst_id].work_id) != "work-drill-yard":
+			continue
+		var inst: Dictionary = works.placed[inst_id]
+		var d := acting_pos().distance_to(Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))))
+		if d < best_d:
+			best_d = d
+			best = int(inst_id)
+	return best
+
+func _toggle_drill(open: bool, inst_id: int = -1) -> void:
+	drill_open = open
+	drill_inst = inst_id if open else -1
+	var m: Dictionary = modals.get("drill", {})
+	if m.is_empty():
+		return
+	(m.root as Control).visible = open
+	if not open:
+		return
+	drill_step = "villager"
+	drill_villager_id = -1
+	_render_drill()
+
+func _render_drill() -> void:
+	var m: Dictionary = modals.get("drill", {})
+	if m.is_empty() or not drill_open:
+		return
+	drill_items = []
+	var lines: Array[String] = []
+	if drill_step == "villager":
+		(m.title as Label).text = "THE DRILL-YARD"
+		var roster := all_villagers().filter(func(v: DSVillager) -> bool: return v.rescued and v.tribesman_id >= 0 and not v.is_captive)
+		if roster.is_empty():
+			lines.append("No one free to train. Rescue someone first.")
+		else:
+			for v: DSVillager in roster:
+				drill_items.append(v.tribesman_id)
+				var arms: Dictionary = village.tribesmen.get(v.tribesman_id, {}).get("arms", {})
+				var cur := str(arms.get("class_id", ""))
+				var cur_txt := "untrained"
+				if cur != "":
+					cur_txt = "%s %d" % [str(registry.get_entity(cur).name), village.arms_level(v.tribesman_id)]
+				lines.append("  %d. %s — %s" % [drill_items.size(), v.display_name, cur_txt])
+		(m.footer as Label).text = "[1-9] choose a villager   ·   [E] close"
+	else:
+		(m.title as Label).text = "THE DRILL-YARD — assign a class"
+		var rec: Dictionary = village.tribesmen.get(drill_villager_id, {})
+		lines.append("Training %s:" % _villager_name(drill_villager_id))
+		lines.append("")
+		for cls: Dictionary in registry.all_of("arms"):
+			var cls_id := str(cls.id)
+			drill_items.append(cls_id)
+			var req: Dictionary = cls.get("requires", {})
+			var why := ""
+			if req.has("minFaith") and float(rec.get("faith", 0)) < float(req.minFaith):
+				why = "needs faith %d (has %d)" % [int(req.minFaith), int(rec.get("faith", 0))]
+			if req.get("needsPatron", false) and str(rec.get("patron_god_id", "")) == "":
+				why += (" · " if why != "" else "") + "needs a patron god"
+			var lvl := village.arms_level_for(drill_villager_id, cls_id)
+			var lvl_txt := "  (banked level %d)" % lvl if lvl > 0 else ""
+			if why == "":
+				lines.append("  %d. %s%s — %s" % [drill_items.size(), str(cls.name), lvl_txt, str(cls.text)])
+			else:
+				lines.append("  %d. %s — UNAVAILABLE: %s" % [drill_items.size(), str(cls.name), why])
+		(m.footer as Label).text = "[1-3] assign   ·   [ESC] back   ·   [E] close"
+	(m.body as Label).text = "\n".join(lines)
+
+## Assign an Arms class. Bans nothing client-side that the sim wouldn't already
+## reject (the Acolyte gate is enforced in village_system.train_arms); the modal
+## just SHOWS the why, per the UI law (no hidden math).
+func intent_drill_train(villager_id: int, class_id: String) -> bool:
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "drill_train", [villager_id, class_id])
+		return true
+	var ok := village.train_arms(villager_id, class_id)
+	if ok:
+		message = "%s begins training as a %s." % [_villager_name(villager_id), str(registry.get_entity(class_id).name)]
+		var v := _villager_by_tid(villager_id)
+		if v != null:
+			v._refresh_label()
+	else:
+		message = "They don't meet the calling yet — the Acolyte wants faith and a patron."
+	_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+	return ok
+
 ## --- One-shot audio, guarded for the headless server.
 func sfx(name: String, at := Vector2.INF, base_db := 0.0) -> void:
 	if net_mode != "server" and sound != null:
@@ -2558,6 +2908,7 @@ func _demolish_work(inst_id: int) -> void:
 	# the ring follows the hearth: reclaim the hearth and the village loses its
 	# center (raise a new one to re-found), reclaim anything else and it holds
 	_recenter_on_hearth()
+	_recompute_memorial()
 	sfx("build")
 	message = "You reclaim the %s.%s" % [str(work.name).to_lower(),
 		"  Salvaged: %s." % ", ".join(refunded) if refunded.size() > 0 else ""]
@@ -2866,7 +3217,26 @@ func _stock_take_one_food() -> bool:
 	return false
 
 ## The village lives once a day: everyone works, eats, and their mood shifts.
+## An Arms-classed villager who ends the day with no task (resting) trains
+## instead, when a Drill-Yard stands — the safe, slow lane (VILLAGER-AND-
+## GODHEAD-SPEC Part I §1, XP source drillDay). A standalone step (not folded
+## into the work loop above) so it always runs exactly once per dawn,
+## regardless of who else worked.
+func _dawn_drill_training() -> Array[String]:
+	var notes: Array[String] = []
+	if works.count_of("work-drill-yard") <= 0:
+		return notes
+	for dv: DSVillager in all_villagers():
+		if not dv.rescued or dv.tribesman_id < 0 or dv.is_captive or dv.task != "" or dv.on_road:
+			continue
+		if village.arms_level(dv.tribesman_id) <= 0:
+			continue
+		village.grant_xp(dv.tribesman_id, "drillDay")
+		notes.append("%s drilled at the yard" % dv.display_name)
+	return notes
+
 func _village_dawn() -> void:
+	_recompute_memorial()
 	var rite_led := rites_done_today.values().any(func(v: bool) -> bool: return v)
 	rites_done_today.clear()
 	# 0. THE TAKEN: assign warden coverage; captives age a day
@@ -2920,6 +3290,7 @@ func _village_dawn() -> void:
 		var item_id: String = TASK_ITEM[task]
 		village_stock[item_id] = int(village_stock.get(item_id, 0)) + qty
 		produced[item_id] = int(produced.get(item_id, 0)) + qty
+	dawn_notes.append_array(_dawn_drill_training())
 	# 1b. THE KITCHEN: raw meat in the stores gets smoked before breakfast —
 	# villagers craft the basics they need without being told
 	if works.count_of("work-smokehouse") > 0 and int(village_stock.get("item-crab-meat", 0)) > 0:
@@ -2941,8 +3312,10 @@ func _village_dawn() -> void:
 	# 1c. THE ARMORY: wardens arm themselves from the stores — claim the best
 	# weapon and armor lying there, or craft a simple club when the racks are bare
 	for v: DSVillager in all_villagers():
-		if not v.rescued or v.is_captive or v.def_class != "class-warden":
+		if not v.rescued or v.is_captive:
 			continue
+		if v.def_class != "class-warden" and village.arms_level(v.tribesman_id) <= 0:
+			continue   # generalized to ALL Arms-classed villagers, not just wardens
 		if v.warden_weapon == "":
 			var best := _stock_best_gear("weapon")
 			if best == "" and _stock_covers(registry.get_entity("recipe-driftwood-club").get("inputs", [])):
@@ -2955,6 +3328,8 @@ func _village_dawn() -> void:
 					village_stock.erase(best)
 				dawn_notes.append("%s took up the %s" % [v.display_name, str(registry.get_entity(best).name).to_lower()])
 			v.warden_weapon = best
+			if v.tribesman_id >= 0 and village.tribesmen.has(v.tribesman_id):
+				village.tribesmen[v.tribesman_id].equipment.weapon = best
 		if v.warden_armor == "":
 			var plate := _stock_best_gear("armor")
 			if plate != "":
@@ -2963,7 +3338,12 @@ func _village_dawn() -> void:
 					village_stock.erase(plate)
 				v.warden_armor = plate
 				dawn_notes.append("%s donned the %s" % [v.display_name, str(registry.get_entity(plate).name).to_lower()])
+			if v.tribesman_id >= 0 and village.tribesmen.has(v.tribesman_id):
+				village.tribesmen[v.tribesman_id].equipment.armor = plate
 		v._refresh_label()
+		if v.fought_defense_today:
+			village.grant_xp(v.tribesman_id, "villageDefense")
+			v.fought_defense_today = false
 	# 2. EAT + MOOD: each villager eats from the stores; hunger and neglect sour them
 	var deserters: Array[DSVillager] = []
 	for v: DSVillager in all_villagers():
@@ -3121,6 +3501,7 @@ func warden_strike(warden: DSVillager) -> void:
 	_flash_swing(e.position)
 	sfx("hit", e.position)
 	e.on_hit()
+	warden.fought_defense_today = true   # villageDefense XP at dawn, if they're Arms-classed
 	if e.subduable and not e.surrendered:
 		var mh := float(registry.get_entity(e.creature_id).get("stats", {}).get("hp", 60))
 		if stats.hp(e) - dmg <= mh * 0.25:
@@ -3137,6 +3518,150 @@ func warden_covers(pos: Vector2) -> bool:
 				and pos.distance_to(v.position) < WARDEN_GUARD_RADIUS:
 			return true
 	return false
+
+## --- the road: companions (VILLAGER-AND-GODHEAD-SPEC Part I §4) --------------
+## Where a companion's recruiter stands — server truth in co-op, your own body offline.
+func companion_leader_pos(pid: int) -> Vector2:
+	if net_mode == "server":
+		return avatars.get(pid, Vector2.INF)
+	return player.position if pid == my_pid or net_mode != "client" else Vector2.INF
+
+## The current Arms class's behavior params (engageRange/breakHpPct/holdGround),
+## or {} if unclassed. Villager.gd reads this every companion tick.
+func arms_behavior(tid: int) -> Dictionary:
+	var arms: Dictionary = village.tribesmen.get(tid, {}).get("arms", {})
+	var cls_id := str(arms.get("class_id", ""))
+	return registry.get_entity(cls_id).get("behavior", {}) if cls_id != "" else {}
+
+func companion_melee_strike(v: DSVillager, e: DSEnemy) -> void:
+	var dmg := warden_damage(v) * village.arms_primary_mult(v.tribesman_id)
+	_flash_swing(e.position)
+	sfx("hit", e.position)
+	e.on_hit()
+	v.fought_on_road = true
+	if e.subduable and not e.surrendered:
+		var mh := float(registry.get_entity(e.creature_id).get("stats", {}).get("hp", 60))
+		if stats.hp(e) - dmg <= mh * 0.25:
+			stats.actors[e].hp = mh * 0.25
+			e.surrender()
+			return
+	if stats.damage(e, dmg):
+		_companion_credit_kill(v, e)
+
+## Archer: same math, a line-flash instead of a swing — no projectile system yet.
+func companion_ranged_strike(v: DSVillager, e: DSEnemy) -> void:
+	var dmg := warden_damage(v) * village.arms_primary_mult(v.tribesman_id)
+	_flash_ranged_line(v.position, e.position)
+	sfx("hit", e.position)
+	e.on_hit()
+	v.fought_on_road = true
+	if e.subduable and not e.surrendered:
+		var mh := float(registry.get_entity(e.creature_id).get("stats", {}).get("hp", 60))
+		if stats.hp(e) - dmg <= mh * 0.25:
+			stats.actors[e].hp = mh * 0.25
+			e.surrender()
+			return
+	if stats.damage(e, dmg):
+		_companion_credit_kill(v, e)
+
+func _flash_ranged_line(from: Vector2, to: Vector2) -> void:
+	var line := Line2D.new()
+	line.add_point(from)
+	line.add_point(to)
+	line.width = 2.0
+	line.default_color = Color("d9d2bf")
+	add_child(line)
+	get_tree().create_timer(0.12).timeout.connect(line.queue_free)
+
+## A companion's kill briefly wears the recruiter's identity (loot, ledger) —
+## _on_enemy_killed already hands out the Arms XP to everyone nearby, including them.
+func _companion_credit_kill(v: DSVillager, e: DSEnemy) -> void:
+	var prev := acting_pid
+	if v.companion_pid > 0:
+		acting_pid = v.companion_pid
+	_on_enemy_killed(e)
+	acting_pid = prev
+
+## The Acolyte channels their patron's rank-1 invocation at their Lesser
+## Invocation talent's channelStrength (arms-classes.json), scaled by their own
+## level. Godhead (Part II, UNIMPLEMENTED) will multiply this live — for now the
+## multiplier is 1.0, exactly like the talent data's own $comment says.
+func companion_channel(v: DSVillager) -> void:
+	var tid := v.tribesman_id
+	for talent: Dictionary in village.ignited_talents(tid):
+		for eff: Dictionary in talent.get("effects", []):
+			if str(eff.get("type", "")) != "channel-invocation":
+				continue
+			var params: Dictionary = eff.get("params", {})
+			if bool(params.get("oncePerFight", false)):
+				continue   # tier-9 Intercession: a per-fight trigger, not this passive tick
+			var rank := int(params.get("patronInvocationRank", 1))
+			var patron_id := str(village.tribesmen.get(tid, {}).get("patron_god_id", ""))
+			var patron := registry.get_entity(patron_id)
+			var strength := float(eff.get("magnitude", 0.4)) * village.arms_primary_mult(tid)
+			for inv: Dictionary in patron.get("invocations", []):
+				if int(inv.get("rankRequired", -1)) != rank:
+					continue
+				for world_eff: Dictionary in inv.get("effects", []):
+					var scaled: Dictionary = (world_eff as Dictionary).duplicate(true)
+					if scaled.has("magnitude"):
+						scaled.magnitude = float(scaled.magnitude) * strength
+					if scaled.has("duration"):
+						scaled.duration = float(scaled.duration) * strength
+					var prev := acting_pid
+					if v.companion_pid > 0:
+						acting_pid = v.companion_pid
+					_apply_effect(scaled)
+					acting_pid = prev
+				return
+
+## Damage intake for a companion — the enemy-target-selection mirror of
+## damage_player. Their own equipped armor turns the worst of it; at 0 HP they
+## go down (not die) for downedSeconds, revivable with [E].
+func damage_villager(v: DSVillager, amount: float) -> void:
+	if not stats.actors.has(v) or village.is_downed(v.tribesman_id):
+		return
+	amount = maxf(amount - _villager_armor_defense(v), 1.0)
+	sfx("grunt", v.position)
+	if stats.damage(v, amount):
+		var downed_secs := float(village.vtune.get("downedSeconds", 30))
+		village.mark_downed(v.tribesman_id, Time.get_unix_time_from_system() + downed_secs)
+		v.downed = true
+		v.apply_downed_visual()
+		message = "%s goes down! [E] them within %ds to revive." % [v.display_name, int(downed_secs)]
+		_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+
+func _villager_armor_defense(v: DSVillager) -> float:
+	var armor := str(village.tribesmen.get(v.tribesman_id, {}).get("equipment", {}).get("armor", ""))
+	return float(registry.get_entity(armor).get("stats", {}).get("defense", 0.0)) if armor != "" else 0.0
+
+## Downed clock ran out: permadeath. Their gear drops where they fell (a corpse-
+## run with feelings — reuses the boss-hoard ground-drop trick), grief begins
+## (halved if a memorial stands), and the village hears about it.
+func companion_die(v: DSVillager) -> void:
+	var dropped := village.road_death(v.tribesman_id, false)   # EA: no biome-band gate yet to judge "reckless" by
+	for slot: String in dropped:
+		_spawn_equipment_drop(str(dropped[slot]), v.position)
+	message = "%s does not wake. The flats keep what a camp cannot carry home." % v.display_name
+	stats.unregister(v)
+	villagers.erase(v)
+	v.queue_free()
+	_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+
+## A corpse-run item on the ground: the same ground-node trick the boss hoard
+## uses (_spawn_one_node + node_defs, so it persists/syncs for free), corrected
+## to qty 1 — a fallen companion's sword, not a resource stack.
+func _spawn_equipment_drop(item_id: String, pos: Vector2) -> void:
+	if item_id == "":
+		return
+	var idx := node_defs.size()
+	node_defs.append({"item_id": item_id, "pos": pos, "idx": idx})
+	var node := _spawn_one_node(item_id, pos, idx)
+	node.set_meta("qty", 1)
 
 func on_villager_needs_help(v: DSVillager) -> void:
 	var wardened := false
@@ -3469,6 +3994,8 @@ func _build_hud() -> void:
 	offertory_label = m_offertory.body
 	offertory_title = m_offertory.title
 
+	_make_modal(layer, "drill", Vector2(640, 520), "THE DRILL-YARD")
+
 func _refresh_bars() -> void:
 	if hp_bar == null:
 		return
@@ -3593,17 +4120,29 @@ func acting_pos() -> Vector2:
 		return avatars.get(acting_pid, Vector2.INF)
 	return player.position
 
-## Nearest player to a point — what enemies hunt. Returns {pos, pid}.
+## Nearest player OR road companion to a point — what enemies hunt. Returns
+## {pos, pid, companion}; companion is a DSVillager when a recruit out-draws
+## the player's own threat (VILLAGER-AND-GODHEAD-SPEC Part I §4).
 func nearest_threat(from: Vector2) -> Dictionary:
+	var best: Dictionary
+	var best_d: float
 	if net_mode != "server":
-		return {"pos": player.position, "pid": my_pid}
-	var best_d := INF
-	var best := {"pos": Vector2.INF, "pid": -1}
-	for pid: Variant in avatars:
-		var d: float = from.distance_to(avatars[pid])
-		if d < best_d:
-			best_d = d
-			best = {"pos": avatars[pid], "pid": int(pid)}
+		best = {"pos": player.position, "pid": my_pid, "companion": null}
+		best_d = from.distance_to(player.position)
+	else:
+		best_d = INF
+		best = {"pos": Vector2.INF, "pid": -1, "companion": null}
+		for pid: Variant in avatars:
+			var d: float = from.distance_to(avatars[pid])
+			if d < best_d:
+				best_d = d
+				best = {"pos": avatars[pid], "pid": int(pid), "companion": null}
+	for v: DSVillager in all_villagers():
+		if v.on_road and v.rescued and not v.downed:
+			var d2 := from.distance_to(v.position)
+			if d2 < best_d:
+				best_d = d2
+				best = {"pos": v.position, "pid": -1, "companion": v}
 	return best
 
 func _start_server() -> void:
@@ -3697,6 +4236,10 @@ func srv_intent(kind: String, args: Array) -> void:
 		"move_work": _move_work(int(args[0]), Vector2(float(args[1]), float(args[2])))
 		"rotate_work": _rotate_work(int(args[0]))
 		"demolish_work": _demolish_work(int(args[0]))
+		"drill_train": intent_drill_train(int(args[0]), str(args[1]))
+		"recruit": _net_villager_intent(int(args[0]), "recruit")
+		"dismiss": _net_villager_intent(int(args[0]), "dismiss")
+		"revive": _net_villager_intent(int(args[0]), "revive")
 	rpc_id(peer_id, "cl_player_state", _player_state(acting_pid))
 	rpc("cl_world_sync", _world_sync())
 
@@ -3754,7 +4297,11 @@ func _world_sync() -> Dictionary:
 		"villager": {"rescued": survivor.rescued, "tid": survivor.tribesman_id,
 			"bloomed": bool(village.tribesmen.get(survivor.tribesman_id, {}).get("bloomed", false)),
 			"mood": survivor.mood, "task": survivor.task, "help": survivor.needs_help,
-			"housed": survivor.housed, "x": survivor.position.x, "y": survivor.position.y},
+			"housed": survivor.housed, "x": survivor.position.x, "y": survivor.position.y,
+			"arms_cls": str(village.tribesmen.get(survivor.tribesman_id, {}).get("arms", {}).get("class_id", "")),
+			"arms_xp": float(village.tribesmen.get(survivor.tribesman_id, {}).get("arms", {}).get("xp", 0.0)),
+			"on_road": survivor.on_road, "comp_pid": survivor.companion_pid,
+			"downed_until": float(village.tribesmen.get(survivor.tribesman_id, {}).get("downed_until", 0.0))},
 		"pool": villagers.map(func(v: DSVillager) -> Dictionary:
 			var rec: Dictionary = village.tribesmen.get(v.tribesman_id, {})
 			return {"nid": int(v.get_meta("nid", 0)), "name": v.display_name, "cls": v.def_class,
@@ -3762,7 +4309,13 @@ func _world_sync() -> Dictionary:
 				"captive": v.is_captive, "held": v.days_held, "task": v.task, "help": v.needs_help,
 				"housed": v.housed, "tid": v.tribesman_id, "bloomed": bool(rec.get("bloomed", false)),
 				"covered": bool(rec.get("warden_covered", true)),
-				"warm": v.warden_weapon, "warr": v.warden_armor}),
+				"warm": v.warden_weapon, "warr": v.warden_armor,
+				# the Arms track, mirrored raw so client-side accessors (village.arms_level etc.)
+				# work identically off the same {class_id, xp} shape — no client-only logic needed
+				"arms_cls": str(rec.get("arms", {}).get("class_id", "")),
+				"arms_xp": float(rec.get("arms", {}).get("xp", 0.0)),
+				"on_road": v.on_road, "comp_pid": v.companion_pid,
+				"downed_until": float(rec.get("downed_until", 0.0))}),
 		"stock": village_stock,
 		"node_left": _node_left_dict(),
 		"sanctum": sanctum.to_save(),
@@ -3920,11 +4473,19 @@ func cl_world_sync(w: Dictionary) -> void:
 		if bool(w.villager.rescued) and not survivor.rescued:
 			survivor.rescued = true
 			survivor.set_label_name()
+		survivor.on_road = bool(w.villager.get("on_road", false))
+		survivor.companion_pid = int(w.villager.get("comp_pid", -1))
 		if survivor.rescued:
 			survivor.set_mood(str(w.villager.get("mood", "steady")))
-			# a display-only record so the modal's tribesman lookups resolve on the client
+			# a display-only record so the modal's tribesman lookups resolve on the client —
+			# arms/equipment/downed_until ride raw so village.arms_level() etc. work unchanged
 			if survivor.tribesman_id >= 0:
-				village.tribesmen[survivor.tribesman_id] = {"bloomed": bool(w.villager.get("bloomed", false)), "warden_covered": true}
+				village.tribesmen[survivor.tribesman_id] = {"bloomed": bool(w.villager.get("bloomed", false)), "warden_covered": true,
+					"arms": {"class_id": str(w.villager.get("arms_cls", "")), "xp": float(w.villager.get("arms_xp", 0.0)), "levels_by_class": {}},
+					"equipment": {"weapon": survivor.warden_weapon, "armor": survivor.warden_armor, "trinket": ""},
+					"downed_until": float(w.villager.get("downed_until", 0.0))}
+				survivor.downed = village.is_downed(survivor.tribesman_id)
+				survivor.apply_downed_visual()
 	# the rest of the roster (client mirrors, keyed by nid)
 	village_stock = w.get("stock", {})
 	var seen := {}
@@ -3955,10 +4516,19 @@ func cl_world_sync(w: Dictionary) -> void:
 		body.tribesman_id = int(pd.get("tid", -1))   # WAS DROPPED: without it the modal's roster filter rejected every mirror
 		body.warden_weapon = str(pd.get("warm", ""))
 		body.warden_armor = str(pd.get("warr", ""))
-		# a display-only tribesman record so the modal renders status on the client (the sim runs server-side)
+		body.on_road = bool(pd.get("on_road", false))
+		body.companion_pid = int(pd.get("comp_pid", -1))
+		# a display-only tribesman record so the modal renders status on the client (the sim
+		# runs server-side) — arms/equipment/downed_until ride raw off the same shape the
+		# real sim uses, so village.arms_level()/villager_max_hp()/etc. work unchanged here
 		if body.tribesman_id >= 0:
 			village.tribesmen[body.tribesman_id] = {"bloomed": bool(pd.get("bloomed", false)),
-				"warden_covered": bool(pd.get("covered", true)), "origin": "taken" if body.is_captive else "rescued"}
+				"warden_covered": bool(pd.get("covered", true)), "origin": "taken" if body.is_captive else "rescued",
+				"arms": {"class_id": str(pd.get("arms_cls", "")), "xp": float(pd.get("arms_xp", 0.0)), "levels_by_class": {}},
+				"equipment": {"weapon": body.warden_weapon, "armor": body.warden_armor, "trinket": ""},
+				"downed_until": float(pd.get("downed_until", 0.0))}
+			body.downed = village.is_downed(body.tribesman_id)
+			body.apply_downed_visual()
 		if bool(pd.rescued) and not body.rescued:
 			body.rescued = true
 		if body.rescued:

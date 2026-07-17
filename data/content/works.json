@@ -387,6 +387,57 @@
   "purpose": "GRIM: consumes god-remnants at better yield. Feeds Ur-Noth. (coming soon)"
  },
  {
+  "id": "work-drill-yard",
+  "name": "Drill-Yard",
+  "godId": "god-maren",
+  "category": "station",
+  "buildCost": [
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 8
+   },
+   {
+    "itemId": "item-rope",
+    "qty": 4
+   }
+  ],
+  "useDetection": "training-active",
+  "favorTrickle": 1,
+  "text": "A sparring post and a ring of scuffed sand. Of course the Storm-Mother owns the place where villagers learn to hit back.",
+  "purpose": "Villagers train an Arms class here — assign one and the drill days add up. Tended, it feeds Maren."
+ },
+ {
+  "id": "work-memorial",
+  "name": "Memorial Stone",
+  "godId": "god-halor",
+  "category": "comfort",
+  "buildCost": [
+   {
+    "itemId": "item-salt",
+    "qty": 10
+   },
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 6
+   },
+   {
+    "itemId": "item-bronze-salvage",
+    "qty": 2
+   }
+  ],
+  "useDetection": "mourner-present",
+  "favorTrickle": 0.5,
+  "effects": [
+   {
+    "type": "grief-days-mult",
+    "magnitude": 0.5,
+    "target": "village"
+   }
+  ],
+  "text": "Salt-scoured stone, one name at a time. The homestead god keeps the dead, and a village that keeps its dead grieves half as long.",
+  "purpose": "The village keeps its dead — names go here, and grief days halve. Tended, it feeds Halor."
+ },
+ {
   "id": "work-altar-halor",
   "name": "Altar of the Salt-Father",
   "godId": "god-halor",

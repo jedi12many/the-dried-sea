@@ -1,0 +1,120 @@
+[
+  {
+    "id": "arms-warrior",
+    "name": "Warrior",
+    "text": "Shield-line. Stands where you put them, which is the whole art: the flats are won by whoever refuses to move first.",
+    "primaries": ["melee-dmg", "block"],
+    "hpPerLevelPct": 8,
+    "primaryPerLevelPct": 2,
+    "talents": [
+      {
+        "tier": 3,
+        "id": "arms-talent-hold-fast",
+        "name": "Hold-fast",
+        "text": "A shout with weight in it. Nearby beasts turn on the shield, and the shield is ready for them.",
+        "effects": [
+          { "type": "taunt-pulse", "magnitude": 1, "radius": 5, "target": "area" },
+          { "type": "block-mult", "magnitude": 1.25, "target": "self" }
+        ]
+      },
+      {
+        "tier": 6,
+        "id": "arms-talent-shield-wall",
+        "name": "Shield-wall",
+        "text": "One shield is a wall if you stand close enough to it. Adjacent allies take less.",
+        "effects": [
+          { "type": "ally-armor-add", "magnitude": 3, "radius": 3, "target": "ally" }
+        ]
+      },
+      {
+        "tier": 9,
+        "id": "arms-talent-breakwater",
+        "name": "Breakwater",
+        "text": "Once a fight, the wave breaks on THEM. A small, mortal Call-the-Squall, made of shoulders.",
+        "effects": [
+          { "type": "aoe-knockback", "magnitude": 6, "radius": 4, "target": "area", "params": { "oncePerFight": true } }
+        ]
+      }
+    ],
+    "behavior": { "engageRange": 6, "breakHpPct": 0.15, "holdGround": true }
+  },
+  {
+    "id": "arms-archer",
+    "name": "Archer",
+    "text": "Overwatch. Kills what the warrior holds — patience with a string on it.",
+    "primaries": ["ranged-dmg", "crit"],
+    "hpPerLevelPct": 8,
+    "primaryPerLevelPct": 2,
+    "talents": [
+      {
+        "tier": 3,
+        "id": "arms-talent-marked-prey",
+        "name": "Marked prey",
+        "text": "What the shield holds, the string finishes. Extra damage against taunted foes.",
+        "effects": [
+          { "type": "damage-vs-taunted-mult", "magnitude": 1.3, "target": "enemy" }
+        ]
+      },
+      {
+        "tier": 6,
+        "id": "arms-talent-long-eye",
+        "name": "Long eye",
+        "text": "The flats hide nothing from someone who grew up reading them. Longer reach; the lurking things show themselves.",
+        "effects": [
+          { "type": "range-mult", "magnitude": 1.25, "target": "self" },
+          { "type": "reveal-stealth", "radius": 12, "target": "area" }
+        ]
+      },
+      {
+        "tier": 9,
+        "id": "arms-talent-storm-of-shafts",
+        "name": "Storm of shafts",
+        "text": "Once a fight, every arrow they have been saving arrives at the same time.",
+        "effects": [
+          { "type": "volley", "magnitude": 5, "radius": 4, "target": "area", "params": { "oncePerFight": true } }
+        ]
+      }
+    ],
+    "behavior": { "engageRange": 14, "breakHpPct": 0.25, "holdGround": false }
+  },
+  {
+    "id": "arms-acolyte",
+    "name": "Acolyte",
+    "$comment": "channelStrength magnitudes are the FRACTION of the patron invocation's effect the Acolyte channels. Part II (Godhead, UNIMPLEMENTED) will multiply these live: effective = base x channelStrength x godhead. Until godhead_system exists the multiplier is 1.0.",
+    "text": "A lens for their patron — village-scale god-magic. They channel, not cast: the god does the work, the Acolyte does the kneeling.",
+    "primaries": ["channel-strength", "cast-range"],
+    "hpPerLevelPct": 8,
+    "primaryPerLevelPct": 2,
+    "talents": [
+      {
+        "tier": 3,
+        "id": "arms-talent-lesser-invocation",
+        "name": "Lesser invocation",
+        "text": "A weak copy of the patron's first invocation, poured through mortal hands.",
+        "effects": [
+          { "type": "channel-invocation", "magnitude": 0.4, "target": "area", "params": { "patronInvocationRank": 1, "channelStrength": true } }
+        ]
+      },
+      {
+        "tier": 6,
+        "id": "arms-talent-patrons-ward",
+        "name": "Patron's ward",
+        "text": "The god's passive blessing, spread thin across the party like a shared cloak.",
+        "effects": [
+          { "type": "channel-blessing", "magnitude": 0.4, "radius": 6, "target": "ally", "params": { "channelStrength": true } }
+        ]
+      },
+      {
+        "tier": 9,
+        "id": "arms-talent-intercession",
+        "name": "Intercession",
+        "text": "Once a fight, the patron leans all the way in: their second invocation, at the Acolyte's asking.",
+        "effects": [
+          { "type": "channel-invocation", "magnitude": 0.4, "target": "area", "params": { "patronInvocationRank": 2, "oncePerFight": true, "channelStrength": true } }
+        ]
+      }
+    ],
+    "requires": { "minFaith": 50, "needsPatron": true },
+    "behavior": { "engageRange": 10, "breakHpPct": 0.3, "holdGround": false }
+  }
+]

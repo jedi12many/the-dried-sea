@@ -901,6 +901,151 @@ func _ready() -> void:
 		var third: DSVillager = crowd[2]   # bunks = 2 per hut; the third is out of luck
 		check(host.house_slot_for(third) == Vector2.INF, "two bunks per hut — the third sleeper huddles at the hearth")
 
+	# --- VILLAGER ARMS: the Drill-Yard, arrivals, dawn training (VILLAGER-AND-GODHEAD-SPEC Part I) ---
+	host.inventory.add(1, "item-wreck-timber", 14)
+	host.inventory.add(1, "item-rope", 4)
+	host.player.position = host.camp_center + Vector2(-60, 40)
+	check(host.intent_build("work-drill-yard"), "the Drill-Yard raises")
+	var drill_inst_id := -1
+	for iid: Variant in host.works.placed:
+		if str(host.works.placed[iid].work_id) == "work-drill-yard":
+			drill_inst_id = int(iid)
+	check(drill_inst_id >= 0, "and stands, findable")
+
+	var recruit_id := host.village.add_tribesman("Bram", "class-warden", "rescued", [], "god-halor", host._starting_arms_for("class-warden"))
+	check(host.village.arms_level(recruit_id) == 1, "a warden arrives Warrior 1, pre-trained")
+
+	# assign a class through the modal flow: pick the villager, then the class
+	var trainee_id := host.village.add_tribesman("Sil", "class-reef-runner", "rescued", [], "god-halor")
+	var trainee := DSVillager.new()
+	trainee.host = host; trainee.tribesman_id = trainee_id; trainee.def_class = "class-reef-runner"
+	trainee.display_name = "Sil"
+	trainee.rescued = true; trainee.position = host.village_heart()
+	host.add_child(trainee); host.villagers.append(trainee)
+	host.player.position = host.work_pos("work-drill-yard")
+	host._toggle_drill(true, drill_inst_id)
+	check(host.drill_open and host.drill_step == "villager", "[E] at the yard opens on the villager list")
+	check(host.drill_items.has(trainee_id), "the free villager appears in the roster choice")
+	host.drill_villager_id = trainee_id
+	host.drill_step = "class"
+	host._render_drill()
+	check(host.drill_items.has("arms-warrior"), "the trio of classes is offered")
+	check(host.intent_drill_train(trainee_id, "arms-warrior"), "assigning the Warrior class succeeds")
+	host._toggle_drill(false)
+	check(host.village.arms_level(trainee_id) == 1, "the sim record shows the class, level 1")
+
+	# the Acolyte gate: faith/patron are surfaced as WHY, not just a locked option
+	var faithless_id := host.village.add_tribesman("Karo", "class-salvager", "rescued", [], "")
+	check(not host.village.train_arms(faithless_id, "arms-acolyte"), "no patron, no Acolyte — the gate holds")
+
+	# drillDay XP: an Arms-classed villager with no task, resting, trains at dawn.
+	# Called directly (not via _on_sim_day) so the self-managing task economy
+	# can't reassign the trainee a real job out from under this check.
+	trainee.task = ""
+	var idle_xp_before: float = host.village.tribesmen[trainee_id].arms.xp
+	var notes := host._dawn_drill_training()
+	check(notes.any(func(n: String) -> bool: return n.contains("Sil")), "the dawn drill step names the trainee")
+	check(float(host.village.tribesmen[trainee_id].arms.xp) > idle_xp_before, "an idle Arms-classed villager drills at dawn (XP granted)")
+
+	# [V] panel: the roster line carries the class text
+	host._toggle_village(true)
+	check(host.village_panel.text.contains("Warrior"), "the [V] panel shows the Arms class")
+	host._toggle_village(false)
+
+	# --- THE ROAD: recruit, follow, fight, downed/revive, permadeath ---------
+	for e in host.enemies.duplicate():   # a clean field, so companion movement/combat is deterministic
+		if is_instance_valid(e) and not e.peaceful:
+			host.stats.unregister(e)
+			host.enemies.erase(e)
+			e.queue_free()
+	host.player.position = trainee.position
+	check(host._recruit_eligible(trainee), "a classed, free villager is recruit-eligible")
+	check(host.intent_recruit(trainee), "'Walk with me' recruits them")
+	check(trainee.on_road and trainee.companion_pid == 1, "on_road, following pid 1")
+	check(host.stats.actors.has(trainee), "a companion gets real HP tracking")
+
+	# follow: far from the player, they close the distance
+	trainee.position = host.player.position + Vector2(400, 0)
+	for i in 40:
+		await get_tree().physics_frame
+	check(trainee.position.distance_to(host.player.position) < 380.0, "a companion closes distance toward their recruiter")
+
+	# fight: an enemy adjacent to the companion takes damage
+	var foe := DSEnemy.new()
+	foe.position = trainee.position + Vector2(20, 0)
+	foe.setup(host, "creature-salt-hound")
+	host.add_child(foe); host.enemies.append(foe)
+	var foe_hp := host.stats.hp(foe)
+	for i in 60:
+		await get_tree().physics_frame
+	check(host.stats.hp(foe) < foe_hp, "a companion fights nearby hostiles")
+	# the kill lands assist XP through the REAL handler (regression: the sim's
+	# source key is "killAssist"; a wrong key here once granted silent zero)
+	var assist_before: float = host.village.tribesmen[trainee_id].arms.xp
+	host._on_enemy_killed(foe)
+	check(float(host.village.tribesmen[trainee_id].arms.xp) > assist_before, "a kill nearby grants killAssist XP")
+
+	# downed, then revive
+	host.stats.actors[trainee].hp = 1.0
+	host.damage_villager(trainee, 999.0)
+	check(host.village.is_downed(trainee_id) and trainee.downed, "0 HP downs a companion — not death")
+	host.player.position = trainee.position
+	check(host.intent_revive_companion(trainee), "[E] revives a downed companion")
+	check(not trainee.downed and host.stats.hp(trainee) > 0.0, "revived at partial HP")
+
+	# dismiss at home: a companion who fought earns expeditionReturn XP
+	trainee.fought_on_road = true
+	trainee.position = host.village_heart()
+	var xp_before_dismiss: float = host.village.tribesmen[trainee_id].arms.xp
+	check(host.intent_dismiss_companion(trainee), "'Stay here' dismisses them")
+	check(not trainee.on_road, "back to the task pool")
+	check(float(host.village.tribesmen[trainee_id].arms.xp) > xp_before_dismiss, "a safe return earns expeditionReturn XP")
+
+	# permadeath on the road: equipment drops, grief begins (halved once a Memorial stands)
+	check(host.intent_recruit(trainee), "recruited again for the death test")
+	trainee.warden_weapon = "item-driftwood-club"
+	host.village.tribesmen[trainee_id].equipment.weapon = "item-driftwood-club"
+	var node_count_before := host.resource_nodes.size()
+	host.companion_die(trainee)
+	check(not host.villagers.has(trainee), "a companion whose downed clock runs out is gone for good")
+	check(host.resource_nodes.size() > node_count_before, "their gear drops where they fell")
+	check(host.village.grief_days_remaining == 3, "the village grieves (griefDays tuning, no memorial yet)")
+
+	host.inventory.add(1, "item-salt", 10)
+	host.inventory.add(1, "item-wreck-timber", 6)
+	host.inventory.add(1, "item-bronze-salvage", 2)
+	host.player.position = host.camp_center + Vector2(-100, 60)
+	check(host.intent_build("work-memorial"), "the Memorial Stone raises")
+	check(host.village.has_memorial, "has_memorial is recomputed once the work stands")
+	var mourner_id := host.village.add_tribesman("Ren", "class-warden", "rescued", [], "god-halor", "arms-warrior")
+	var mourner := DSVillager.new()
+	mourner.host = host; mourner.tribesman_id = mourner_id; mourner.def_class = "class-warden"
+	mourner.display_name = "Ren"
+	mourner.rescued = true; mourner.position = host.village_heart()
+	host.add_child(mourner); host.villagers.append(mourner)
+	check(host.intent_recruit(mourner), "recruit for the memorial death test")
+	host.village.grief_days_remaining = 0
+	host.companion_die(mourner)
+	check(host.village.grief_days_remaining == 2, "a Memorial halves grief days (ceil(3×0.5)=2)")
+
+	# save/load round-trips Arms + equipment
+	var keeper_id := host.village.add_tribesman("Vale", "class-smith", "rescued", [], "god-halor")
+	host.village.train_arms(keeper_id, "arms-archer")
+	host.village.grant_xp(keeper_id, "expeditionReturn")
+	host.village.tribesmen[keeper_id].equipment.weapon = "item-driftwood-club"
+	var keeper_xp: float = host.village.tribesmen[keeper_id].arms.xp
+	host.save_game()
+	var host5: GameHost = load("res://scenes/main.tscn").instantiate()
+	host5.skip_autoload = true
+	host5.save_path = host.save_path
+	add_child(host5)
+	await get_tree().physics_frame
+	host5.load_game()
+	check(host5.village.arms_level(keeper_id) >= 1, "save/load round-trips the Arms class")
+	check(float(host5.village.tribesmen[keeper_id].arms.xp) == keeper_xp, "...and the banked XP")
+	check(str(host5.village.tribesmen[keeper_id].equipment.weapon) == "item-driftwood-club", "...and the equipped weapon")
+	host5.queue_free()
+
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)
 

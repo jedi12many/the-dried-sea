@@ -1,0 +1,21 @@
+{
+  "$comment": "v0 tuning — villager Arms track (VILLAGER-AND-GODHEAD-SPEC Part I). All numbers are the spec's first guesses. XP curve: level n is reached at curveConstant * n^2 total XP (L2 at 100, L10 at 2500), clamped 1..maxLevel. distressedExpressions: the spec says 'slacking/fearful'; this codebase's expression set (tuning/disposition.json) has no 'fearful' — resolved as every non-steady expression (a distressed villager trains badly, whatever shape the distress takes). equipmentSlots: deliberately the game's existing 3-slot doll (item.schema.json slots), not the spec's 6 — reviewer-approved deviation; grow this list when the doll grows.",
+  "xp": { "curveConstant": 25, "maxLevel": 10 },
+  "xpSources": {
+    "killAssistByTier": [5, 15, 25],
+    "expeditionReturn": 40,
+    "villageDefense": 20,
+    "drillDay": 8,
+    "riteLed": 15
+  },
+  "xpMults": { "bloomed": 1.5, "broken": 0.75, "distressedExpression": 0.5 },
+  "distressedExpressions": ["slacking", "pettyTheft", "spreadingDoubt", "desertion", "darkWorship", "sabotage", "quietAscensionArc"],
+  "hpPerLevelPct": 8,
+  "primaryPerLevelPct": 2,
+  "baseVillagerHp": 50,
+  "equipmentSlots": ["weapon", "armor", "trinket"],
+  "partyCap": 1,
+  "downedSeconds": 30,
+  "griefDays": 3,
+  "memorialGriefMult": 0.5
+}

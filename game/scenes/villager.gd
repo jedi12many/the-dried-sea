@@ -24,7 +24,7 @@ var is_captive := false     # a bound raider (origin "taken") — held, not free
 var days_held := 0
 var task := ""              # dynamically assigned: wood/food/salt/bronze
 var needs_help := false     # fled danger — waiting at home for the flats to clear
-var warden_weapon := ""     # item_id claimed from the village stores (wardens arm at dawn)
+var warden_weapon := ""     # item_id claimed from the village stores (dawn armory — ANY Arms class now, not just wardens)
 var warden_armor := ""      # claimed armor — worn against the day villager wounds arrive
 var housed := false         # tucked into a cot-hut for the night — hidden, safe
 var _strike_cd := 0.0
@@ -32,6 +32,18 @@ const DANGER_RADIUS := 150.0
 const SAFE_RADIUS := 260.0
 const WARDEN_SPEED := 150.0
 const WARDEN_STRIKE_RANGE := 34.0
+
+# --- the road: companions (VILLAGER-AND-GODHEAD-SPEC Part I §4) ---------------
+var on_road := false        # walking with a player — follows, fights per their Arms `behavior`
+var companion_pid := -1     # which player recruited them, while on_road
+var downed := false         # mirrors village.is_downed(tribesman_id); host computes it, clients get it synced
+var fought_on_road := false # earns expeditionReturn XP on a safe dismissal at home
+var fought_defense_today := false  # earns villageDefense XP at dawn (wardens who struck a beast today)
+var _recruit_armed := false # a second [E] on the same visit recruits instead of talking again
+var _companion_strike_cd := 0.0
+var _companion_channel_cd := 0.0
+const COMPANION_STRIKE_RANGE := 34.0
+const COMPANION_FOLLOW_MAX := 60.0
 var _wander_target := Vector2.ZERO
 var _rng := RandomNumberGenerator.new()
 var _label: Label
@@ -66,7 +78,7 @@ func _ready() -> void:
 func rescue() -> void:
 	rescued = true
 	tribesman_id = host.village.add_tribesman(display_name, def_class, "rescued",
-		def_traits, def_patron)
+		def_traits, def_patron, host._starting_arms_for(def_class))
 	_refresh_label()
 	host.assign_job(self)
 
@@ -75,9 +87,22 @@ func set_label_name() -> void:
 
 func set_mood(m: String) -> void:
 	mood = m
-	if _body != null:
+	if _body != null and not downed:   # a downed companion keeps its slumped tint, mood or no
 		_body.modulate = MOOD_TINT.get(m, Color.WHITE)
 	_refresh_label()
+
+## The slumped-and-tinted read for "down" — same idea as a surrendered raider's
+## tint (enemy.gd), just ours. Called host-side on the HP-to-zero transition and
+## client-side from the world_sync mirror (positions/state only; no AI there).
+func apply_downed_visual() -> void:
+	if _body == null:
+		return
+	if downed:
+		_body.modulate = Color(0.55, 0.5, 0.48)
+		_body.rotation_degrees = 80.0
+	else:
+		_body.rotation_degrees = 0.0
+		_body.modulate = MOOD_TINT.get(mood, Color.WHITE)
 
 func _refresh_label() -> void:
 	if _label == null:
@@ -90,6 +115,9 @@ func _refresh_label() -> void:
 		return
 	if needs_help:
 		_label.text = "%s — NEEDS HELP!" % display_name
+		return
+	if on_road:
+		_label.text = "%s (%s)" % [display_name, "DOWN — [E] to revive" if downed else "walking with you"]
 		return
 	var job := ""
 	if task != "":
@@ -113,6 +141,9 @@ func _physics_process(delta: float) -> void:
 		return
 	if host.net_mode == "client":
 		return   # the server walks them; we just watch
+	if on_road and not is_captive:
+		_physics_companion(delta)
+		return
 	var center := host.village_heart()
 	# WARDENS answer the horn: they run at threats and fight, never flee —
 	# a night alarm pulls them straight out of bed
@@ -248,3 +279,83 @@ func _daily_target(center: Vector2) -> Vector2:
 			return bunk   # no slot offset — walk to the door itself
 		return center + Vector2(0, 44) + _slot_offset()   # no room at any inn
 	return Vector2.INF
+
+## --- the road: a companion follows, fights per their Arms class's `behavior`
+## (engageRange/breakHpPct/holdGround — arms-classes.json), and breaks for the
+## recruiter when hurt. Host-only (client mirrors never run AI, per net rule).
+func _physics_companion(delta: float) -> void:
+	if not host.village.tribesmen.has(tribesman_id):
+		return   # road_death already erased the record; queue_free() just hasn't landed yet
+	var was_downed := downed
+	downed = host.village.is_downed(tribesman_id)
+	if downed:
+		if not was_downed:
+			apply_downed_visual()
+		if host.village.tribesmen[tribesman_id].downed_until <= Time.get_unix_time_from_system():
+			host.companion_die(self)
+			return
+		velocity = Vector2.ZERO
+		move_and_slide()
+		return
+	elif was_downed:
+		apply_downed_visual()
+	_companion_strike_cd = maxf(_companion_strike_cd - delta, 0.0)
+	_companion_channel_cd = maxf(_companion_channel_cd - delta, 0.0)
+	var leader: Vector2 = host.companion_leader_pos(companion_pid)
+	if leader == Vector2.INF:
+		velocity = Vector2.ZERO
+		move_and_slide()
+		return
+	var behavior: Dictionary = host.arms_behavior(tribesman_id)
+	var engage_range: float = float(behavior.get("engageRange", 8)) * host.TILE
+	var break_pct: float = float(behavior.get("breakHpPct", 0.2))
+	var hold_ground: bool = bool(behavior.get("holdGround", false))
+	var max_hp := host.village.villager_max_hp(tribesman_id)
+	var hp_pct := (host.stats.hp(self) / max_hp) if max_hp > 0.0 else 1.0
+	if hp_pct <= break_pct:
+		_move_toward(leader, FOLLOW_SPEED)   # break: run to the recruiter, not home
+		return
+	var arms: Dictionary = host.village.tribesmen.get(tribesman_id, {}).get("arms", {})
+	var cls_id := str(arms.get("class_id", ""))
+	var enemy := host._nearest_hostile(position, engage_range)
+	if cls_id == "arms-acolyte":
+		_move_toward(leader, FOLLOW_SPEED)   # they hang back and channel, not fight
+		if enemy != null and _companion_channel_cd == 0.0:
+			_companion_channel_cd = 8.0
+			host.companion_channel(self)
+		return
+	if enemy == null:
+		if position.distance_to(leader) > COMPANION_FOLLOW_MAX:
+			_move_toward(leader, FOLLOW_SPEED)
+		else:
+			velocity = Vector2.ZERO
+			move_and_slide()
+		return
+	var dist := position.distance_to(enemy.position)
+	if hold_ground:   # Warrior: close the distance and strike
+		if dist > COMPANION_STRIKE_RANGE:
+			_move_toward(enemy.position, FOLLOW_SPEED)
+		else:
+			velocity = Vector2.ZERO
+			move_and_slide()
+			if _companion_strike_cd == 0.0:
+				_companion_strike_cd = 0.9
+				host.companion_melee_strike(self, enemy)
+	else:   # Archer: keep range, kite if crowded, shoot
+		if dist < engage_range * 0.5:
+			_move_toward(position + (position - enemy.position).normalized() * 40.0, FOLLOW_SPEED)
+		elif dist > engage_range:
+			_move_toward(enemy.position, FOLLOW_SPEED)
+		else:
+			velocity = Vector2.ZERO
+			move_and_slide()
+			if _companion_strike_cd == 0.0:
+				_companion_strike_cd = 1.3
+				host.companion_ranged_strike(self, enemy)
+
+func _move_toward(target: Vector2, speed: float) -> void:
+	if position.distance_to(target) > 6.0:
+		velocity = (target - position).normalized() * speed
+	else:
+		velocity = Vector2.ZERO
+	move_and_slide()

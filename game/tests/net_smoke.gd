@@ -109,4 +109,21 @@ func _ready() -> void:
 		waited += 0.2
 	check(host.abilities.score(host.my_pid, "virtue-grit") == 1, "Temper spent across the wire")
 
+	# 6. a road companion over the wire (VILLAGER-AND-GODHEAD-SPEC Part I §4):
+	# class the rescued stranger, recruit them, and confirm the client mirror
+	# shows on_road — companion AI itself is host-only; this just checks the sync.
+	if stranger != null and stranger.tribesman_id >= 0:
+		host.rpc_id(1, "srv_intent", "drill_train", [stranger.tribesman_id, "arms-warrior"])
+		waited = 0.0
+		while host.village.arms_level(stranger.tribesman_id) == 0 and waited < 6.0:
+			await get_tree().create_timer(0.2).timeout
+			waited += 0.2
+		check(host.village.arms_level(stranger.tribesman_id) == 1, "trained the stranger Warrior 1 across the wire")
+		host.rpc_id(1, "srv_intent", "recruit", [int(stranger.get_meta("nid", 0))])
+		waited = 0.0
+		while not stranger.on_road and waited < 6.0:
+			await get_tree().create_timer(0.2).timeout
+			waited += 0.2
+		check(stranger.on_road, "the client mirror shows on_road after a wire recruit")
+
 	_finish()

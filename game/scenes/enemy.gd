@@ -91,6 +91,7 @@ func _physics_process(delta: float) -> void:
 	# night belongs to the hounds — and the storm belongs to no one
 	var threat := host.nearest_threat(position)
 	var target_pid := int(threat.pid)
+	var companion: DSVillager = threat.get("companion", null)   # a road companion can out-draw the player's own threat
 	if (threat.pos as Vector2) == Vector2.INF:
 		velocity = Vector2.ZERO
 		return   # an empty world (server with no players yet)
@@ -120,7 +121,10 @@ func _physics_process(delta: float) -> void:
 			_cooldown = ATTACK_COOLDOWN * (1.6 if is_boss else 1.0)
 			if creature_id == "creature-salt-hound" and target_pid > 0:
 				_cooldown *= host.abilities.mod_mult(target_pid, "hound-cooldown-mult")  # Herd-Sense
-			host.damage_player(attack_damage, target_pid)
+			if companion != null:
+				host.damage_villager(companion, attack_damage)
+			else:
+				host.damage_player(attack_damage, target_pid)
 	elif dist <= aggro:
 		if not _chasing and creature_id == "creature-salt-hound":
 			host.sfx("growl", position)   # you have been noticed

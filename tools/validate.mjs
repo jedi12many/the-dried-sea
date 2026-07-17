@@ -68,8 +68,19 @@ const REQUIRED = {
   creature: ["name", "biomeId", "archetype", "stats", "text"],
   biome: ["name", "band", "text"],
   virtue: ["name", "godId", "text", "talents"],
+  arms: ["name", "text", "primaries", "hpPerLevelPct", "primaryPerLevelPct", "talents", "behavior"],
   inv: null, // sub-entities, skipped
 };
+
+// effect objects (common.schema.json #/$defs/effect) — the practically-checkable shape
+const EFFECT_KEYS = new Set(["type", "magnitude", "duration", "radius", "target", "params"]);
+function checkEffects(file, owner, effects, ctx) {
+  for (const eff of effects ?? []) {
+    if (!eff.type) err(file, `${owner}/${ctx} effect missing 'type'`);
+    for (const k of Object.keys(eff))
+      if (!EFFECT_KEYS.has(k)) err(file, `${owner}/${ctx} effect has unknown key '${k}'`);
+  }
+}
 
 const refFields = []; // [file, id, refId, context]
 const ref = (file, owner, refId, ctx) => refId && refFields.push([file, owner, refId, ctx]);
@@ -138,6 +149,30 @@ for (const { file, obj } of entities) {
     if (obj.uniqueToPeopleId) ref(file, obj.id, obj.uniqueToPeopleId, "uniqueToPeopleId");
   }
 
+  // ---- arms classes (VILLAGER-AND-GODHEAD-SPEC Part I) ----------------------
+  if (t === "arms") {
+    const talents = obj.talents ?? [];
+    const tiers = talents.map((tal) => tal.tier);
+    if (JSON.stringify(tiers) !== JSON.stringify([3, 6, 9]))
+      err(file, `${obj.id} talents must be exactly the 3/6/9 ignition trio (got [${tiers}])`);
+    for (const tal of talents) {
+      for (const k of ["id", "name", "text"]) if (tal[k] === undefined) err(file, `${obj.id} talent missing '${k}'`);
+      if (!tal.effects?.length) err(file, `${obj.id}/${tal.id} talent with no effects — sheet candy is not a talent`);
+      checkEffects(file, obj.id, tal.effects, tal.id ?? "?");
+    }
+    if (!Array.isArray(obj.primaries) || obj.primaries.length < 1)
+      err(file, `${obj.id} needs at least one primary stat`);
+    const b = obj.behavior ?? {};
+    for (const k of ["engageRange", "breakHpPct", "holdGround"])
+      if (b[k] === undefined) err(file, `${obj.id} behavior missing '${k}'`);
+    if (typeof b.breakHpPct === "number" && (b.breakHpPct < 0 || b.breakHpPct > 1))
+      err(file, `${obj.id} behavior.breakHpPct must be a 0..1 fraction`);
+    if (obj.requires !== undefined) {
+      for (const k of Object.keys(obj.requires))
+        if (!["minFaith", "needsPatron"].includes(k)) err(file, `${obj.id} requires has unknown key '${k}'`);
+    }
+  }
+
   // ---- calling design-law lints (the machine-checkable anti-shallow laws) ---
   if (t === "calling") {
     const c = obj;
@@ -170,6 +205,37 @@ for (const [file, owner, refId, ctx] of refFields) {
 // ---- pantheon sanity -----------------------------------------------------------
 const gods = idsWith("god-");
 if (gods.length && gods.length !== 7) warn("pantheon", `expected 7 gods (6 + the empty seat), found ${gods.length}`);
+
+// ---- villager Arms track (VILLAGER-AND-GODHEAD-SPEC Part I) ---------------------
+{
+  const armsIds = idsWith("arms-").filter((id) => !id.startsWith("arms-talent-"));
+  if (armsIds.length < 3) err("arms-classes", `expected the EA trio (warrior/archer/acolyte), found ${armsIds.length}`);
+  for (const id of ["arms-warrior", "arms-archer", "arms-acolyte"])
+    if (!exists(id)) err("arms-classes", `missing EA class '${id}'`);
+  // the drill-yard trains them; the memorial keeps them
+  for (const id of ["work-drill-yard", "work-memorial"])
+    if (!exists(id)) err("works", `missing Part-I work '${id}'`);
+
+  const vt = docs.find(({ file }) => file.endsWith("tuning/villagers.json"))?.data;
+  if (!vt) err("tuning/villagers.json", "missing — the Arms track is tuning-driven");
+  else {
+    for (const k of ["xp", "xpSources", "xpMults", "distressedExpressions", "hpPerLevelPct",
+      "primaryPerLevelPct", "baseVillagerHp", "equipmentSlots", "partyCap",
+      "downedSeconds", "griefDays", "memorialGriefMult"])
+      if (vt[k] === undefined) err("tuning/villagers.json", `missing required key '${k}'`);
+    if (vt.xp && (vt.xp.curveConstant === undefined || vt.xp.maxLevel === undefined))
+      err("tuning/villagers.json", "xp needs curveConstant + maxLevel");
+    for (const k of ["killAssistByTier", "expeditionReturn", "villageDefense", "drillDay", "riteLed"])
+      if (vt.xpSources?.[k] === undefined) err("tuning/villagers.json", `xpSources missing '${k}'`);
+    if (vt.xpSources?.killAssistByTier && !Array.isArray(vt.xpSources.killAssistByTier))
+      err("tuning/villagers.json", "xpSources.killAssistByTier must be an array indexed by threat tier");
+    for (const k of ["bloomed", "broken", "distressedExpression"])
+      if (vt.xpMults?.[k] === undefined) err("tuning/villagers.json", `xpMults missing '${k}'`);
+    // 'bloom beats Broken over any long run' — the multipliers must enforce the law
+    if (vt.xpMults && !(vt.xpMults.bloomed > 1 && vt.xpMults.broken < 1))
+      err("tuning/villagers.json", "xpMults must keep bloomed > 1 > broken (bloom beats Broken is a design LAW)");
+  }
+}
 
 // ---- report -------------------------------------------------------------------
 for (const w of warns) console.log(`  warn  ${w}`);

@@ -18,6 +18,8 @@ static func to_save(clock: SimClock, devotion: DevotionSystem, village: VillageS
 			"tribesmen": village.tribesmen.duplicate(true),
 			"next_id": village._next_id,
 			"fear_days_remaining": village.fear_days_remaining,
+			"grief_days_remaining": village.grief_days_remaining,
+			"has_memorial": village.has_memorial,
 		},
 		"works": {"placed": works.placed.duplicate(true), "next_id": works._next_id},
 		"verdict": {
@@ -43,6 +45,8 @@ static func apply(save_in: Dictionary, clock: SimClock, devotion: DevotionSystem
 	village.tribesmen = _int_keys(save.village.tribesmen)
 	village._next_id = int(save.village.next_id)
 	village.fear_days_remaining = int(save.village.fear_days_remaining)
+	village.grief_days_remaining = int(save.village.get("grief_days_remaining", 0))   # additive since Arms track; old saves default
+	village.has_memorial = bool(save.village.get("has_memorial", false))
 	works.placed = _int_keys(save.works.placed)
 	works._next_id = int(save.works.next_id)
 	verdict.ledgers = _int_keys(save.verdict.ledgers)

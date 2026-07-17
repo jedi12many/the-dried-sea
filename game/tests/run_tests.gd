@@ -16,6 +16,7 @@ func _init() -> void:
 	_test_clock()
 	_test_devotion()
 	_test_village()
+	_test_villager_arms()
 	_test_works()
 	_test_verdict()
 	_test_abilities()
@@ -133,6 +134,138 @@ func _test_village() -> void:
 	vil.unbind(korr)
 	check(vil.tribesmen[korr].origin == "rescued" and vil.tribesmen[korr].grievance < g_before_fear + 10.0,
 		"the Unbinding opens the kind door")
+
+## The Arms track (VILLAGER-AND-GODHEAD-SPEC Part I): the Trade feeds the
+## village, the Arms walks the road. Levels bank per class, talents ignite at
+## 3/6/9, bloom out-levels Broken, and the village grieves its road-dead.
+func _test_villager_arms() -> void:
+	var reg := Registry.new()
+	reg.load_all()
+	var vil := VillageSystem.new(reg)
+
+	# training: origin is a door, not a destiny
+	var rook := vil.add_tribesman("Rook", "class-salvager", "rescued")
+	check(vil.arms_level(rook) == 0, "no arms class -> level 0")
+	check(not vil.train_arms(rook, "arms-nonsense"), "unknown arms class refused")
+	check(vil.train_arms(rook, "arms-warrior"), "any villager can take up arms")
+	check(vil.arms_level(rook) == 1, "a fresh class starts at level 1")
+	check(vil.villager_max_hp(rook) == 50.0, "level 1 stands at base hp")
+	check(vil.arms_primary_mult(rook) == 1.0, "level 1 primaries x1.0")
+
+	# the curve: level n at 25*n^2 total XP (L2 at 100, L10 at 2500)
+	var arms: Dictionary = vil.tribesmen[rook].arms
+	arms.xp = 99.0
+	check(vil.arms_level(rook) == 1, "99 xp is still level 1")
+	arms.xp = 100.0
+	check(vil.arms_level(rook) == 2, "1->2 at exactly 100")
+	arms.xp = 2025.0
+	check(vil.arms_level(rook) == 9, "8->9 at 2025 (25*81)")
+	arms.xp = 2499.0
+	check(vil.arms_level(rook) == 9, "one xp short of the summit")
+	arms.xp = 2500.0
+	check(vil.arms_level(rook) == 10, "9->10 at 2500 (25*100)")
+	arms.xp = 999999.0
+	check(vil.arms_level(rook) == 10, "the curve clamps at 10")
+
+	# per-level baseline at the summit: +8% hp, +2% primary per level past 1
+	check(absf(vil.villager_max_hp(rook) - 50.0 * 1.72) < 0.001, "L10 hp = base x1.72 (+8 pct/level)")
+	check(absf(vil.arms_primary_mult(rook) - 1.18) < 0.001, "L10 primaries x1.18 (+2 pct/level)")
+
+	# talents ignite at exactly 3/6/9, with signals
+	arms.xp = 224.0   # one short of level 3 (225)
+	var leveled: Array = []
+	var ignitions: Array = []
+	vil.arms_leveled.connect(func(_i: int, l: int) -> void: leveled.append(l))
+	vil.arms_talent_ignited.connect(func(_i: int, t: String) -> void: ignitions.append(t))
+	check(vil.ignited_talents(rook).size() == 0, "level 2: nothing ignited yet")
+	vil.grant_xp(rook, "drillDay")   # +8 -> 232, crosses 225
+	check(vil.arms_level(rook) == 3, "a drill day tips level 3")
+	check(leveled == [3], "arms_leveled fired with the new level")
+	check("arms-talent-hold-fast" in ignitions, "Hold-fast ignites at 3")
+	check(vil.ignited_talents(rook).size() == 1, "one talent lit")
+	arms.xp = 875.0   # level 5; expeditionReturn +40 -> 915 crosses 900
+	vil.grant_xp(rook, "expeditionReturn")
+	check("arms-talent-shield-wall" in ignitions, "Shield-wall ignites at 6")
+	arms.xp = 2024.0   # one short of level 9
+	vil.grant_xp(rook, "drillDay")
+	check("arms-talent-breakwater" in ignitions and vil.ignited_talents(rook).size() == 3, "Breakwater ignites at 9")
+
+	# xp sources + multipliers: bloom beats Broken here too
+	var bloomy := vil.add_tribesman("Bloomy", "class-brinewife", "rescued", ["trait-devout"])
+	vil.train_arms(bloomy, "arms-archer")
+	vil.meet_key(bloomy)
+	vil.grant_xp(bloomy, "drillDay")
+	check(float(vil.tribesmen[bloomy].arms.xp) == 12.0, "bloomed x1.5: a drill day pays 12")
+	var hollow := vil.add_tribesman("Hollow", "class-salvager", "broken")
+	vil.train_arms(hollow, "arms-warrior")
+	vil.grant_xp(hollow, "drillDay")
+	check(float(vil.tribesmen[hollow].arms.xp) == 6.0, "Broken x0.75: obedient, diminished")
+	var glum := vil.add_tribesman("Glum", "class-salvager", "rescued")
+	vil.train_arms(glum, "arms-warrior")
+	vil.tribesmen[glum].expression = "slacking"
+	vil.grant_xp(glum, "killAssist", 2)
+	check(float(vil.tribesmen[glum].arms.xp) == 12.5, "slacking x0.5 on a tier-2 kill assist (25)")
+	vil.grant_xp(glum, "killAssist", 99)
+	check(float(vil.tribesmen[glum].arms.xp) == 12.5, "an unknown threat tier pays nothing")
+	var idle := vil.add_tribesman("Idle", "class-salvager", "rescued")
+	vil.grant_xp(idle, "drillDay")
+	check(vil.arms_level(idle) == 0, "xp without an arms class goes nowhere")
+
+	# the Acolyte gate: faith >= 50 and a patron — they channel, not cast
+	check(not vil.train_arms(hollow, "arms-acolyte"), "the faithless cannot channel (broken faith 0)")
+	check(not vil.train_arms(rook, "arms-acolyte"), "no patron, no lens")
+	var devout := vil.add_tribesman("Devout", "class-priest", "pilgrim", [], "god-maren")
+	check(vil.train_arms(devout, "arms-acolyte"), "faith and a patron open the Acolyte door")
+
+	# switching banks levels; switching back restores them (never erasure)
+	var warrior_xp: float = float(vil.tribesmen[rook].arms.xp)
+	check(vil.train_arms(rook, "arms-archer"), "retraining is allowed")
+	check(vil.arms_level(rook) == 1, "the new class starts fresh")
+	check(vil.arms_level_for(rook, "arms-warrior") == 9, "the old levels are banked, not burned")
+	vil.tribesmen[rook].arms.xp = 400.0   # archer level 4
+	vil.train_arms(rook, "arms-warrior")
+	check(float(vil.tribesmen[rook].arms.xp) == warrior_xp, "switching back restores the banked xp")
+	check(vil.arms_level_for(rook, "arms-archer") == 4, "and the archer levels wait their turn")
+
+	# downed bookkeeping: sim owns the state, presentation owns the clock
+	vil.mark_downed(rook, 123.4)
+	check(vil.is_downed(rook), "downed at 0 hp")
+	vil.revive(rook)
+	check(not vil.is_downed(rook), "revived by a friend standing over them")
+
+	# the road's far side: permadeath, gear where they fell, the village grieves
+	var deltas: Array = []
+	var notes: Array = []
+	vil.ledger_event.connect(func(_l: String, a: float, n: String) -> void:
+		deltas.append(a)
+		notes.append(n))
+	vil.tribesmen[glum].equipment.weapon = "item-bronze-knife"
+	var dropped: Dictionary = vil.road_death(glum, false)
+	check(str(dropped.weapon) == "item-bronze-knife", "their sword drops where they fell")
+	check(not vil.tribesmen.has(glum), "dead is dead — no softer tier")
+	check(deltas[-1] == 0.0 and "mourned" in str(notes[-1]), "an honest death writes 0, mourned")
+	check(vil.grief_days_remaining == 3, "the village grieves 3 days")
+	var mourner := vil.add_tribesman("Mourner", "class-salvager", "rescued")
+	var g0: float = float(vil.tribesmen[mourner].grievance)
+	vil.drift_day(mourner, [])
+	check(float(vil.tribesmen[mourner].grievance) > g0, "grief weighs on the survivors' drift")
+	vil.end_of_day()
+	check(vil.grief_days_remaining == 2, "grief lifts a day at a time")
+	vil.road_death(hollow, true)
+	check(deltas[-1] == -4.0, "a reckless death writes shepherd -4")
+
+	# the memorial halves grief: the homestead god keeps the dead
+	var vil2 := VillageSystem.new(reg)
+	vil2.has_memorial = true
+	var kept := vil2.add_tribesman("Kept", "class-salvager", "rescued")
+	vil2.road_death(kept, false)
+	check(vil2.grief_days_remaining < 3, "a memorial halves the grief days (3 -> %d)" % vil2.grief_days_remaining)
+
+	# arrivals can come pre-trained (wardens as Warrior 1, priests as Acolyte 1)
+	var ward := vil.add_tribesman("Ward", "class-warden", "rescued", [], "", "arms-warrior")
+	check(vil.arms_level(ward) == 1 and str(vil.tribesmen[ward].arms.class_id) == "arms-warrior", "wardens can arrive Warrior 1")
+	var pilgrim := vil.add_tribesman("Pil", "class-priest", "pilgrim", [], "god-halor", "arms-acolyte")
+	check(vil.arms_level(pilgrim) == 1 and str(vil.tribesmen[pilgrim].arms.class_id) == "arms-acolyte", "priests can arrive Acolyte 1 of their god")
 
 func _test_works() -> void:
 	var reg := Registry.new()

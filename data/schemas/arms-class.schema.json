@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "arms-class.schema.json",
+  "$comment": "v1 — an Arms (combat) class, VILLAGER-AND-GODHEAD-SPEC Part I §1-2. Villagers train into these at a Drill-Yard (work-drill-yard); talents ignite at levels 3/6/9, same rhythm as the player's Six Virtues (virtue.schema.json). Trade classes (npc-class.schema.json) are a separate track and do NOT level.",
+  "type": "object",
+  "required": ["id", "name", "text", "primaries", "hpPerLevelPct", "primaryPerLevelPct", "talents", "behavior"],
+  "additionalProperties": false,
+  "properties": {
+    "$comment": { "type": "string" },
+    "id": { "type": "string", "pattern": "^arms-[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "workingName": { "type": "boolean" },
+    "text": { "type": "string" },
+    "primaries": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "stat names this class's primaryPerLevelPct buffs, e.g. ['melee-dmg','block']"
+    },
+    "hpPerLevelPct": { "type": "number", "description": "per-level max-HP bonus, %; EA baseline lives in tuning/villagers.json — this is per-class documentation/override headroom" },
+    "primaryPerLevelPct": { "type": "number", "description": "per-level bonus to this class's primaries, %; EA baseline lives in tuning/villagers.json" },
+    "talents": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "exactly the 3/6/9 ignition trio",
+      "items": {
+        "type": "object",
+        "required": ["tier", "id", "name", "text", "effects"],
+        "additionalProperties": false,
+        "properties": {
+          "$comment": { "type": "string" },
+          "tier": { "enum": [3, 6, 9] },
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "text": { "type": "string" },
+          "effects": { "$ref": "common.schema.json#/$defs/effectList" }
+        }
+      }
+    },
+    "requires": {
+      "type": "object",
+      "description": "training prerequisites (village_system.train_arms enforces these); omit for no gate",
+      "additionalProperties": false,
+      "properties": {
+        "minFaith": { "type": "number" },
+        "needsPatron": { "type": "boolean" }
+      }
+    },
+    "behavior": {
+      "type": "object",
+      "description": "road-party AI parameters; presentation (villager.gd) reads these later — three params per class, no behavior trees",
+      "required": ["engageRange", "breakHpPct", "holdGround"],
+      "additionalProperties": false,
+      "properties": {
+        "engageRange": { "type": "number", "description": "meters at which this class engages aggro" },
+        "breakHpPct": { "type": "number", "minimum": 0, "maximum": 1, "description": "HP fraction at which the villager breaks and runs to the player" },
+        "holdGround": { "type": "boolean", "description": "stands where placed rather than kiting/repositioning" }
+      }
+    }
+  }
+}
