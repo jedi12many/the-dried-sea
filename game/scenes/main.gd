@@ -12,7 +12,7 @@ const ATTACK_RANGE := 44.0
 const ATTACK_DAMAGE := 12.0     # bare hands + salvage; tool scaling at M1-end
 const ATTACK_STAMINA := 15.0
 const LOCAL_PLAYER := 1
-const GAME_VERSION := "0.7.5"
+const GAME_VERSION := "0.7.6"
 const NET_PORT := 7777
 # NET: whose deed is this (server sets per intent), and whose screen is this
 var acting_pid := 1
@@ -261,12 +261,15 @@ func _ready() -> void:
 		_toggle_village(true)
 		_screenshot_and_quit()
 	elif "--screenshot-offertory" in OS.get_cmdline_user_args():
-		inventory.add(acting_pid, "item-salt", 28)
+		inventory.add(acting_pid, "item-salt", 12)
 		inventory.add(acting_pid, "item-wreck-timber", 10)
 		inventory.add(acting_pid, "item-bronze-salvage", 4)
-		inventory.add(acting_pid, "item-smoked-crab", 6)
-		inventory.add(acting_pid, "item-storm-glass", 2)
-		inventory.add(acting_pid, "item-crab-meat", 3)
+		# offerings come from the community stores now
+		village_stock["item-salt"] = 15
+		village_stock["item-smoked-crab"] = 6
+		village_stock["item-storm-glass"] = 2
+		village_stock["item-crab-meat"] = 3
+		village_stock["item-wreck-timber"] = 2
 		inventory.add(acting_pid, "item-remnant-shellback", 1)
 		_harness_found_village()
 		intent_build("work-altar-halor")
@@ -1284,6 +1287,7 @@ func intent_sanctum(inst_id: int, item_id: String, op: String = "auto") -> bool:
 	# an item can sit on the altar AND in your pack, so the modal says which way
 	# it means ("take" from the altar rows, "lay" from the pack rows); "auto"
 	# keeps the old toggle order for callers that don't care
+	# relics are personal (pack <-> altar); offerings are communal (STORES <-> altar)
 	if op != "lay" and sanctum.take_relic(inst_id, item_id):
 		inventory.add(acting_pid, item_id, 1)
 		message = "You lift %s from the altar." % str(registry.get_entity(item_id).name)
@@ -1291,26 +1295,27 @@ func intent_sanctum(inst_id: int, item_id: String, op: String = "auto") -> bool:
 		var back := sanctum.withdraw(inst_id, item_id)
 		if back <= 0:
 			return false
-		inventory.add(acting_pid, item_id, back)
-		message = "You take back what was laid out (×%d)." % back
+		village_stock[item_id] = int(village_stock.get(item_id, 0)) + back
+		message = "The offering returns to the stores (×%d)." % back
 	else:
-		if inventory.count(acting_pid, item_id) > 0:
-			if sanctum.relic_points(item_id) > 0.0:
-				if not sanctum.place_relic(inst_id, item_id, devotion.favor_tier(acting_pid, god_id)):
-					message = "The altar's slots are full — %s holds only so many stories." % str(registry.get_entity(god_id).name)
-					_refresh_hud()
-					return false
-				inventory.pay(acting_pid, [{"itemId": item_id, "qty": 1}])
-				message = "You set %s on the altar. It belongs to a story now." % str(registry.get_entity(item_id).name)
-			else:
-				# one per press, for now — stack-splitting can come later
-				inventory.pay(acting_pid, [{"itemId": item_id, "qty": 1}])
-				sanctum.deposit(acting_pid, inst_id, item_id, 1)
-				var lane := sanctum.lane(god_id, item_id)
-				match lane:
-					"craves": message = "You lay one out. %s is pleased — this is craved." % str(registry.get_entity(god_id).name)
-					"accepts": message = "You lay one out. It is accepted."
-					"ignores": message = "You lay one out. %s does not stoop to notice." % str(registry.get_entity(god_id).name)
+		if sanctum.relic_points(item_id) > 0.0 and inventory.count(acting_pid, item_id) > 0:
+			if not sanctum.place_relic(inst_id, item_id, devotion.favor_tier(acting_pid, god_id)):
+				message = "The altar's slots are full — %s holds only so many stories." % str(registry.get_entity(god_id).name)
+				_refresh_hud()
+				return false
+			inventory.pay(acting_pid, [{"itemId": item_id, "qty": 1}])
+			message = "You set %s on the altar. It belongs to a story now." % str(registry.get_entity(item_id).name)
+		elif int(village_stock.get(item_id, 0)) > 0:
+			# one from the stores per press — stack-splitting can come later
+			village_stock[item_id] = int(village_stock[item_id]) - 1
+			if int(village_stock[item_id]) <= 0:
+				village_stock.erase(item_id)
+			sanctum.deposit(acting_pid, inst_id, item_id, 1)
+			var lane := sanctum.lane(god_id, item_id)
+			match lane:
+				"craves": message = "You lay one out from the stores. %s is pleased — this is craved." % str(registry.get_entity(god_id).name)
+				"accepts": message = "You lay one out from the stores. It is accepted."
+				"ignores": message = "You lay one out. %s does not stoop to notice." % str(registry.get_entity(god_id).name)
 		else:
 			return false
 	sfx("rite")
@@ -2379,27 +2384,41 @@ func _toggle_offertory(open: bool, inst_id: int = -1) -> void:
 	if bag.is_empty():
 		lines.append("  (nothing — a dry altar is just furniture)")
 	lines.append("")
-	# your pack, annotated with the god's appetite
-	lines.append("YOUR PACK")
+	# the community stores, annotated with the god's appetite — offerings are communal
+	lines.append("THE STORES  (the village gives; [G] at the hearth to pool your pack)")
 	var any := false
-	for item_id: String in inventory._inv(my_pid).keys():
+	var store_keys := village_stock.keys()
+	store_keys.sort()
+	for item_id: String in store_keys:
 		if offertory_items.size() >= 9:
 			break
-		var is_relic := sanctum.relic_points(item_id) > 0.0
+		if int(village_stock[item_id]) <= 0:
+			continue
 		var lane := sanctum.lane(god_id, item_id)
-		if not is_relic and lane == "ignores":
+		if lane == "ignores":
 			lines.append("      %s ×%d — %s ignores this" % [str(registry.get_entity(item_id).name),
-				inventory.count(my_pid, item_id), god_name])
+				int(village_stock[item_id]), god_name])
 			continue
 		offertory_items.append({"id": item_id, "op": "lay"})
-		var note := "a relic — display it" if is_relic else lane + "; press to lay one"
+		var note := lane + "; press to lay one"
 		if lane == "offends":
 			note = "OFFENDS — the flats will remember"
 		lines.append("  %d. %s ×%d   — %s" % [offertory_items.size(),
-			str(registry.get_entity(item_id).name), inventory.count(my_pid, item_id), note])
+			str(registry.get_entity(item_id).name), int(village_stock[item_id]), note])
 		any = true
-	if not any and (s.relics as Array).is_empty() and bag.is_empty():
-		lines.append("  (nothing %s wants — gather what they crave)" % god_name)
+	if not any:
+		lines.append("  (nothing %s wants on the shelves — gather what they crave)" % god_name)
+	# relics stay personal: yours to place, from your own pack
+	var relic_lines := 0
+	for item_id: String in inventory._inv(my_pid).keys():
+		if offertory_items.size() >= 9 or sanctum.relic_points(item_id) <= 0.0:
+			continue
+		if relic_lines == 0:
+			lines.append("")
+			lines.append("YOUR PACK  (relics are yours alone)")
+		offertory_items.append({"id": item_id, "op": "lay"})
+		lines.append("  %d. %s   — a relic; press to display it" % [offertory_items.size(), str(registry.get_entity(item_id).name)])
+		relic_lines += 1
 	offertory_label.text = "\n".join(lines)
 	var spl := sanctum.splendor(inst_id)
 	(modals.offertory.footer as Label).text = "splendor ×%.1f — rites to %s return %s   ·   [1-%d] lay ONE / take back   ·   [E] close" % [
@@ -2455,14 +2474,15 @@ func _demolish_work(inst_id: int) -> void:
 	for god_id: String in chapels.keys():
 		if (chapels[god_id] as Vector2).distance_to(pos) < 4.0:
 			chapels.erase(god_id)
-	# an altar gives back what was laid on it — relics and offerings, not the tithe
+	# an altar gives back what was laid on it — relics to your pack, offerings to
+	# the community stores they came from
 	if sanctum.is_altar(inst_id):
 		var contents := sanctum.unregister(inst_id)
 		for relic_id: String in contents.get("relics", []):
 			inventory.add(acting_pid, relic_id, 1)
 		var bag: Dictionary = contents.get("bag", {})
 		for item_id: String in bag:
-			inventory.add(acting_pid, item_id, int(bag[item_id]))
+			village_stock[item_id] = int(village_stock.get(item_id, 0)) + int(bag[item_id])
 	works.placed.erase(inst_id)
 	if work_visuals.has(inst_id) and is_instance_valid(work_visuals[inst_id]):
 		work_visuals[inst_id].queue_free()

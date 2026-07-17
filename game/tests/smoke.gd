@@ -797,11 +797,12 @@ func _ready() -> void:
 	host._toggle_offertory(true, altar)
 	check(host.offertory_open and host.offertory_label.text.contains("RELICS"), "the Offertory opens with the god's slots")
 	check(host.offertory_label.text.contains("craves"), "the appetite annotation is the tutorial")
-	# lay a craved offering through the real intent — ONE per press (no stack dump)
-	var pack_salt := host.inventory.count(1, "item-salt")
+	# lay a craved offering — ONE per press, drawn from the COMMUNITY STORES
+	host.village_stock["item-salt"] = 10
+	var store_salt := int(host.village_stock["item-salt"])
 	check(host.intent_sanctum(altar, "item-salt"), "salt is laid before the Salt-Father")
-	check(host.inventory.count(1, "item-salt") == pack_salt - 1 and int(host.sanctum.state[altar].bag["item-salt"]) == 1, "one press lays exactly one")
-	check(host.intent_sanctum(altar, "item-salt", "lay") and int(host.sanctum.state[altar].bag["item-salt"]) == 2, "the pack row lays a second (explicit op, not the toggle)")
+	check(int(host.village_stock.get("item-salt", 0)) == store_salt - 1 and int(host.sanctum.state[altar].bag["item-salt"]) == 1, "one press lays exactly one, from the stores")
+	check(host.intent_sanctum(altar, "item-salt", "lay") and int(host.sanctum.state[altar].bag["item-salt"]) == 2, "the stores row lays a second (explicit op, not the toggle)")
 	var spl := host.sanctum.splendor(altar)
 	check(spl > 1.0, "the altar takes on splendor (x%.2f)" % spl)
 	# the rite is borne up by it
@@ -815,22 +816,23 @@ func _ready() -> void:
 	check(host.intent_sanctum(altar, "item-remnant-shellback"), "the Remnant of the Shell is DISPLAYED")
 	check(host.inventory.count(1, "item-remnant-shellback") == 0 and "item-remnant-shellback" in host.sanctum.state[altar].relics, "displayed, not consumed")
 	# the offense: blood on the hearth god's altar, and the flats remember
-	host.inventory.add(1, "item-crab-meat", 2)
+	host.village_stock["item-crab-meat"] = 2
 	var gods_ledger: float = float(host.verdict.ledgers.get(1, {}).get("gods", 0.0))
 	host.intent_sanctum(altar, "item-crab-meat")
 	check(float(host.verdict.ledgers[1].get("gods", 0.0)) < gods_ledger, "the offense lands in the Verdict ledger")
-	host.intent_sanctum(altar, "item-crab-meat")   # take it back, shamefaced
+	host.intent_sanctum(altar, "item-crab-meat")   # take it back, shamefaced (to the shelves)
 	# the dawn tithe eats craved first and feeds the god
 	var bag_salt := int(host.sanctum.state[altar].bag.get("item-salt", 0))
 	host.devotion.state[1]["god-halor"].vigor = 20.0
 	host._on_sim_day(host.clock.day)
 	check(int(host.sanctum.state[altar].bag.get("item-salt", 0)) < bag_salt, "at dawn the god takes a little of what was laid out")
 	check(host.devotion.state[1]["god-halor"].vigor > 20.0, "and that consumption is worship")
-	# reclaim gives everything back — relics and offerings both
+	# reclaim gives everything back — the relic to YOUR pack, offerings to the STORES
 	var salt_on_altar := int(host.sanctum.state[altar].bag.get("item-salt", 0))
+	var store_salt2 := int(host.village_stock.get("item-salt", 0))
 	host._demolish_work(altar)
-	check(host.inventory.count(1, "item-remnant-shellback") == 1, "reclaiming the altar returns the relic")
-	check(host.inventory.count(1, "item-salt") >= salt_on_altar, "and what was laid out")
+	check(host.inventory.count(1, "item-remnant-shellback") == 1, "reclaiming the altar returns the relic to your pack")
+	check(int(host.village_stock.get("item-salt", 0)) == store_salt2 + salt_on_altar, "and the offerings to the community stores")
 	check(host.sanctum.altar_for("god-halor") == -1, "the consecration is gone")
 	host._toggle_offertory(false)
 
