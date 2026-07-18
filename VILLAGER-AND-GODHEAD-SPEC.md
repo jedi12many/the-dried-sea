@@ -494,28 +494,29 @@ pitch.
   pure income to him. The refusers feed him; his faithful die free. Closes
   GAME-SPEC design question #2.
 
-## Open questions (for Jeff)
+## Decisions by delegation (2026-07-17: "you decide for now — we will test
+## and confirm it's the right implementation." All reversible by playtest.)
 
-1. **Keystone dedication** — +8% to ONE god per boss is a strong
-   favorite-picking moment; or split-allowed (weaker moment, kinder to broad
-   builds)? Lean: one god, no split — the game is better when it makes you
-   choose. *(Jeff: no opinion yet — parked.)*
-2. **Godhead per-player vs. world:** spec'd world-level (it's the god's body,
-   and co-op sharing one pantheon is the point). Confirm you don't want
-   per-player godhead — it would read as six private gods.
-3. **Acolyte trio at EA** — Warrior/Archer/Acolyte enough, or is a 4th
-   (Ghal handler) worth the slice cost?
-4. **Level cap 10 with 3/6/9 ignition** — or 20 with 5/10/15/20 for a longer
-   tail? Lean: 10; villagers should max out and *be* maxed companions, not
-   treadmills.
-5. **Party cap 2** at EA — confirm (4 doubles pathing + netcode surface).
-6. **Waking vigil length** — how many attended in-game days? Lean 5: long
-   enough to be a story, short enough to not be a second job.
-7. **Does high Ur-Noth Godhead do anything AMBIENT?** His feed means careless
-   servers fatten him passively. Options: nothing (he's just ready when his
-   faithful call — cheapest, fine); or a soft pressure tell (darker nights,
-   +whisper frequency, villager susceptibility drift +) so a fat Ur-Noth is
-   *felt*. Lean: the tell — the world should know what it's been feeding.
+1. **Keystone dedication: ONE god per boss, no split.** The moment where you
+   pick a favorite in front of the whole pantheon is worth more than the
+   kindness of hedging. Broad builds still grow — every keystone raises the
+   shared cap; dedication chooses who fills first.
+2. **Godhead is world-level.** It's the god's body; co-op shares one
+   pantheon. Six private gods would dissolve the whole theology of a shared
+   world (and the netcode would hate it besides).
+3. **The Arms trio stands at EA.** No 4th class — the Ghal-handler fantasy
+   moved into Part III whole: the beast at heel IS the handler build,
+   virtue-side, and it's better there.
+4. **Level cap 10, talents at 3/6/9.** Maxed villagers should get to BE
+   maxed — a finished companion is a possession, a treadmill is a job.
+5. **Road-slot cap: 1 at EA, 2 at M3.** Plus the Part-III heel slot. Test
+   whether 1+1+beast already crowds the salt flats before growing anything.
+6. **Waking vigil: 5 attended in-game days.** Long enough to be a story,
+   short enough to not be a second job.
+7. **Fat Ur-Noth gets the ambient tell (M4).** Darker nights, whispers a
+   shade more frequent, villager susceptibility drift creeping up — soft,
+   data-tunable, no hard mechanic. The world should know what it's been
+   feeding, and a careless server should feel watched.
 
 ---
 
@@ -651,15 +652,12 @@ text at EA).
   sweetens (meal discount, the Voice); he never gates.
 - **Beasts level like villagers**: same curve, instincts at 3/6/9.
 
-## Open questions (Part III, for Jeff)
+## Decisions by delegation (Part III, same mandate — test-and-confirm)
 
-8. **Crab immortality** — spec'd as never-dies-at-heel (hides in shell).
-   Right call, or should the shell be breakable by biome-2 threats so the
-   stakes return with depth? Lean: immortal at EA; it's the game's one
-   guaranteed-safe love, and that's worth protecting.
-9. **Hound damage source** — own stat line per level (spec'd), or claim
-   stock weapons like villagers (a hound with a harpoon in its mouth)? Lean:
-   own stats; the armory stays human.
-10. **Tide-Shell target** — blocks a hit for the PLAYER (spec'd, dramatic)
-    or for any party member (kinder, fuzzier)? Lean: player — "my crab took
-    the hit for me" is a story; "my crab optimized party mitigation" is not.
+8. **The crab is immortal at heel.** The game's one guaranteed-safe love,
+   protected on purpose. If biome-2 playtests show the flats have no teeth
+   left, the shell can learn to crack there — but the default is mercy.
+9. **Hounds fight on their own stat line.** The armory stays human; a hound
+   with a harpoon in its mouth is a different game (a worse one).
+10. **Tide-Shell guards the PLAYER only.** "My crab took the hit for me" is
+    a story; "my crab optimized party mitigation" is not.
