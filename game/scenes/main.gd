@@ -87,6 +87,7 @@ var village_panel: Label
 var village_panel_open := false
 var village_tab := "roster"   # "roster" | "stores" | "sheet" — [TAB] cycles, [1-9] opens a sheet
 var village_sheet_tid := -1   # whose character sheet the "sheet" tab shows
+var village_store_page := 0   # stores tab paging ([0] flips), 9 takeable entries per page
 var _villager_nid := 100
 
 # THE DRILL-YARD (VILLAGER-AND-GODHEAD-SPEC Part I §1): train a villager's Arms class
@@ -731,6 +732,24 @@ func _unhandled_input(event: InputEvent) -> void:
 			# from the sheet, TAB goes home to the roster; otherwise it flips roster/stores
 			village_tab = "stores" if village_tab == "roster" else "roster"
 			_render_village()
+			return
+		# [1-9] on the stores: take one of that item into your pack (test-era
+		# rule, Jeff 2026-07-18: every player has access to the village and
+		# its gear — ownership is a later problem). [0] pages.
+		if village_tab == "stores" and vkey >= KEY_0 and vkey <= KEY_9:
+			if vkey == KEY_0:
+				sfx("ui")
+				village_store_page += 1
+				_render_village()
+				return
+			var sids := _store_entry_ids()
+			var sidx := village_store_page * 9 + int(vkey - KEY_1)
+			if sidx < sids.size():
+				if net_mode == "client":
+					rpc_id(1, "srv_intent", "stores_take", [str(sids[sidx])])
+				else:
+					intent_stores_take(str(sids[sidx]))
+					_render_village()
 			return
 		# [1-9] on the roster: open that villager's character sheet
 		if vkey >= KEY_1 and vkey <= KEY_9 and village_tab == "roster":
@@ -2581,25 +2600,21 @@ func _store_kinds_held() -> int:
 ## modal instead of one unbroken line running off the edge of the window.
 func _render_village_stores() -> void:
 	var lines: Array[String] = []
-	var store_keys := village_stock.keys()
-	store_keys.sort()
-	var entries: Array[String] = []
-	for item_id: String in store_keys:
-		if int(village_stock[item_id]) > 0:
-			entries.append("%s ×%d" % [str(registry.get_entity(item_id).get("name", item_id)), int(village_stock[item_id])])
-	if entries.is_empty():
+	var sids := _store_entry_ids()
+	if sids.is_empty():
 		lines.append("Bare shelves. [G] at the hearth pools your pack into the stores.")
 	else:
-		lines.append("%d kind(s) of goods, %d unit(s) total:" % [entries.size(), _store_units_held()])
+		var pages := maxi(1, int(ceilf(sids.size() / 9.0)))
+		village_store_page = village_store_page % pages
+		lines.append("%d kind(s) of goods, %d unit(s) total%s:" % [sids.size(), _store_units_held(),
+			("   —   page %d/%d, [0] for more" % [village_store_page + 1, pages]) if pages > 1 else ""])
 		lines.append("")
-		const PER_ROW := 3
-		const COL_W := 20   # wide enough for the longest item name + qty; keeps 3 columns inside the panel
-		for i in range(0, entries.size(), PER_ROW):
-			var row: Array[String] = []
-			for j in range(i, mini(i + PER_ROW, entries.size())):
-				row.append(entries[j].rpad(COL_W))
-			lines.append("  " + "".join(row).strip_edges(false, true))
-	lines.append("")
+		var start := village_store_page * 9
+		for i in range(start, mini(start + 9, sids.size())):
+			var item_id: String = sids[i]
+			lines.append("  %d. %s ×%d" % [i - start + 1, str(registry.get_entity(item_id).get("name", item_id)), int(village_stock[item_id])])
+		lines.append("")
+		lines.append("[1-9] take one into your pack — the village's gear belongs to whoever's here (for now).")
 	lines.append("Everything here feeds building, crafting, the kitchen, wardens' arms, and the Offertory.")
 	village_panel.text = "\n".join(lines)
 
@@ -2653,6 +2668,34 @@ func _villager_need(v: DSVillager, rec: Dictionary) -> String:
 ## yours alone: equipped gear, relics, legends, god-remnants. The stores give
 ## back through use — building and crafting draw on them while you stand in camp,
 ## the kitchen cooks from them, wardens arm from them.
+## Take ONE unit of an item out of the community stores into your own pack.
+## Test-era communism (Jeff, 2026-07-18): every player who joins has access
+## to the village and its gear; ownership is a later problem. Server
+## validates against live stock, so two players racing for the last harpoon
+## resolves cleanly — one gets iron, one gets a message.
+func _store_entry_ids() -> Array:
+	var ids := village_stock.keys().filter(func(k: String) -> bool: return int(village_stock[k]) > 0)
+	ids.sort()
+	return ids
+
+func intent_stores_take(item_id: String) -> void:
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "stores_take", [item_id])
+		return
+	if int(village_stock.get(item_id, 0)) <= 0:
+		message = "The shelf is bare — someone got there first."
+		_refresh_hud()
+		return
+	village_stock[item_id] = int(village_stock[item_id]) - 1
+	if int(village_stock[item_id]) <= 0:
+		village_stock.erase(item_id)
+	inventory.add(acting_pid, item_id, 1)
+	sfx("pickup")
+	message = "You take %s from the stores. What the village holds, its people carry." % str(registry.get_entity(item_id).get("name", item_id))
+	_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+
 func intent_give_food() -> void:
 	var kept: Array[String] = []
 	for slot: String in ["weapon", "armor", "trinket"]:
@@ -4531,6 +4574,7 @@ func srv_intent(kind: String, args: Array) -> void:
 		"deallocate": abilities.deallocate(acting_pid, str(args[0]))
 		"equip": equip_toggle(acting_pid, str(args[0]))
 		"give_food": intent_give_food()
+		"stores_take": intent_stores_take(str(args[0]))
 		"journal": journal_interact(acting_pid, int(args[0]))
 		"sanctum": intent_sanctum(int(args[0]), str(args[1]), str(args[2]) if args.size() > 2 else "auto")
 		"move_work": _move_work(int(args[0]), Vector2(float(args[1]), float(args[2])))

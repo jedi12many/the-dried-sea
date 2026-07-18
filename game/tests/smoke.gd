@@ -1009,6 +1009,17 @@ func _ready() -> void:
 	check(host.village_panel.text.contains("TRADE:") and host.village_panel.text.contains("ARMS: Warrior"),
 		"the sheet shows trade and Arms detail")
 	check(host.village_panel.text.contains("THEIR WAYS"), "the sheet keeps a ways section (discovered traits only)")
+	# stores tab: [1-9] takes one unit into your pack (test-era open access)
+	host.village_stock["item-salt"] = int(host.village_stock.get("item-salt", 0)) + 2
+	var stock_before: int = host.village_stock["item-salt"]
+	var pack_before: int = host.inventory.count(1, "item-salt")
+	host.acting_pid = 1
+	host.intent_stores_take("item-salt")
+	check(int(host.village_stock.get("item-salt", 0)) == stock_before - 1, "taking from the stores debits the stock")
+	check(host.inventory.count(1, "item-salt") == pack_before + 1, "...and lands in the taker's pack")
+	host.village_tab = "stores"
+	host._render_village()
+	check(host.village_panel.text.contains("take one into your pack"), "the stores tab offers the take")
 	host.village_tab = "roster"
 	host._toggle_village(false)
 
