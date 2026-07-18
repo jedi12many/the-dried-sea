@@ -21,6 +21,7 @@ signal bloomed(tribesman_id: int)
 signal ledger_event(ledger: String, amount: float, note: String)
 signal arms_leveled(tribesman_id: int, new_level: int)
 signal arms_talent_ignited(tribesman_id: int, talent_id: String)
+signal trait_discovered(tribesman_id: int, trait_id: String)
 
 func _init(reg: Registry) -> void:
 	registry = reg
@@ -35,7 +36,7 @@ func add_tribesman(display_name: String, class_id: String, origin: String, trait
 		"faith": float(profile.get("faith", 50)),
 		"grievance": float(profile.get("grievance", 10)),
 		"susceptibility": float(profile.get("susceptibility", 30)),
-		"traits": trait_ids.duplicate(), "discovered": [],
+		"traits": trait_ids.duplicate(), "discovered": [], "notice": {},
 		"patron_god_id": patron_god_id,
 		"key": _pick_key(trait_ids), "key_met": false, "bloomed": false,
 		"expression": "steady", "warden_covered": true,
@@ -78,6 +79,17 @@ func meet_key(id: int) -> void:
 		rec.bloomed = true
 		bloomed.emit(id)
 		ledger_event.emit("shepherd", 4.0, "key met: %s" % rec.name)
+		# blooming is definitionally noticing: the trait whose keyHint opened
+		# this door is discovered on the spot — no attention math needed.
+		for tid: String in rec.traits:
+			if tid in rec.discovered:
+				continue
+			for hint: Dictionary in registry.get_entity(tid).get("keyHints", []):
+				if str(hint.get("key", "")) == rec.key:
+					rec.discovered.append(tid)
+					_notice(rec).erase(tid)
+					trait_discovered.emit(id, tid)
+					break
 
 ## --- daily drift -------------------------------------------------------------------
 ## conditions: keys into driftPerDay tables that applied to this villager today.
@@ -112,6 +124,76 @@ func end_of_day() -> void:
 		fear_days_remaining -= 1
 	if grief_days_remaining > 0:
 		grief_days_remaining -= 1
+
+## --- trait discovery (traits are discovered BY ATTENTION, never by menu) ------------------
+## Hidden per-trait progress toward noticing (`notice`: trait_id -> float days/talks),
+## lazily migrated for older records — same pattern as _arms() above. Host-only:
+## never synced, never saved to a client mirror (see net pool / world_sync).
+func _notice(rec: Dictionary) -> Dictionary:
+	if not rec.has("notice"):
+		rec["notice"] = {}
+	return rec.notice
+
+## Called once per villager per dawn by the host. contexts: "worked" (they had
+## a task today), "faith" (a chapel stands — evening rites), "road" (walked
+## with a player today — doubles every rate below, attention up close).
+## Quirks show constantly (always tick); faith ticks at half rate even absent
+## a chapel (you see them at dawn regardless); social does NOT tick from days
+## — see talk_discovery(). Returns newly-discovered trait ids.
+func discovery_day(id: int, contexts: Array = []) -> Array:
+	var rec: Dictionary = tribesmen[id]
+	var notice := _notice(rec)
+	var thresholds: Dictionary = vtune.get("discovery", {})
+	var newly: Array = []
+	for tid: String in rec.traits:
+		if tid in rec.discovered:
+			continue
+		var axis := str(registry.get_entity(tid).get("axis", ""))
+		var rate := 0.0
+		match axis:
+			"work", "talent":
+				rate = 1.0 if "worked" in contexts else 0.0
+			"faith":
+				rate = 1.0 if "faith" in contexts else 0.5
+			"quirk":
+				rate = 1.0
+			_:
+				rate = 0.0   # "social" ticks only from talk_discovery()
+		if rate <= 0.0:
+			continue
+		if "road" in contexts:
+			rate *= 2.0
+		notice[tid] = float(notice.get(tid, 0.0)) + rate
+		if float(notice[tid]) >= float(thresholds.get(axis, 5)):
+			rec.discovered.append(tid)
+			notice.erase(tid)
+			newly.append(tid)
+			trait_discovered.emit(id, tid)
+	return newly
+
+## The [E]-talk verb's discovery tick: undiscovered SOCIAL-axis traits only,
+## capped at one increment per sim-day (talking five times before breakfast
+## doesn't teach you a person five times faster). Returns newly-discovered ids.
+func talk_discovery(id: int, day: int) -> Array:
+	var rec: Dictionary = tribesmen[id]
+	var newly: Array = []
+	if int(rec.get("last_talk_day", -1)) == day:
+		return newly
+	rec["last_talk_day"] = day
+	var notice := _notice(rec)
+	var threshold := float(vtune.get("discovery", {}).get("social", 3))
+	for tid: String in rec.traits:
+		if tid in rec.discovered:
+			continue
+		if str(registry.get_entity(tid).get("axis", "")) != "social":
+			continue
+		notice[tid] = float(notice.get(tid, 0.0)) + 1.0
+		if float(notice[tid]) >= threshold:
+			rec.discovered.append(tid)
+			notice.erase(tid)
+			newly.append(tid)
+			trait_discovered.emit(id, tid)
+	return newly
 
 ## --- expression ----------------------------------------------------------------------
 func composite(id: int) -> float:

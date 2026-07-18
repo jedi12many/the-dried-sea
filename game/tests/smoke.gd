@@ -1121,6 +1121,115 @@ func _ready() -> void:
 	check(str(host5.village.tribesmen[keeper_id].equipment.weapon) == "item-driftwood-club", "...and the equipped weapon")
 	host5.queue_free()
 
+	# --- TRAIT DISCOVERY: found by attention, never a menu (dawn wiring + [E] talk) --------------
+	var dtune: Dictionary = host.village.vtune.get("discovery", {})
+
+	# work axis, driven through the REAL dawn tick (_on_sim_day) so this proves
+	# the wiring in _village_dawn (contexts built there, not just the sim math —
+	# that's covered exhaustively in the sim suite). A permanent, in-reach node
+	# guarantees they're never idle regardless of the village's stock levels.
+	var work_threshold := int(dtune.get("work", 4))
+	var watched_id := host.village.add_tribesman("Nettle", "class-reef-runner", "rescued", ["trait-industrious"], "god-halor")
+	var watched := DSVillager.new()
+	watched.host = host; watched.tribesman_id = watched_id; watched.def_class = "class-reef-runner"
+	watched.display_name = "Nettle"
+	watched.rescued = true; watched.position = host.village_heart()
+	host.add_child(watched); host.villagers.append(watched)
+	var always_wood := host._spawn_one_node("item-driftwood", host.village_heart(), -1000)
+	always_wood.set_meta("left", 9999)
+	for i in work_threshold:
+		host._on_sim_day(1000 + i)
+	check(host.village.tribesmen[watched_id].discovered.has("trait-industrious"),
+		"a working villager's work-axis trait discovers after %d dawns of real attention" % work_threshold)
+	check(host.message.contains("You've come to know Nettle") and host.message.contains("Industrious"),
+		"the dawn report names the discovery, in the house voice")
+
+	# faith axis needs the "faith" context — a chapel already stands (built
+	# earlier in this run), so it's live for everyone from here on
+	check(host.works.count_of("work-chapel") > 0, "a chapel already stands (built earlier in this run)")
+	var faith_threshold := int(dtune.get("faith", 5))
+	var devout_id := host.village.add_tribesman("Kessa", "class-brinewife", "rescued", ["trait-devout"], "god-halor")
+	var devoutv := DSVillager.new()
+	devoutv.host = host; devoutv.tribesman_id = devout_id; devoutv.def_class = "class-brinewife"
+	devoutv.display_name = "Kessa"
+	devoutv.rescued = true; devoutv.position = host.village_heart()
+	host.add_child(devoutv); host.villagers.append(devoutv)
+	for i in faith_threshold:
+		host._on_sim_day(1100 + i)
+	check(host.village.tribesmen[devout_id].discovered.has("trait-devout"),
+		"a faith-axis trait discovers on schedule once a chapel stands")
+
+	# road doubling: two otherwise-identical quirky villagers, one walked with a player
+	var quirk_threshold := int(dtune.get("quirk", 8))
+	var stayer_id := host.village.add_tribesman("Stayer", "class-salvager", "rescued", ["trait-night-owl"])
+	var roader_id := host.village.add_tribesman("Roader", "class-salvager", "rescued", ["trait-night-owl"])
+	var stayer := DSVillager.new()
+	stayer.host = host; stayer.tribesman_id = stayer_id; stayer.def_class = "class-salvager"
+	stayer.display_name = "Stayer"; stayer.rescued = true; stayer.position = host.village_heart()
+	host.add_child(stayer); host.villagers.append(stayer)
+	var roader := DSVillager.new()
+	roader.host = host; roader.tribesman_id = roader_id; roader.def_class = "class-salvager"
+	roader.display_name = "Roader"; roader.rescued = true; roader.position = host.village_heart()
+	roader.on_road = true
+	host.village.tribesmen[roader_id].on_road = true
+	host.add_child(roader); host.villagers.append(roader)
+	for i in int(ceil(float(quirk_threshold) / 2.0)):
+		host._on_sim_day(1200 + i)
+	check(host.village.tribesmen[roader_id].discovered.has("trait-night-owl"),
+		"on the road, attention doubles — a quirk discovers in half the dawns")
+	check(not host.village.tribesmen[stayer_id].discovered.has("trait-night-owl"),
+		"...while the one who stayed home is still only halfway there")
+
+	# social trait discovers via repeated [E] talks, respecting the once-per-sim-day cap
+	var social_threshold := int(dtune.get("social", 3))
+	# trait-devout picked first for the Key (its keyHint isn't a talk-bloom
+	# trigger) so [E]-talk here stays plain talk — the storyteller trait's own
+	# key ("audience-kept") IS a talk-bloom trigger and would auto-discover it
+	# via meet_key on the first word, short-circuiting the thing under test.
+	var chatty_id := host.village.add_tribesman("Bard", "class-brinewife", "rescued", ["trait-devout", "trait-storyteller"], "god-halor")
+	var bard := DSVillager.new()
+	bard.host = host; bard.tribesman_id = chatty_id; bard.def_class = "class-brinewife"
+	bard.display_name = "Bard"; bard.rescued = true; bard.position = host.village_heart()
+	host.add_child(bard); host.villagers.append(bard)
+	host.clock.day = 5000
+	for i in 10:   # ten talks on the SAME sim-day — the cap must hold to one tick
+		host.intent_talk(bard)
+	check(not host.village.tribesmen[chatty_id].discovered.has("trait-storyteller"),
+		"the once-per-day talk cap holds even across ten conversations in one day")
+	for d in range(1, social_threshold):
+		host.clock.day = 5000 + d
+		host.intent_talk(bard)
+	check(host.village.tribesmen[chatty_id].discovered.has("trait-storyteller"),
+		"a social trait discovers via repeated talks, one distinct sim-day at a time")
+	check(host.message.contains("You've come to know Bard"), "a talk-discovery messages immediately, not just at dawn")
+
+	# bloom auto-discovers the key's trait — sim-only record, no visual node needed
+	var bloom_id := host.village.add_tribesman("Bloomer", "class-brinewife", "rescued", ["trait-devout", "trait-industrious"], "god-halor")
+	host.village.meet_key(bloom_id)
+	check(host.village.tribesmen[bloom_id].discovered.has("trait-devout"), "bloom reveals the key's trait immediately")
+
+	# the character sheet renders a discovered trait's name
+	host._toggle_village(true)
+	host.village_sheet_tid = watched_id
+	host.village_tab = "sheet"
+	host._render_village()
+	check(host.village_panel.text.contains("Industrious"), "the character sheet renders a discovered trait's name")
+	host.village_tab = "roster"
+	host._toggle_village(false)
+
+	# save/load round-trips notice (hidden progress) + discovered (revealed)
+	host.save_game()
+	var host6: GameHost = load("res://scenes/main.tscn").instantiate()
+	host6.skip_autoload = true
+	host6.save_path = host.save_path
+	add_child(host6)
+	await get_tree().physics_frame
+	host6.load_game()
+	check(host6.village.tribesmen[watched_id].discovered.has("trait-industrious"), "save/load round-trips discovered traits")
+	check(float(host6.village.tribesmen[stayer_id].notice.get("trait-night-owl", -1.0)) > 0.0,
+		"...and the hidden notice progress for a trait not yet discovered")
+	host6.queue_free()
+
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)
 

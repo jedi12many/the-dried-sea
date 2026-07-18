@@ -1165,6 +1165,11 @@ func intent_talk(v: DSVillager) -> bool:
 		elif bool(rec.get("bloomed", false)):
 			line = "'Good to have somewhere to be. Thank you for that.'"
 		message = "%s: %s" % [v.display_name, line]
+	# THEIR WAYS: talking is how a social trait's tell gets noticed — an
+	# immediate message, unlike the dawn report's daily batch.
+	for tid: String in village.talk_discovery(v.tribesman_id, clock.day):
+		var tr: Dictionary = registry.get_entity(tid)
+		message += "\nYou've come to know %s: %s. %s" % [v.display_name, str(tr.get("name", "?")), str(tr.get("discovery", ""))]
 	_refresh_hud()
 	return true
 
@@ -2437,7 +2442,10 @@ func _render_villager_sheet() -> void:
 	lines.append("THEIR WAYS:")
 	var disc: Array = rec.get("discovered", [])
 	if disc.is_empty():
-		lines.append("   You haven't watched them long enough to know. Their ways show in their work — attention is how you learn a person.")
+		if _has_discovery_progress(village_sheet_tid):
+			lines.append("   You're starting to see the shape of them.")
+		else:
+			lines.append("   You haven't watched them long enough to know. Their ways show in their work — attention is how you learn a person.")
 	else:
 		for trait_id: String in disc:
 			var tr: Dictionary = registry.get_entity(str(trait_id))
@@ -2453,6 +2461,25 @@ func _render_villager_sheet() -> void:
 		lines.append("")
 		lines.append("HELD AT THE YOKE — day %d. The Wheel or the Unbinding; both are doors." % vn.days_held)
 	village_panel.text = "\n".join(lines)
+
+## Design law: never name an undiscovered trait — this only ever returns a
+## bool, never which trait or how close. `notice` is host-only (never synced),
+## so on a client mirror this reads empty and simply returns false — no hint
+## until the real record arrives, which is the correct degrade.
+func _has_discovery_progress(tid: int) -> bool:
+	var rec: Dictionary = village.tribesmen.get(tid, {})
+	var notice: Dictionary = rec.get("notice", {})
+	if notice.is_empty():
+		return false
+	var disc: Array = rec.get("discovered", [])
+	var thresholds: Dictionary = village.vtune.get("discovery", {})
+	for trait_id: String in rec.get("traits", []):
+		if trait_id in disc or not notice.has(trait_id):
+			continue
+		var axis := str(registry.get_entity(trait_id).get("axis", ""))
+		if float(notice[trait_id]) > float(thresholds.get(axis, 5)) * 0.5:
+			return true
+	return false
 
 ## The [V] panel's Arms line: "Warrior 4 — 610/625 XP  (1 talent lit)". Reads
 ## purely off the tribesman record (real or the client's mirrored fake one), so
@@ -3544,6 +3571,8 @@ func _village_dawn() -> void:
 			v.fought_defense_today = false
 	# 2. EAT + MOOD: each villager eats from the stores; hunger and neglect sour them
 	var deserters: Array[DSVillager] = []
+	var discovery_notes: Array[String] = []
+	var chapel_stands := works.count_of("work-chapel") > 0
 	for v: DSVillager in all_villagers():
 		if not v.rescued or v.tribesman_id < 0:
 			continue
@@ -3559,6 +3588,20 @@ func _village_dawn() -> void:
 		v.set_mood(str(rec.get("expression", "steady")))
 		if str(rec.get("expression", "")) == "desertion":
 			deserters.append(v)
+		# THEIR WAYS: attention accrues whether or not today went well — a
+		# scared or hungry villager is still watched, just not worked.
+		var dctx: Array = []
+		# a road day counts as a worked day for noticing: you watch them fight,
+		# carry, and hold up (or not) at arm's length all day long
+		if v.task != "" or v.on_road:
+			dctx.append("worked")
+		if chapel_stands:
+			dctx.append("faith")
+		if v.on_road:
+			dctx.append("road")
+		for tid: String in village.discovery_day(v.tribesman_id, dctx):
+			var tr: Dictionary = registry.get_entity(tid)
+			discovery_notes.append("You've come to know %s: %s. %s" % [v.display_name, str(tr.get("name", "?")), str(tr.get("discovery", ""))])
 	# 3. CONSEQUENCE: the truly neglected walk off into the flats
 	for v: DSVillager in deserters:
 		message = "%s has left the village. The flats keep what a poor camp cannot." % v.display_name
@@ -3583,6 +3626,12 @@ func _village_dawn() -> void:
 			message = "Dawn. Danger kept your people home — nothing got done. Clear the flats." + notes
 		elif dawn_notes.size() > 0:
 			message = "Dawn." + notes
+		# THEIR WAYS: a batched dawn report of anything newly noticed today —
+		# the house voice, delivered the way work lines batch above.
+		if discovery_notes.size() > 0:
+			if message == "":
+				message = "Dawn."
+			message += "\n" + "\n".join(discovery_notes)
 	if village_panel_open:
 		_toggle_village(true)
 

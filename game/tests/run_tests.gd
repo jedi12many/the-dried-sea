@@ -16,6 +16,7 @@ func _init() -> void:
 	_test_clock()
 	_test_devotion()
 	_test_village()
+	_test_trait_discovery()
 	_test_villager_arms()
 	_test_works()
 	_test_verdict()
@@ -135,6 +136,89 @@ func _test_village() -> void:
 	vil.unbind(korr)
 	check(vil.tribesmen[korr].origin == "rescued" and vil.tribesmen[korr].grievance < g_before_fear + 10.0,
 		"the Unbinding opens the kind door")
+
+## Trait discovery: traits are found BY ATTENTION (WORLD-SPEC), never a menu —
+## hidden per-trait `notice` ticks toward tuned thresholds (tuning/villagers.json
+## discovery block) and lands in `discovered`, or fires early via the Key
+## (blooming is definitionally noticing).
+func _test_trait_discovery() -> void:
+	var reg := Registry.new()
+	reg.load_all()
+	var vil := VillageSystem.new(reg)
+	var dtune: Dictionary = vil.vtune.get("discovery", {})
+
+	# work axis: ticks only on "worked" days, discovers at the tuned threshold
+	var work_threshold := int(dtune.get("work", 4))
+	var worker := vil.add_tribesman("Worker", "class-salvager", "rescued", ["trait-industrious"])
+	for i in work_threshold - 1:
+		vil.discovery_day(worker, ["worked"])
+	check(not vil.tribesmen[worker].discovered.has("trait-industrious"), "not yet — one worked dawn short of the tuned threshold")
+	vil.discovery_day(worker, ["worked"])
+	check(vil.tribesmen[worker].discovered.has("trait-industrious"), "work-axis trait discovers after %d worked dawns" % work_threshold)
+
+	# an idle day (no task at all) teaches nothing about a work trait
+	var idler := vil.add_tribesman("Idler", "class-salvager", "rescued", ["trait-industrious"])
+	for i in work_threshold + 2:
+		vil.discovery_day(idler, [])
+	check(not vil.tribesmen[idler].discovered.has("trait-industrious"), "an idle villager's work trait never ticks")
+
+	# faith axis: half rate absent a chapel, full rate once one stands — same
+	# trait, roughly twice the dawns needed without it
+	var faith_threshold: float = float(dtune.get("faith", 5))
+	var slow_pilgrim := vil.add_tribesman("Slow", "class-salvager", "rescued", ["trait-devout"])
+	for i in int(ceil(faith_threshold / 0.5)) - 1:
+		vil.discovery_day(slow_pilgrim, [])
+	check(not vil.tribesmen[slow_pilgrim].discovered.has("trait-devout"), "faith at half rate (no chapel) takes about twice as long")
+	var fast_pilgrim := vil.add_tribesman("Fast", "class-salvager", "rescued", ["trait-devout"])
+	for i in int(faith_threshold):
+		vil.discovery_day(fast_pilgrim, ["faith"])
+	check(vil.tribesmen[fast_pilgrim].discovered.has("trait-devout"), "faith at full rate (a chapel stands) discovers on schedule")
+
+	# quirk axis: ticks every day, no context required — quirks show constantly
+	var quirk_threshold := int(dtune.get("quirk", 8))
+	var quirky := vil.add_tribesman("Quirky", "class-salvager", "rescued", ["trait-night-owl"])
+	for i in quirk_threshold:
+		vil.discovery_day(quirky, [])
+	check(vil.tribesmen[quirky].discovered.has("trait-night-owl"), "quirks tick every day regardless of context")
+
+	# "road" doubles every rate: walked with a player daily, half the dawns suffice
+	var walker := vil.add_tribesman("Walker", "class-salvager", "rescued", ["trait-industrious"])
+	for i in int(ceil(float(work_threshold) / 2.0)):
+		vil.discovery_day(walker, ["worked", "road"])
+	check(vil.tribesmen[walker].discovered.has("trait-industrious"), "road doubling discovers a work trait in half the dawns")
+
+	# social axis: only from talk_discovery, capped at one increment per sim-day
+	var social_threshold := int(dtune.get("social", 3))
+	var talker := vil.add_tribesman("Talker", "class-salvager", "rescued", ["trait-storyteller"])
+	for i in 20:   # 20 talks on the SAME day — the cap must still count it once
+		vil.talk_discovery(talker, 0)
+	check(not vil.tribesmen[talker].discovered.has("trait-storyteller"), "repeated talk on one day counts once (once-per-day cap)")
+	for d in range(1, social_threshold):
+		vil.talk_discovery(talker, d)
+	check(vil.tribesmen[talker].discovered.has("trait-storyteller"), "social trait discovers after %d distinct talking days" % social_threshold)
+	# discovery_day (the dawn tick) never ticks a social trait, however busy the day
+	var quiet := vil.add_tribesman("Quiet", "class-salvager", "rescued", ["trait-storyteller"])
+	for i in 50:
+		vil.discovery_day(quiet, ["worked", "faith", "road"])
+	check(not vil.tribesmen[quiet].discovered.has("trait-storyteller"), "social traits never tick from days, however attentive")
+
+	# bloom reveals the key's trait: meeting a Key sourced from a trait's
+	# keyHints auto-discovers THAT trait on the spot, and only that one
+	var bloomer := vil.add_tribesman("Bloomer", "class-brinewife", "rescued", ["trait-devout", "trait-industrious"])
+	check(vil.tribesmen[bloomer].key == "shrine-access", "Devout's keyHint wins the Key (first trait listed)")
+	vil.meet_key(bloomer)
+	check(vil.tribesmen[bloomer].discovered.has("trait-devout"), "blooming is definitionally noticing — the key's trait is discovered")
+	check(not vil.tribesmen[bloomer].discovered.has("trait-industrious"), "...but only the trait the key came from, not the whole roster")
+
+	# save/load round-trips notice (hidden, in-progress) + discovered (revealed)
+	var partial := vil.add_tribesman("Partial", "class-salvager", "rescued", ["trait-industrious"])
+	vil.discovery_day(partial, ["worked"])   # one tick, below the threshold — must survive as hidden progress
+	var path := "user://test_save_discovery.json"
+	check(SaveSystem.write_file(path, SaveSystem.to_save(SimClock.new(), DevotionSystem.new(reg), vil, WorksSystem.new(reg, DevotionSystem.new(reg)), VerdictSystem.new(reg))), "discovery save writes")
+	var vil2 := VillageSystem.new(reg)
+	SaveSystem.apply(SaveSystem.read_file(path), SimClock.new(), DevotionSystem.new(reg), vil2, WorksSystem.new(reg, DevotionSystem.new(reg)), VerdictSystem.new(reg))
+	check(vil2.tribesmen[bloomer].discovered.has("trait-devout"), "save/load round-trips discovered traits")
+	check(float(vil2.tribesmen[partial].notice.get("trait-industrious", -1.0)) == 1.0, "...and the hidden notice progress, untouched")
 
 ## The Arms track (VILLAGER-AND-GODHEAD-SPEC Part I): the Trade feeds the
 ## village, the Arms walks the road. Levels bank per class, talents ignite at

@@ -10,6 +10,10 @@
   },
   "xpMults": { "bloomed": 1.5, "broken": 0.75, "distressedExpression": 0.5 },
   "distressedExpressions": ["slacking", "pettyTheft", "spreadingDoubt", "desertion", "darkWorship", "sabotage", "quietAscensionArc"],
+  "discovery": {
+    "$comment": "days of the right attention (or talks, for social) before a trait's tell registers — first guesses; the tell should land inside a week of attention.",
+    "work": 4, "faith": 5, "quirk": 8, "talent": 6, "social": 3
+  },
   "hpPerLevelPct": 8,
   "primaryPerLevelPct": 2,
   "baseVillagerHp": 50,
