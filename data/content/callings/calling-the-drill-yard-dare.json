@@ -22,12 +22,14 @@
       "id": "s2",
       "type": "goto",
       "text": "There's no drill-yard standing yet — just a stretch of packed salt-flat behind the workbench where the ground has been scuffed by nobody's boots in particular. Dabb points at it anyway, like he's already decided that's where this needs to happen.",
+      "params": { "near": "village", "radius": 200 },
       "next": "s3"
     },
     {
       "id": "s3",
       "type": "build",
       "text": "You and Dabb raise a proper Drill-Yard on the scuffed ground — sparring post, ring of sand, the works. He won't meet your eyes while you're building it, mutters something about how his father would've had it built in an afternoon. You take twice as long. That's fine.",
+      "params": { "workId": "work-drill-yard" },
       "next": "s4"
     },
     {

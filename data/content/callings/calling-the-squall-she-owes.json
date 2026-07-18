@@ -24,6 +24,7 @@
       "id": "s2",
       "type": "goto",
       "text": "You walk the shore-road with him to the spot he stood the night the sea left — a bootprint-shaped hollow in old salt-stone that's never quite filled in, no matter how many storms have crossed it since. Corvin won't set foot in the hollow itself. He never has.",
+      "params": { "near": "shrine-maren", "radius": 200 },
       "next": "s3"
     },
     {
@@ -47,6 +48,7 @@
       "id": "s4-stand",
       "type": "wait",
       "text": "You wait together for the sky to turn, and when the squall comes in low and mean, you stand with Corvin in the hollow while the rain finally lands on him instead of past him. He doesn't say anything after. He doesn't need to; you watch fifteen years fall out of his shoulders in about a minute.",
+      "params": { "until": "storm" },
       "next": null
     },
     {

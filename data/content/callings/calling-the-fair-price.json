@@ -22,6 +22,7 @@
       "id": "s2",
       "type": "goto",
       "text": "You go to collect the water at the still and find Iri running it well past its safe pace — the pool behind her noticeably lower than the mark her own family scratched into the stone a generation ago. She's not hiding it. She just hasn't looked at the mark in a while.",
+      "params": { "near": "brine-pool", "radius": 160 },
       "next": "s3"
     },
     {

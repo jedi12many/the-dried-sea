@@ -55,6 +55,7 @@
       "id": "s4-defer",
       "type": "goto",
       "text": "The Brinefolk accept the sealed copper as you describe it. They place it on their altar without opening it — a relic, a prayer, a promise made when the world was drowning. They will keep it. Maybe one day they will open it. Maybe the seal itself is enough.",
+      "params": { "near": "brine-pool", "radius": 160 },
       "next": "s4-end"
     },
     {

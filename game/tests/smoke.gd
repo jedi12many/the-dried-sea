@@ -967,11 +967,24 @@ func _ready() -> void:
 	check(idle_hands == 0, "idle hands feed no gods: stores full, wood near — everyone still works (%d idle)" % idle_hands)
 
 	# --- CALLINGS: the journal runtime ---------------------------------------
+	var player_pos0: Vector2 = host.player.position   # the callings tests walk; put us back after
 	host.callings.clear(); host.callings_done.clear()
 	host._active_callings(1).append({"id": "calling-the-letter-still-walking", "step": "s1"})
-	host.journal_interact(1, 0)   # s1 -> s2 (continue)
-	host.journal_interact(1, 0)   # s2 -> s3 (continue, the turn)
-	check(str(host._active_callings(1)[0].step) == "s3", "narrative steps continue; you reach the turn")
+	host.journal_interact(1, 0)   # s1: unparamed legacy collect -> free-continue (back-compat law)
+	check(str(host._active_callings(1)[0].step) == "s2", "an unparamed step still free-continues, empty-handed")
+	# s2 is a goto now (near wreck-west): far away, the journal refuses the road not walked
+	host.journal_interact(1, 0)
+	check(str(host._active_callings(1)[0].step) == "s2", "a goto step gates until you arrive")
+	check(host.message.begins_with("Not yet"), "and the refusal is a diegetic nudge (%s)" % host.message)
+	host._toggle_journal(true)
+	check(host.journal.text.contains("you are not there yet"), "the journal shows the distance in its own words")
+	check(host.journal.text.contains("(not yet) continue"), "and dims the continue line")
+	host._toggle_journal(false)
+	check(host._direction_hints().contains("your calling pulls"), "the HUD gains one bearing line for the unmet goto")
+	host.player.position = host.LANTERN_WRECK_POS   # walk the walker's route
+	host.journal_interact(1, 0)   # s2 -> s3 (arrived; the turn)
+	check(str(host._active_callings(1)[0].step) == "s3", "arrive and the same press continues; you reach the turn")
+	check(host._direction_hints().contains("your calling pulls") == false, "the bearing line rests once the step is met")
 	var shep0: float = float(host.verdict.ledgers.get(1, {}).get("shepherd", 0.0))
 	var bronze0 := host.inventory.count(1, "item-bronze-salvage")
 	host.journal_interact(1, 0)   # choose option 1 (shepherd +8) -> s4-rest epilogue
@@ -982,6 +995,84 @@ func _ready() -> void:
 	host.callings.clear()
 	host._draw_calling(1)   # the draw path runs and never returns a finished calling
 	check(host._active_callings(1).map(func(e): return str(e.id)).find("calling-the-letter-still-walking") == -1, "a finished calling never returns")
+
+	# --- CALLINGS: the verbs mean something (step params runtime) -------------
+	# collect, no consume: the pack must hold the goods; advancing keeps them
+	host.callings.clear()
+	host.inventory._inv(1).erase("item-wreck-timber")
+	host._active_callings(1).append({"id": "calling-chart-leads-deep", "step": "s2", "since_day": 0})
+	host.journal_interact(1, 0)
+	check(str(host._active_callings(1)[0].step) == "s2", "a collect step gates while the pack is light")
+	check(host.message.contains("0/2"), "the nudge counts what's in hand (%s)" % host.message)
+	host._toggle_journal(true)
+	check(host.journal.text.contains("0/2"), "the journal carries the same tally inline")
+	host._toggle_journal(false)
+	host.inventory.add(1, "item-wreck-timber", 2)
+	host.journal_interact(1, 0)
+	check(str(host._active_callings(1)[0].step) == "s3", "timber in hand, the step advances")
+	check(host.inventory.count(1, "item-wreck-timber") == 2, "and without consume:true the timber stays yours")
+	# choice steps are untouched by the params runtime: option 1 advances as ever
+	host.journal_interact(1, 0)
+	check(str(host._active_callings(1)[0].step) == "s4-shrine", "a choice step still advances by option, ungated")
+	# collect WITH consume: advancing pays the goods away (the story gives them)
+	host.callings.clear()
+	host.inventory._inv(1).erase("item-bronze-salvage")
+	host._active_callings(1).append({"id": "calling-the-rite-that-needs-stocking", "step": "s2", "since_day": 0})
+	host.journal_interact(1, 0)
+	check(str(host._active_callings(1)[0].step) == "s2", "the offering-collect gates empty-handed")
+	host.inventory.add(1, "item-bronze-salvage", 3)
+	host.journal_interact(1, 0)
+	check(str(host._active_callings(1)[0].step) == "s3", "bronze gathered, the rite-stocking advances")
+	check(host.inventory.count(1, "item-bronze-salvage") == 1, "consume:true lays the bronze out — 2 of 3 leave the pack")
+	# build: met by the work actually standing (works_system.count_of)
+	host.callings.clear()
+	host._active_callings(1).append({"id": "calling-the-cistern-tender", "step": "s3", "since_day": 0})
+	host.journal_interact(1, 0)
+	check(str(host._active_callings(1)[0].step) == "s3", "a build step gates while nothing stands")
+	check(host.message.contains("does not yet stand"), "and says so in-world (%s)" % host.message)
+	host.works.place("work-storm-cistern", 1)
+	host.journal_interact(1, 0)
+	check(str(host._active_callings(1)[0].step) == "s4", "raise the cistern and the step advances")
+	# kill: counted through the REAL kill handler, per entry, per player
+	host.callings.clear()
+	host.registry.by_id["calling-smoke-kill"] = {"id": "calling-smoke-kill", "title": "Smoke Kill",
+		"tier": "vignette", "source": "rumor", "giver": {"name": "t", "wound": "t"},
+		"steps": [{"id": "k1", "type": "kill", "text": "t",
+			"params": {"creatureId": "creature-scuttle-crab", "count": 2}, "next": null}],
+		"echo": {"text": "t"}, "status": "draft"}
+	host._active_callings(1).append({"id": "calling-smoke-kill", "step": "k1", "since_day": 0})
+	host.journal_interact(1, 0)
+	check(str(host._active_callings(1)[0].step) == "k1", "a kill step gates before any crab falls")
+	for _k in 2:
+		var quarry := DSEnemy.new()
+		quarry.position = host.player.position + Vector2(30, 0)
+		quarry.setup(host, "creature-scuttle-crab")
+		host.add_child(quarry); host.enemies.append(quarry)
+		host._on_enemy_killed(quarry)   # the real handler — the same call combat makes
+	check(int(host._active_callings(1)[0].get("counters", {}).get("k1", 0)) == 2, "the real kill handler feeds the entry's counter")
+	host.journal_interact(1, 0)
+	check("calling-smoke-kill" in host._done_callings(1), "two crabs down, the kill step completes")
+	host.registry.by_id.erase("calling-smoke-kill")
+	# wait until:"storm" — the great-storm clock is the gate
+	host.callings.clear()
+	var day0 := host.clock.day
+	host.clock.day = 4   # %4 == 0: clear skies
+	host._active_callings(1).append({"id": "calling-the-squall-she-owes", "step": "s4-stand", "since_day": 4})
+	host.journal_interact(1, 0)
+	check(str(host._active_callings(1)[0].step) == "s4-stand", "a wait:storm step holds under a clear sky")
+	check(host.message.contains("the storm has not yet come"), "and the nudge speaks weather, not timers")
+	host.clock.day = 7   # %4 == 3: THE GREAT STORM
+	host.journal_interact(1, 0)
+	check("calling-the-squall-she-owes" in host._done_callings(1), "the storm arrives and the vigil completes")
+	host.clock.day = day0
+	# the dawn announcement rides WITH the dawn report, never over it
+	host.callings.clear(); host.callings_done.clear()
+	host.message = "Dawn. The village worked."
+	host._draw_calling(1)
+	check(host.message.contains("Dawn. The village worked.") and host.message.contains("[J] to open your journal"),
+		"a new calling announces itself without eating the dawn report")
+	host.callings.clear(); host.callings_done.clear()
+	host.player.position = player_pos0
 
 	# --- THE SANCTUM: the altar is the god's character sheet -------------------
 	host.inventory.add(1, "item-salt", 30)

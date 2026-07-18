@@ -22,6 +22,7 @@
       "id": "s2",
       "type": "goto",
       "text": "You go with him to the smokehouse where his brother died, still standing, still in use, the exact hearth Guthry prayed beside for a season straight. He hasn't set foot inside it since. He wants you to see it before you decide whether to do what he's asking.",
+      "params": { "near": "village", "radius": 200 },
       "next": "s3"
     },
     {
@@ -45,6 +46,7 @@
       "id": "s4-offend",
       "type": "goto",
       "text": "You lay the crab-meat on the Altar of the Salt-Father in front of Guthry. Nothing dramatic happens — no thunder, no visible wrath — which somehow makes it worse and better at once. Guthry stands there a long moment, then finally, quietly, says his brother's name out loud for the first time in years.",
+      "params": { "near": "village", "radius": 200 },
       "next": null
     },
     {

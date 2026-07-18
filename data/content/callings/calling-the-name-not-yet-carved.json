@@ -22,12 +22,14 @@
       "id": "s2",
       "type": "collect",
       "text": "You gather salt, wreck-timber, and bronze salvage for the stone. Wick insists on carrying his share personally, even the pieces too heavy for one trip, like the weight of it is doing something the grief alone hasn't managed to.",
+      "params": { "itemId": "item-salt", "qty": 10 },
       "next": "s3"
     },
     {
       "id": "s3",
       "type": "build",
       "text": "You raise the Memorial Stone together at the village heart. When it's time to carve the first name, Wick's hand shakes so badly he can't hold the chisel straight — three days of silence, and the actual moment of writing Tam's name down is the thing that finally breaks it.",
+      "params": { "workId": "work-memorial" },
       "next": "s4"
     },
     {

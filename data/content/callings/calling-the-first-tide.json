@@ -24,6 +24,7 @@
       "id": "s2",
       "type": "goto",
       "text": "You walk with her to the beached fleet at low salt — hulls she has kept sound for three generations against a tide that never returns. She wants to stand where the water would first touch the keels, if it ever came back, and see whether the dream-rhythm matches anything real in the ground beneath her.",
+      "params": { "near": "wreck-west", "radius": 200 },
       "next": "s3"
     },
     {
@@ -36,6 +37,7 @@
       "id": "s4",
       "type": "wait",
       "text": "You and Wynn sit with the clock through a full day and night, waiting to see if it moves again on its own rhythm rather than being wound. Twice, at what should be the old high-water hours, the float shivers — faint, but real. Neris is not gone. She is keeping time in an instrument built for exactly this drought, one breath every twelve hours, patient past patience.",
+      "params": { "until": "days", "days": 1 },
       "next": "s5"
     },
     {

@@ -14,7 +14,7 @@
   },
   "steps": [
     { "id": "s1", "type": "collect", "text": "A sodden letter, found on the flats where the Drowned walk — addressed in a boy's careful hand to 'Mother, at the light.' The paper is three generations old. The ink is wet.", "next": "s2" },
-    { "id": "s2", "type": "goto", "text": "Follow the walker's route at night: from the old shore-road toward the dead lighthouse, the same twenty steps, again and again.", "next": "s3" },
+    { "id": "s2", "type": "goto", "text": "Follow the walker's route at night: from the old shore-road toward the dead lighthouse, the same twenty steps, again and again.", "params": { "near": "wreck-west", "radius": 200 }, "next": "s3" },
     {
       "id": "s3", "type": "turn",
       "text": "The Drowned man on the road is Tomas himself — the letter you carry is HIS, slipped from his coat a hundred years of walking ago. He reaches for it. What do you do with a boy who only wants to finish his errand?",

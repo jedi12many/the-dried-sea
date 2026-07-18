@@ -16,12 +16,14 @@
       "id": "s1",
       "type": "goto",
       "text": "Reef-Kin huddle in the deep groves, their skin more stone than coral now. You have heard the rumor: the Reefkin are dying of forgetting, petrified by the slow loss of the living sea. But there is a way. In the anemone-graves at the grove's edge, something still moves. A pool. A breath. The Reefkin need to remember it was alive once.",
+      "params": { "near": "brine-pool", "radius": 160 },
       "next": "s2"
     },
     {
       "id": "s2",
       "type": "collect",
       "text": "The anemone-pool is small and starved. You fill a vessel with water that still moves, still carries the salt-taste of something that was once vast and returning. The anemones pull in when you move, old fear. But they do not flee. They wait.",
+      "params": { "itemId": "item-god-water", "qty": 1, "consume": true },
       "next": "s3"
     },
     {

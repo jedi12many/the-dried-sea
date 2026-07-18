@@ -176,6 +176,17 @@ var lantern_wreck_inspected: Dictionary = {}   # pid -> bool
 var lantern_verse3_taken: Dictionary = {}      # pid -> bool
 var tide_bell_rang_today := false              # Neris's Tide-Bell: rang at 06:00 or 18:00 today
 
+# CALLINGS — the anchor registry (WORLD-SPEC "Callings", step params vocabulary):
+# stable names a goto/escort/talk step's params can name, resolved to a world
+# position at query time (some are fixed, some track dynamic state). The three
+# beached wrecks mirror _build_ground()'s layout (LANTERN_WRECK_POS is the west
+# one already); boss-ring is Old Shellback's ground from _spawn_enemies().
+const WRECK_MID_POS := Vector2(TILE * 30, TILE * 27)
+const WRECK_EAST_POS := Vector2(TILE * 38, TILE * 8)
+const BOSS_RING_POS := Vector2(TILE * 5, TILE * 5)
+const TRENCH_EDGE_POS := Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE - TILE * 1.5)  # the fixed south-deep point
+var brine_pools: Array[Vector2] = []   # tracked in _build_ground() so "brine-pool" can resolve to the nearest one
+
 # STYLE-BIBLE salt-shallows palette (placeholder blocks, right colors)
 const ITEM_COLORS := {
 	"item-driftwood": Color("a08768"), "item-wreck-timber": Color("6e5138"),
@@ -2256,6 +2267,7 @@ func _net_push_state(pid: int) -> void:
 func _on_enemy_killed(enemy: DSEnemy) -> void:
 	sfx("kill", enemy.position)
 	var creature := registry.get_entity(enemy.creature_id)
+	_calling_kill_credit(acting_pid, enemy.creature_id)   # a "kill" step's counter, if the acting player is carrying one
 	for drop: Dictionary in creature.get("drops", []):
 		var qty := int(drop.qty)
 		if enemy.creature_id == "creature-scuttle-crab" and str(drop.itemId) == "item-crab-meat":
@@ -2914,6 +2926,119 @@ func _calling_step(calling: Dictionary, step_id: String) -> Dictionary:
 			return st
 	return {}
 
+## Resolve a named anchor (calling.schema.json params $comment) to a world
+## position. Fixed anchors are literal; "village" and "brine-pool" track
+## dynamic/nearest state. Returns Vector2.INF for anything unresolved (an
+## unparamed step, or a name outside the documented list).
+func _calling_anchor_pos(anchor_name: String) -> Vector2:
+	match anchor_name:
+		"shrine-halor", "shrine-maren", "shrine-neris":
+			var god_id := "god-" + anchor_name.substr(7)
+			for s in shrines:
+				if str(s.get_meta("god_id", "")) == god_id:
+					return s.position
+			return Vector2.INF
+		"wreck-west": return LANTERN_WRECK_POS
+		"wreck-mid": return WRECK_MID_POS
+		"wreck-east": return WRECK_EAST_POS
+		"boss-ring": return BOSS_RING_POS
+		"village": return village_heart()
+		"brine-pool": return _nearest_brine_pool(acting_pos())
+		"trench-edge": return TRENCH_EDGE_POS
+		_: return Vector2.INF
+
+func _nearest_brine_pool(from: Vector2) -> Vector2:
+	var best := Vector2.INF
+	var best_d := INF
+	for p: Vector2 in brine_pools:
+		var d := from.distance_to(p)
+		if d < best_d:
+			best_d = d
+			best = p
+	return best
+
+## Is a parametered step's real-world condition satisfied? Steps with no
+## params are always met (back-compat: old saves and unparamed steps keep
+## free-continuing). `progress` is the diegetic tail shown in the journal and
+## the unmet nudge — no percentages, no checkboxes (WORLD-SPEC "Callings").
+func _step_met(pid: int, entry: Dictionary, step: Dictionary) -> Dictionary:
+	var params: Dictionary = step.get("params", {})
+	if params.is_empty():
+		return {"met": true, "progress": ""}
+	var t := str(step.get("type", ""))
+	match t:
+		"collect", "turn":
+			if not params.has("itemId"):
+				return {"met": true, "progress": ""}
+			var item_id := str(params.itemId)
+			var qty := int(params.get("qty", 1))
+			var have := inventory.count(pid, item_id)
+			var iname := str(registry.get_entity(item_id).get("name", item_id)).to_lower()
+			return {"met": have >= qty, "progress": "%d/%d %s in hand" % [mini(have, qty), qty, iname]}
+		"kill":
+			var creature_id := str(params.get("creatureId", ""))
+			var count := int(params.get("count", 1))
+			var counters: Dictionary = entry.get("counters", {})
+			var have_k := int(counters.get(str(step.id), 0))
+			var cname := str(registry.get_entity(creature_id).get("name", creature_id))
+			return {"met": have_k >= count, "progress": "%d/%d %s down" % [mini(have_k, count), count, cname]}
+		"build":
+			var work_id := str(params.get("workId", ""))
+			var wname := str(registry.get_entity(work_id).get("name", work_id)).to_lower()
+			var built := works.count_of(work_id) > 0
+			return {"met": built, "progress": ("%s stands" % wname) if built else ("the %s does not yet stand" % wname)}
+		"wait":
+			var until := str(params.get("until", ""))
+			if until == "storm":
+				var here := is_storm_day()
+				return {"met": here, "progress": "the storm is here" if here else "the storm has not yet come"}
+			elif until == "storm-end":
+				var passed := clock.day % 4 == 0
+				return {"met": passed, "progress": "the storm has passed" if passed else "the storm has not yet passed"}
+			elif until == "days":
+				var need := int(params.get("days", 1))
+				var since := int(entry.get("since_day", clock.day))
+				var elapsed := maxi(0, clock.day - since)
+				return {"met": elapsed >= need, "progress": "%d/%d days kept" % [mini(elapsed, need), need]}
+			return {"met": true, "progress": ""}
+		"goto", "escort", "talk":
+			var near := str(params.get("near", params.get("at", "")))
+			if near == "":
+				return {"met": true, "progress": ""}
+			var target := _calling_anchor_pos(near)
+			if target == Vector2.INF:
+				return {"met": true, "progress": ""}   # the anchor doesn't exist in this build yet — don't gate on it
+			var default_r := CAMP_RADIUS if t == "talk" else 160.0
+			var radius := float(params.get("radius", default_r))
+			var met := acting_pos().distance_to(target) <= radius
+			return {"met": met, "progress": "you have arrived" if met else "you are not there yet"}
+		_:
+			return {"met": true, "progress": ""}
+
+## Pay a met step's params, when it says to (collect/turn with consume:true —
+## the goods really do leave your pack: laid on an altar, spent on a build).
+func _apply_step_params(pid: int, step: Dictionary) -> void:
+	var params: Dictionary = step.get("params", {})
+	var t := str(step.get("type", ""))
+	if (t == "collect" or t == "turn") and bool(params.get("consume", false)) and params.has("itemId"):
+		inventory.pay(pid, [{"itemId": str(params.itemId), "qty": int(params.get("qty", 1))}])
+
+## Kill credit for a "kill" step: called from the real kill handler
+## (_on_enemy_killed), never faked. The counter rides on the entry dict, which
+## already syncs per-pid over cl_player_state — no new net plumbing needed.
+func _calling_kill_credit(pid: int, creature_id: String) -> void:
+	for entry: Dictionary in _active_callings(pid):
+		var calling := registry.get_entity(str(entry.id))
+		var step := _calling_step(calling, str(entry.step))
+		if str(step.get("type", "")) != "kill":
+			continue
+		var params: Dictionary = step.get("params", {})
+		if params.is_empty() or str(params.get("creatureId", "")) != creature_id:
+			continue
+		var counters: Dictionary = entry.get("counters", {})
+		counters[str(step.id)] = int(counters.get(str(step.id), 0)) + 1
+		entry["counters"] = counters
+
 ## Is this calling eligible to arrive for this player right now?
 func _calling_eligible(pid: int, c: Dictionary) -> bool:
 	var cid := str(c.id)
@@ -2960,12 +3085,16 @@ func _draw_calling(pid: int) -> bool:
 		if roll <= 0.0:
 			pick = pool[i]
 			break
-	_active_callings(pid).append({"id": str(pick.id), "step": str(pick.steps[0].id)})
+	_active_callings(pid).append({"id": str(pick.id), "step": str(pick.steps[0].id), "since_day": clock.day})
 	var how := {"god-dream": "A dream comes to you", "dead-letter": "You find a letter on the flats",
 		"tribesman": "One of your people asks something of you", "rumor": "A rumor reaches you",
 		"chart": "An old sea-chart leads somewhere"}.get(str(pick.get("source", "")), "Something calls")
 	if pid == my_pid:
-		message = "%s — \"%s\". [J] to open your journal." % [how, str(pick.title)]
+		# A calling finds you: announce it even on a day the dawn report already
+		# has something to say (append, never clobber — Jeff lost the village's
+		# dawn-work summary to this exact overwrite before).
+		var draw_msg := "%s — \"%s\". [J] to open your journal." % [how, str(pick.title)]
+		message = (message + "\n" + draw_msg) if message != "" else draw_msg
 		sfx("kneel")
 	return true
 
@@ -2989,11 +3118,23 @@ func journal_interact(pid: int, i: int) -> void:
 			verdict.record(pid, str(led.ledger), float(led.amount), str(led.get("note", "")), clock.day)
 		next_id = str(opt.get("next", ""))
 	else:
+		# a parametered step (goto/collect/build/kill/wait/escort/talk with real
+		# params) refuses to advance until its real-world condition is met —
+		# choice/turn-with-options steps never reach this branch, so they're
+		# unaffected, and a step with NO params is met trivially (back-compat).
+		var sm := _step_met(pid, entry, step)
+		if not sm.met:
+			# unconditional, like every other intent's report — on a listen
+			# server this is what rides cl_player_state home to the client
+			message = "Not yet — (%s)" % sm.progress
+			return
+		_apply_step_params(pid, step)
 		next_id = str(step.get("next", ""))
 	if next_id == "" or _calling_step(calling, next_id).is_empty():
 		_complete_calling(pid, entry, calling)
 	else:
 		entry.step = next_id
+		entry.since_day = clock.day   # fresh clock for the new step's own wait:days, if any
 	if journal_open:
 		_toggle_journal(true)
 	_refresh_hud()
@@ -3033,11 +3174,17 @@ func _toggle_journal(open: bool) -> void:
 		lines.append("  %s — %s" % [str(giver.get("name", "")), str(giver.get("wound", ""))])
 		lines.append("")
 		lines.append(str(step.get("text", "")))
+		var has_params: bool = not (step.get("params", {}) as Dictionary).is_empty()
+		var sm := _step_met(my_pid, entry, step) if has_params else {"met": true, "progress": ""}
+		if has_params and str(sm.progress) != "":
+			lines.append("· %s ·" % str(sm.progress))
 		lines.append("")
 		var options: Array = step.get("options", [])
 		if options.size() > 0:
 			for i in options.size():
 				lines.append("  %d. %s" % [i + 1, str(options[i].text)])
+		elif has_params and not bool(sm.met):
+			lines.append("  1. (not yet) continue")
 		else:
 			lines.append("  1. continue")
 		if active.size() > 1:
@@ -3459,6 +3606,7 @@ func _build_ground() -> void:
 		add_child(flat)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
+	brine_pools.clear()
 	for i in 40:  # salt pillars + brine pools: the flats aren't flat
 		var pillar := rng.randf() < 0.5
 		var deco := SpriteKit.sprite("salt_pillar" if pillar else "brine_pool",
@@ -3467,8 +3615,10 @@ func _build_ground() -> void:
 		deco.position = Vector2(rng.randi_range(16, WORLD.x * TILE - 16), rng.randi_range(16, WORLD.y * TILE - 16))
 		deco.z_index = -9
 		add_child(deco)
+		if not pillar:
+			brine_pools.append(deco.position)   # so calling params can send you to "the nearest brine pool"
 	# the dead fleet: beached wrecks, the bones of the coast towns
-	for pos: Vector2 in [Vector2(TILE * 10, TILE * 26), Vector2(TILE * 38, TILE * 8), Vector2(TILE * 30, TILE * 27)]:
+	for pos: Vector2 in [LANTERN_WRECK_POS, WRECK_EAST_POS, WRECK_MID_POS]:
 		var wreck := SpriteKit.sprite("wreck", Vector2(60, 40), Color("6e5138"))
 		wreck.position = pos
 		wreck.z_index = -8
@@ -4297,7 +4447,7 @@ func _spawn_enemies() -> void:
 		enemies.append(raider)
 	# Old Shellback guards the northwest wreck-ring. The first name you learn to fear.
 	var boss := DSEnemy.new()
-	boss.position = Vector2(TILE * 5.0, TILE * 5.0)
+	boss.position = BOSS_RING_POS
 	boss.setup(self, "creature-old-shellback")
 	boss.add_child(_world_label("Old Shellback", Vector2(0, 22)))
 	add_child(boss)
@@ -4628,7 +4778,31 @@ func _direction_hints() -> String:
 	var verses := inventory.count(acting_pid, "item-harpoon-verse")
 	if verses > 0 and verses < 3:
 		bits.append("the harpoon-song: %d/3 verses" % verses)
+	var calling_bearing := _calling_bearing_hint()
+	if calling_bearing != "":
+		bits.append(calling_bearing)
 	return "  |  " + ";  ".join(bits) if bits.size() > 0 else ""
+
+## Only the FIRST active calling, and only when its current step is an
+## unmet goto/escort — a quiet pull toward the next real place, same grammar
+## as the shrine hints above.
+func _calling_bearing_hint() -> String:
+	var active := _active_callings(my_pid)
+	if active.is_empty():
+		return ""
+	var entry: Dictionary = active[0]
+	var calling := registry.get_entity(str(entry.id))
+	var step := _calling_step(calling, str(entry.step))
+	var t := str(step.get("type", ""))
+	if t != "goto" and t != "escort":
+		return ""
+	var params: Dictionary = step.get("params", {})
+	if params.is_empty():
+		return ""
+	var target := _calling_anchor_pos(str(params.get("near", "")))
+	if target == Vector2.INF or _step_met(my_pid, entry, step).met:
+		return ""
+	return "your calling pulls %s" % _bearing(target)
 
 ## Nearest un-subdued raider — the convertible kind — so the HUD can point you
 ## to one to beat down and yoke. Ignores raiders already on their knees.
@@ -4832,6 +5006,12 @@ func srv_intent(kind: String, args: Array) -> void:
 		# has no deterministic timing to assert against; this calls the exact
 		# same damage_player() path an enemy hit does, self-targeted only.
 		"test_die": damage_player(999999.0, acting_pid)
+		# test hook (net_smoke.gd): seed a calling at a given step for the
+		# sender, so the wire test can exercise the REAL journal gate without
+		# waiting for a lucky dawn draw — the runtime path from here on
+		# (journal intent -> _step_met -> advance/nudge) is entirely real.
+		"test_calling": _active_callings(acting_pid).append(
+			{"id": str(args[0]), "step": str(args[1]), "since_day": clock.day})
 	rpc_id(peer_id, "cl_player_state", _player_state(acting_pid))
 	rpc("cl_world_sync", _world_sync())
 

@@ -146,4 +146,47 @@ func _ready() -> void:
 		waited += 0.2
 	check(host.message.contains("DARK TAKES YOU") and host.message.contains("UR-NOTH"), "a client's own death gets the Waker's ledger line over the wire")
 
+	# 9. CALLINGS step params over the wire: a client's collect step gates
+	# server-side (the authoritative pack is light), then advances once the
+	# client has really harvested the goods. Seeded via the test_calling hook;
+	# everything after it is the live runtime path.
+	host.rpc_id(1, "srv_intent", "test_calling", ["calling-chart-leads-deep", "s2"])
+	waited = 0.0
+	while (host.callings.get(host.my_pid, []) as Array).is_empty() and waited < 6.0:
+		await get_tree().create_timer(0.2).timeout
+		waited += 0.2
+	check(not (host.callings.get(host.my_pid, []) as Array).is_empty(), "the seeded calling mirrors to the client journal")
+	host.rpc_id(1, "srv_intent", "journal", [0])   # press continue, empty-handed
+	waited = 0.0
+	while not host.message.begins_with("Not yet") and waited < 6.0:
+		await get_tree().create_timer(0.2).timeout
+		waited += 0.2
+	check(host.message.begins_with("Not yet") and host.message.contains("0/2"), "the server refuses the light-packed continue with a nudge (%s)" % host.message)
+	# cut two timber across the wire — worked swing by swing, like any player
+	var timber: Area2D = null
+	for n in host.resource_nodes:
+		if is_instance_valid(n) and str(n.get_meta("item_id")) == "item-wreck-timber":
+			timber = n
+			break
+	check(timber != null, "the deterministic world grew a timber stand here")
+	if timber != null:
+		host.player.position = timber.position
+		await get_tree().create_timer(0.6).timeout   # let the position stream catch up
+		waited = 0.0
+		while host.inventory.count(host.my_pid, "item-wreck-timber") < 2 and waited < 8.0:
+			host.intent_interact()
+			await get_tree().create_timer(0.4).timeout
+			waited += 0.4
+		check(host.inventory.count(host.my_pid, "item-wreck-timber") >= 2, "timber cut over the wire (×%d)" % host.inventory.count(host.my_pid, "item-wreck-timber"))
+	host.rpc_id(1, "srv_intent", "journal", [0])   # the same press, goods in hand
+	waited = 0.0
+	while waited < 6.0:
+		var mirror: Array = host.callings.get(host.my_pid, [])
+		if not mirror.is_empty() and str((mirror[0] as Dictionary).get("step", "")) == "s3":
+			break
+		await get_tree().create_timer(0.2).timeout
+		waited += 0.2
+	var adv: Array = host.callings.get(host.my_pid, [])
+	check(not adv.is_empty() and str((adv[0] as Dictionary).get("step", "")) == "s3", "goods in hand, the step advances and the new step mirrors home")
+
 	_finish()

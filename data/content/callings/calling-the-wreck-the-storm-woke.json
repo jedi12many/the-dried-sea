@@ -16,12 +16,14 @@
       "id": "s1",
       "type": "goto",
       "text": "The chart surfaces in a salvage-crate after the last great storm, its ink still sharp under decades of wax sealing. One wreck is marked with Rook's underlined warning — 'safe only in stillness' — and a fresh gap in the flats nearby shows the storm has finally torn open the ground that used to bury it.",
+      "params": { "near": "wreck-east", "radius": 200 },
       "next": "s2"
     },
     {
       "id": "s2",
       "type": "collect",
       "text": "You reach the exposed wreck: an old storm-hunter's vessel, hull split along an old strike-scar, its hold spilled open onto the salt. Inside, lashed down against exactly this kind of exposure, are crates of storm-glass, still catching light like the lightning that made them is somehow still inside.",
+      "params": { "itemId": "item-storm-glass", "qty": 2 },
       "next": "s3"
     },
     {
@@ -51,6 +53,7 @@
       "id": "s4-strip",
       "type": "collect",
       "text": "You strip the wreck to the ribs — timber, fittings, every last shard of glass. It's a good haul. The flats feel a little more ordinary afterward, the warning stripped away along with everything else worth taking.",
+      "params": { "itemId": "item-wreck-timber", "qty": 3 },
       "next": null
     }
   ],

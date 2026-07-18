@@ -22,12 +22,14 @@
       "id": "s2",
       "type": "collect",
       "text": "You gather what Neris craves — bronze salvage and a proper salt-votive — from the workbench and the salvage stores, enough to make the offertory more than a token gesture. Fara insists on carrying the heaviest piece herself, even after a decade of grief she's clearly decided this year gets done with her own hands.",
+      "params": { "itemId": "item-bronze-salvage", "qty": 2, "consume": true },
       "next": "s3"
     },
     {
       "id": "s3",
       "type": "build",
       "text": "You help her lay the offerings at the Altar of the Tide-Keeper — the bronze, the votive, arranged with a care that has nothing to do with maximizing Splendor and everything to do with a decade of private ritual finally becoming a public one. The altar accepts it the way altars do: quietly, and completely.",
+      "params": { "workId": "work-altar-neris" },
       "next": "s4"
     },
     {

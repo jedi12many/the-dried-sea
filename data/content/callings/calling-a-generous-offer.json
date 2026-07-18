@@ -22,6 +22,7 @@
       "id": "s2",
       "type": "goto",
       "text": "He walks you to where he learned it — not a book, not a wreck manifest, but a quiet spot behind the chapel where he's taken to sitting with the Unlit congregant everyone assumes someone else invited. The recipe, it turns out, came from there, offered the same easy, reasonable way Ness is now offering it to you.",
+      "params": { "near": "village", "radius": 180 },
       "next": "s3"
     },
     {

@@ -22,6 +22,7 @@
       "id": "s2",
       "type": "goto",
       "text": "You check his story at the raider camp's old ground, a day's walk out — abandoned, exactly as described, its still cracked clean through with dried salt-creep. Whatever else Bren is, he isn't lying about why.",
+      "params": { "near": "trench-edge", "radius": 200 },
       "next": "s3"
     },
     {
@@ -45,12 +46,14 @@
       "id": "s4-unbind",
       "type": "wait",
       "text": "You feed Bren properly, grant him shrine access, and wait out the season the rite requires under steady warden watch. He works the whole time without needing to be told twice — a man used to hard labor for a reason he believes in. When the Unbinding finally takes, he asks, first, whether the village can spare enough to send relief to his old camp. It's the same request he opened with, months on, unchanged.",
+      "params": { "until": "days", "days": 3 },
       "next": "s5-unbind"
     },
     {
       "id": "s4-wheel",
       "type": "build",
       "text": "You raise the Salt-Wheel and put Bren to it. He grinds fast and well, obedient the way the Broken always are — dim, productive, no more talking. Priests passing the wheel mutter under their breath and don't stay long. Nobody asks what happened to the camp he mentioned.",
+      "params": { "workId": "work-salt-wheel" },
       "next": null
     },
     {

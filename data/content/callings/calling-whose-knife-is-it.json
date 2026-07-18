@@ -22,6 +22,7 @@
       "id": "s2",
       "type": "goto",
       "text": "You check the open stores' shelf where the knife should sit. It's not there. Neither is a hide-scraper, a coil of rope, or half the smokehouse's spare salt — all perfectly normal, all borrowed by name in the stores' log, which Nib has apparently never once checked.",
+      "params": { "near": "village", "radius": 200 },
       "next": "s3"
     },
     {

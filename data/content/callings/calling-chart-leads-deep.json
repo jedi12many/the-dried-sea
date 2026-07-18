@@ -12,12 +12,14 @@
       "id": "s1",
       "type": "goto",
       "text": "The chart shows an inlet you have walked past a hundred times — you thought it was a dead-water pool, brine and nothing. But the chart marks it different: there is a sounding here, a deep place that does not match the shoals above. Below the symbol for depth, a single word: 'Waiting.'",
+      "params": { "near": "brine-pool", "radius": 160 },
       "next": "s2"
     },
     {
       "id": "s2",
       "type": "collect",
       "text": "You dive the inlet at slack tide. There is wreck-timber, ancient and soft. Brass fittings from a ship built in the god-age, before any living person's grandfather was born. And beneath it, something that glints — not bronze, not copper, but a metal that catches light like held breath. The chart was right. Someone wanted this deep enough that they drowned to keep the secret.",
+      "params": { "itemId": "item-wreck-timber", "qty": 2 },
       "next": "s3"
     },
     {

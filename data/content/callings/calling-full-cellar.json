@@ -24,6 +24,7 @@
       "id": "s2",
       "type": "goto",
       "text": "Her ledger has a name circled twice in red: Fenn Odar, marked for removal from the ration line next tally — 'produces less than he eats,' in her mother's exact handwriting, copied down like scripture. You go to find him before Petra's schedule does.",
+      "params": { "near": "village", "radius": 200 },
       "next": "s3"
     },
     {

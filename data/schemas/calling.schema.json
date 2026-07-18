@@ -41,7 +41,10 @@
           "id": { "type": "string" },
           "type": { "enum": ["goto", "collect", "talk", "kill", "build", "escort", "wait", "choice", "turn"] },
           "text": { "type": "string", "$comment": "law 4: the story clothing on the verb — required, and lint rejects bare counters" },
-          "params": { "type": "object" },
+          "params": {
+            "type": "object",
+            "$comment": "The step's real-world condition (validate.mjs enforces this vocabulary; steps with NO params free-continue — back-compat law). By type: goto/escort {near: <anchor>, radius?: px} — the player must stand within radius of the anchor; collect {itemId, qty, consume?: bool} — met when the pack holds qty (consume:true pays the items on advance — the story gives them away); kill {creatureId, count} — per-entry counter fed by the real kill handler; build {workId} — met when one stands; wait {until: 'storm'|'storm-end'|'days', days?: n} — storm rides the great-storm clock, days counts sim-days from step entry; talk {at: <anchor>, radius?: px} — stand where the conversation happens (the named person stays narrative); turn without options may carry collect-shaped params (a toll paid to proceed); choice takes NO params. Anchors (main.gd _calling_anchor_pos): shrine-halor, shrine-maren, shrine-neris, wreck-west, wreck-mid, wreck-east, boss-ring, village, brine-pool, trench-edge."
+          },
           "next": { "type": "string", "description": "next step id; omit on terminal steps" },
           "options": {
             "type": "array",

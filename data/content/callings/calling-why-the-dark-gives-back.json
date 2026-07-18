@@ -22,6 +22,7 @@
       "id": "s2",
       "type": "goto",
       "text": "You walk her watch route at night, the same twenty low places where the Drowned surface, marking which graves along the shore-road are freshly disturbed. Three of them, all laid to rest within the last season, show the same thing: shallow, fresh footprints leading away from ground that should be settled.",
+      "params": { "near": "brine-pool", "radius": 160 },
       "next": "s3"
     },
     {

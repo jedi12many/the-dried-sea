@@ -22,6 +22,7 @@
       "id": "s2",
       "type": "goto",
       "text": "She leads you to a stretch of shallows she's avoided since she washed up — the exact water her crew went down in. She knows it holds something: a strongbox from the dive that killed them, never recovered because no one who survived could bear to go back for it.",
+      "params": { "near": "brine-pool", "radius": 160 },
       "next": "s3"
     },
     {

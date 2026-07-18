@@ -22,12 +22,14 @@
       "id": "s2",
       "type": "wait",
       "text": "You wait out the storm together at the gate, watching lightning walk the flats in long white strides, Petch counting strikes under her breath the way her father used to. The storm breaks harder than either of you expected — twice the usual span of a great storm — and by the time the wind drops, the sky is a color neither of you has words for.",
+      "params": { "until": "storm" },
       "next": "s3"
     },
     {
       "id": "s3",
       "type": "collect",
       "text": "You go out into the still-smoking flats and gather storm-glass by the fused strike-scars — warm to the touch, oddly heavy for their size, more of it than either of you has ever seen from a single storm. Petch works fast and quiet, filling a satchel she clearly reserves only for the best hauls.",
+      "params": { "itemId": "item-storm-glass", "qty": 2 },
       "next": "s4"
     },
     {

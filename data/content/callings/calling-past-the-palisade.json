@@ -45,6 +45,7 @@
       "id": "s4-further",
       "type": "goto",
       "text": "You walk her all the way to the beached fleet and back, in one long afternoon. She doesn't say much. When you reach the gate again, she touches the palisade wood on the way through like she's saying goodbye to it, not thanking it.",
+      "params": { "near": "wreck-mid", "radius": 200 },
       "next": null
     },
     {

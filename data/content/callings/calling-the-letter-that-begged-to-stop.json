@@ -22,6 +22,7 @@
       "id": "s2",
       "type": "goto",
       "text": "The letter names a specific ledge in the shallows where Hollis dove the ninth time — deep enough to be trench-adjacent, the kind of water salvagers only try once. You go to see it for yourself: nothing marks it as special except a stillness in the brine that doesn't match the current anywhere nearby.",
+      "params": { "near": "trench-edge", "radius": 200 },
       "next": "s3"
     },
     {

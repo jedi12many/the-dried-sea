@@ -12,6 +12,7 @@
       "id": "s1",
       "type": "goto",
       "text": "Taje shows you a marked wreck-chart. The ship is deep in the reef-wood, tangled. Taje needs someone to dive and retrieve a chest Miran talked about before the drowning — 'books, maybe, or copper, or prayers.' Miran was not clear. Taje was not listening as hard as she should have.",
+      "params": { "near": "wreck-east", "radius": 200 },
       "next": "s2"
     },
     {

@@ -194,6 +194,57 @@ for (const { file, obj } of entities) {
       if (s.next && !stepIds.has(s.next)) err(file, `${c.id}/${s.id} next -> unknown step '${s.next}'`);
       for (const o of s.options ?? []) if (o.next && !stepIds.has(o.next)) err(file, `${c.id}/${s.id} option -> unknown step '${o.next}'`);
     }
+    // ---- step params vocabulary (calling.schema.json params $comment) --------
+    // The runtime (main.gd _step_met) enforces these at play; the validator
+    // enforces them at authoring time so a typo'd key or anchor never ships.
+    const ANCHORS = new Set(["shrine-halor", "shrine-maren", "shrine-neris",
+      "wreck-west", "wreck-mid", "wreck-east", "boss-ring", "village", "brine-pool", "trench-edge"]);
+    const PARAM_KEYS = {
+      goto: ["near", "radius"], escort: ["near", "radius"], talk: ["at", "radius"],
+      collect: ["itemId", "qty", "consume"], turn: ["itemId", "qty", "consume"],
+      kill: ["creatureId", "count"], build: ["workId"], wait: ["until", "days"],
+    };
+    for (const s of c.steps ?? []) {
+      const p = s.params;
+      if (p === undefined) continue;
+      const where = `${c.id}/${s.id}`;
+      if (s.type === "choice") { err(file, `${where} choice steps take no params`); continue; }
+      const allowed = PARAM_KEYS[s.type];
+      if (!allowed) { err(file, `${where} type '${s.type}' takes no params`); continue; }
+      for (const k of Object.keys(p))
+        if (!allowed.includes(k)) err(file, `${where} params has unknown key '${k}' for type '${s.type}' (allowed: ${allowed.join(", ")})`);
+      if (s.type === "goto" || s.type === "escort") {
+        if (!p.near) err(file, `${where} ${s.type} params need 'near'`);
+        else if (!ANCHORS.has(p.near)) err(file, `${where} unknown anchor '${p.near}' (documented list: ${[...ANCHORS].join(", ")})`);
+      }
+      if (s.type === "talk") {
+        if (!p.at) err(file, `${where} talk params need 'at'`);
+        else if (!ANCHORS.has(p.at)) err(file, `${where} unknown anchor '${p.at}'`);
+      }
+      if (typeof p.radius === "number" && (p.radius < 60 || p.radius > 400))
+        warn(file, `${where} radius ${p.radius}px is outside the sane 60-400 band`);
+      if (s.type === "collect" || s.type === "turn") {
+        if (!p.itemId) err(file, `${where} ${s.type} params need 'itemId'`);
+        else ref(file, c.id, p.itemId, `${s.id} params.itemId`);
+        if (!(Number.isInteger(p.qty) && p.qty >= 1)) err(file, `${where} params.qty must be an integer >= 1`);
+        if (s.type === "turn" && (s.options?.length ?? 0) > 0)
+          err(file, `${where} a turn with options never evaluates params — drop one or the other`);
+      }
+      if (s.type === "kill") {
+        if (!p.creatureId) err(file, `${where} kill params need 'creatureId'`);
+        else ref(file, c.id, p.creatureId, `${s.id} params.creatureId`);
+        if (!(Number.isInteger(p.count) && p.count >= 1)) err(file, `${where} params.count must be an integer >= 1`);
+      }
+      if (s.type === "build") {
+        if (!p.workId) err(file, `${where} build params need 'workId'`);
+        else ref(file, c.id, p.workId, `${s.id} params.workId`);
+      }
+      if (s.type === "wait") {
+        if (!["storm", "storm-end", "days"].includes(p.until)) err(file, `${where} wait params.until must be 'storm', 'storm-end' or 'days'`);
+        if (p.until === "days" && !(Number.isInteger(p.days) && p.days >= 1)) err(file, `${where} wait until:'days' needs integer params.days >= 1`);
+        if (p.until !== "days" && p.days !== undefined) err(file, `${where} params.days only belongs with until:'days'`);
+      }
+    }
   }
 }
 

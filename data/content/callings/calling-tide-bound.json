@@ -17,6 +17,7 @@
       "id": "s1",
       "type": "goto",
       "text": "Kess sits at the reef's edge where she hung bells from coral once, reading the tide in the wind. She asks you to check the old tide-stones upslope — markers carved in the Withdrawal's first year, meant to record the final pull of water as it left. No one has looked at them since.",
+      "params": { "near": "shrine-neris", "radius": 200 },
       "next": "s2"
     },
     {
@@ -56,6 +57,7 @@
       "id": "s5-restore",
       "type": "build",
       "text": "You and Kess hang the count-stone on the old bell-frame. The rope is new; the stone is old. When you step back, Kess rings a fist against it — not like a bell, more like a prayer you can hear. The sound is not right, but it is hers.",
+      "params": { "workId": "work-tide-bell" },
       "next": null
     },
     {

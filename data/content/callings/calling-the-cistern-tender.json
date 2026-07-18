@@ -16,18 +16,21 @@
       "id": "s1",
       "type": "talk",
       "text": "Sten meets you at the pool's edge, water level noticeably lower than the mark he scratched into the stone last season. 'The sky's taking more than it used to,' he says. 'Every clear day steals a little.' He wants help building a proper cover before the pool loses another season to open air — the Brinefolk have survived worse, but never with this few pools left to lose.",
+      "params": { "at": "brine-pool", "radius": 160 },
       "next": "s2"
     },
     {
       "id": "s2",
       "type": "goto",
       "text": "You gather wreck-timber and ship-cloth from the flats — enough to frame a real covered cistern, not the driftwood lean-to Sten's been patching every storm season. He watches every board go down like it's a promise being kept.",
+      "params": { "near": "wreck-mid", "radius": 200 },
       "next": "s3"
     },
     {
       "id": "s3",
       "type": "build",
       "text": "You raise the covered cistern together over the pool, sealing the frame so the water stops giving itself to the sky. Sten checks the seams three times before he'll believe it's done. When the first evening passes without the level dropping, he doesn't say anything — he just sits by it a while, the way you'd sit with someone recovering.",
+      "params": { "workId": "work-storm-cistern" },
       "next": "s4"
     },
     {
