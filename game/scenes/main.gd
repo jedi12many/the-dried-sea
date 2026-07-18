@@ -85,7 +85,8 @@ var villagers: Array[DSVillager] = []  # additional rescued/stranded survivors
 var village_stock: Dictionary = {}     # the shared storehouse: item_id -> qty
 var village_panel: Label
 var village_panel_open := false
-var village_tab := "roster"   # "roster" | "stores" — [TAB] switches while the panel is open
+var village_tab := "roster"   # "roster" | "stores" | "sheet" — [TAB] cycles, [1-9] opens a sheet
+var village_sheet_tid := -1   # whose character sheet the "sheet" tab shows
 var _villager_nid := 100
 
 # THE DRILL-YARD (VILLAGER-AND-GODHEAD-SPEC Part I §1): train a villager's Arms class
@@ -727,8 +728,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if vkey == KEY_TAB:
 			sfx("ui")
+			# from the sheet, TAB goes home to the roster; otherwise it flips roster/stores
 			village_tab = "stores" if village_tab == "roster" else "roster"
 			_render_village()
+			return
+		# [1-9] on the roster: open that villager's character sheet
+		if vkey >= KEY_1 and vkey <= KEY_9 and village_tab == "roster":
+			var vroster := all_villagers().filter(func(x: DSVillager) -> bool: return x.rescued and x.tribesman_id >= 0)
+			var vidx := int(vkey - KEY_1)
+			if vidx < vroster.size():
+				sfx("ui")
+				village_sheet_tid = (vroster[vidx] as DSVillager).tribesman_id
+				village_tab = "sheet"
+				_render_village()
 			return
 	if doll_open and event is InputEventKey and event.pressed:
 		var dkey := (event as InputEventKey).physical_keycode
@@ -2348,13 +2360,99 @@ func _render_village() -> void:
 	var m: Dictionary = modals.get("village", {})
 	if m.is_empty() or not village_panel_open:
 		return
+	if village_tab == "sheet":
+		var srec: Dictionary = village.tribesmen.get(village_sheet_tid, {})
+		if srec.is_empty():
+			village_tab = "roster"   # they died or left while the sheet was open
 	var tab_hint := "[TAB] %s" % ("view the stores" if village_tab == "roster" else "back to the roster")
+	if village_tab == "roster":
+		tab_hint = "[1-9] a villager's sheet   ·   " + tab_hint
 	(m.footer as Label).text = "the flats manage their own labor   ·   %s   ·   [G] pool your goods   ·   [V] close" % tab_hint
-	(m.title as Label).text = "THE VILLAGE — STORES" if village_tab == "stores" else "THE VILLAGE"
-	if village_tab == "stores":
-		_render_village_stores()
+	match village_tab:
+		"stores":
+			(m.title as Label).text = "THE VILLAGE — STORES"
+			_render_village_stores()
+		"sheet":
+			(m.title as Label).text = "THE VILLAGE — %s" % _sheet_villager_name().to_upper()
+			_render_villager_sheet()
+		_:
+			(m.title as Label).text = "THE VILLAGE"
+			_render_village_roster()
+
+func _sheet_villager_name() -> String:
+	for v: DSVillager in all_villagers():
+		if v.tribesman_id == village_sheet_tid:
+			return v.display_name
+	return "?"
+
+## The villager character sheet (Jeff, 2026-07-17: "do we have a way to see
+## our villager character sheets?"). Everything shown is something the player
+## could legitimately know: trade, arms, gear, patron, origin, mood — and
+## TRAITS ONLY IF DISCOVERED (the disposition axes stay hidden by design law:
+## inner lives are read by attention, never by menu).
+func _render_villager_sheet() -> void:
+	var rec: Dictionary = village.tribesmen.get(village_sheet_tid, {})
+	var vn: DSVillager = null
+	for v: DSVillager in all_villagers():
+		if v.tribesman_id == village_sheet_tid:
+			vn = v
+	if rec.is_empty() or vn == null:
+		village_panel.text = "They are gone."
+		return
+	var lines: Array[String] = []
+	# the person
+	var trade: Dictionary = registry.get_entity(vn.def_class)
+	lines.append("TRADE: %s — %s" % [str(trade.get("name", "?")), str(trade.get("text", ""))])
+	var origin_word: String = {
+		"rescued": "rescued from the flats — they remember who found them",
+		"taken": "taken — brought in under the yoke",
+		"broken": "broken at the Salt-Wheel — obedient, and empty where the fight was",
+	}.get(str(rec.get("origin", "rescued")), "came in off the flats")
+	lines.append("CAME TO YOU: %s" % origin_word)
+	var patron := str(rec.get("patron_god_id", ""))
+	lines.append("PATRON: %s" % (str(registry.get_entity(patron).get("name", "?")) if patron != "" else "keeps no god"))
+	if bool(rec.get("bloomed", false)):
+		lines.append("BLOOMED — whatever they needed, they found it here. It shows in everything.")
 	else:
-		_render_village_roster()
+		lines.append("MOOD: %s" % vn._mood_word())
+	lines.append("")
+	# the arms
+	var arms_txt := _arms_display(village_sheet_tid)
+	if arms_txt == "":
+		lines.append("ARMS: untrained — a Drill-Yard could change that")
+	else:
+		lines.append("ARMS: %s" % arms_txt)
+		for t: Dictionary in village.ignited_talents(village_sheet_tid):
+			lines.append("   · %s — %s" % [str(t.get("name", "?")), str(t.get("text", ""))])
+		var lvl := village.arms_level(village_sheet_tid)
+		var cls_id := str(rec.get("arms", {}).get("class_id", ""))
+		for t: Dictionary in registry.get_entity(cls_id).get("talents", []):
+			if int(t.get("tier", 99)) > lvl:
+				lines.append("   next: %s at level %d" % [str(t.get("name", "?")), int(t.get("tier", 0))])
+				break
+	var gear := _villager_gear_note(vn)
+	lines.append("GEAR: %s" % (gear.trim_prefix("armed: ") if gear != "" else "whatever their hands find"))
+	lines.append("")
+	# their ways — discovered traits only
+	lines.append("THEIR WAYS:")
+	var disc: Array = rec.get("discovered", [])
+	if disc.is_empty():
+		lines.append("   You haven't watched them long enough to know. Their ways show in their work — attention is how you learn a person.")
+	else:
+		for trait_id: String in disc:
+			var tr: Dictionary = registry.get_entity(str(trait_id))
+			lines.append("   · %s — %s" % [str(tr.get("name", "?")), str(tr.get("text", ""))])
+	# the road
+	if vn.on_road:
+		lines.append("")
+		if vn.downed:
+			lines.append("DOWN ON THE ROAD — get to them before the flats do.")
+		else:
+			lines.append("ON THE ROAD — walking with %s." % ("you" if vn.companion_pid == my_pid else "another"))
+	if vn.is_captive:
+		lines.append("")
+		lines.append("HELD AT THE YOKE — day %d. The Wheel or the Unbinding; both are doors." % vn.days_held)
+	village_panel.text = "\n".join(lines)
 
 ## The [V] panel's Arms line: "Warrior 4 — 610/625 XP  (1 talent lit)". Reads
 ## purely off the tribesman record (real or the client's mirrored fake one), so
@@ -4473,7 +4571,11 @@ func _world_sync() -> Dictionary:
 				"arms_cls": str(rec.get("arms", {}).get("class_id", "")),
 				"arms_xp": float(rec.get("arms", {}).get("xp", 0.0)),
 				"on_road": v.on_road, "comp_pid": v.companion_pid,
-				"downed_until": float(rec.get("downed_until", 0.0))}),
+				"downed_until": float(rec.get("downed_until", 0.0)),
+				# the character sheet's biography lines (discovered traits ONLY —
+				# the hidden axes never leave the host, by design law)
+				"origin": str(rec.get("origin", "rescued")), "patron": str(rec.get("patron_god_id", "")),
+				"disc": rec.get("discovered", [])}),
 		"stock": village_stock,
 		"node_left": _node_left_dict(),
 		"sanctum": sanctum.to_save(),
@@ -4687,7 +4789,9 @@ func cl_world_sync(w: Dictionary) -> void:
 		# real sim uses, so village.arms_level()/villager_max_hp()/etc. work unchanged here
 		if body.tribesman_id >= 0:
 			village.tribesmen[body.tribesman_id] = {"bloomed": bool(pd.get("bloomed", false)),
-				"warden_covered": bool(pd.get("covered", true)), "origin": "taken" if body.is_captive else "rescued",
+				"warden_covered": bool(pd.get("covered", true)),
+				"origin": str(pd.get("origin", "taken" if body.is_captive else "rescued")),
+				"patron_god_id": str(pd.get("patron", "")), "discovered": pd.get("disc", []),
 				"arms": {"class_id": str(pd.get("arms_cls", "")), "xp": float(pd.get("arms_xp", 0.0)), "levels_by_class": {}},
 				"equipment": {"weapon": body.warden_weapon, "armor": body.warden_armor, "trinket": ""},
 				"downed_until": float(pd.get("downed_until", 0.0))}

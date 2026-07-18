@@ -1000,6 +1000,16 @@ func _ready() -> void:
 	# [V] panel: the roster line carries the class text
 	host._toggle_village(true)
 	check(host.village_panel.text.contains("Warrior"), "the [V] panel shows the Arms class")
+	# the character sheet: [1-9] drills into a villager
+	check((host.modals.village.footer as Label).text.contains("[1-9]"), "the roster footer offers the sheet")
+	host.village_sheet_tid = trainee_id
+	host.village_tab = "sheet"
+	host._render_village()
+	check((host.modals.village.title as Label).text.contains(trainee.display_name.to_upper()), "the sheet is titled with their name")
+	check(host.village_panel.text.contains("TRADE:") and host.village_panel.text.contains("ARMS: Warrior"),
+		"the sheet shows trade and Arms detail")
+	check(host.village_panel.text.contains("THEIR WAYS"), "the sheet keeps a ways section (discovered traits only)")
+	host.village_tab = "roster"
 	host._toggle_village(false)
 
 	# --- THE ROAD: recruit, follow, fight, downed/revive, permadeath ---------
