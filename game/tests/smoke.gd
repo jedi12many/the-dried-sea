@@ -97,6 +97,25 @@ func _ready() -> void:
 	host.player.position = host.camp_center + Vector2(70, 0)   # a step off the hearth, still in-ring
 	check(host.intent_build("work-workbench"), "now the workbench raises, inside the ring")
 	check(host.works.count_of("work-workbench") == 1, "the sim knows the workbench stands")
+	check(host.message != "" and host.message.contains("Workbench"), "a plain build gets a real confirmation, not silence (Jeff: builds read as broken)")
+
+	# --- the stores-cover UX (Jeff: "I can't build from the village stores") -
+	# the mechanic always worked (_stores_cover tops up from village_stock in
+	# the ring); the menu label just lied by checking the pack alone.
+	var dw_leftover := host.inventory.count(1, "item-driftwood")
+	if dw_leftover > 0:
+		host.inventory.pay(1, [{"itemId": "item-driftwood", "qty": dw_leftover}])
+	host.village_stock["item-driftwood"] = 20
+	host.player.position = host.camp_center + Vector2(60, 0)   # inside the ring
+	host._toggle_menu(true, "build")
+	check(host.menu_label.text.contains("the stores will cover it"), "empty pack + stocked stores reads as buildable, not broken")
+	host._toggle_menu(false)
+	check(host.intent_build("work-driftwood-wall"), "and it really does build, drawing from the stores")
+	check(host.message.contains("the stores provided what your pack lacked"), "the confirmation says where the materials came from")
+	host.village_stock.erase("item-driftwood")   # now truly short, pack AND stores empty
+	host._toggle_menu(true, "build")
+	check(host.menu_label.text.contains("can't afford — pack and stores together"), "genuinely unaffordable still reads as unaffordable")
+	host._toggle_menu(false)
 
 	# --- the ring: everything else falls inside it ---------------------------
 	host.inventory.add(1, "item-driftwood", 8)
@@ -243,6 +262,16 @@ func _ready() -> void:
 	host.player.position = host.shrines[0].position
 	check(host.intent_interact(), "kneel at the fallen shrine")
 	check("god-halor" in host.attuned_for(1) and host.devotion.state[1]["god-halor"].rank == 1, "Halor is with you")
+
+	# --- the Lighthouse-Keeper's Lantern, verses 1 & 2 -----------------------
+	# (verse 3 comes later, the dawn after the great storm)
+	check(host.inventory.count(1, "item-lantern-verse") == 1, "the homestead god keeps the keepers' stories too — one verse, from kneeling")
+	host.player.position = host.LANTERN_WRECK_POS
+	check(host.current_prompt() == "[E] Inspect the wreck", "the marked wreck offers its own [E]")
+	check(host.intent_interact(), "inspect the beached wreck")
+	check(host.inventory.count(1, "item-lantern-verse") == 2, "a second verse, wedged under a bulkhead")
+	check(not host.intent_interact() or host.inventory.count(1, "item-lantern-verse") == 2, "the same wreck doesn't repeat itself")
+	host.player.position = Vector2(9999, 9999)
 
 	# the miracle: Pillar of Salt — untouchable, rooted, and it SPENDS the god
 	var vigor0: float = host.devotion.state[1]["god-halor"].vigor
@@ -564,6 +593,82 @@ func _ready() -> void:
 	# Godhead (Part II §3): the SAME rite feeds Maren's world-level body too
 	check(host.godhead.godhead("god-maren") > maren_godhead0, "the same rite feeds Maren's Godhead, not just your own Vigor")
 
+	# --- the third god: Neris, the Tide-Keeper (CRAFT-AND-BUILD-SPEC M2.75) --
+	check(not host.intent_cast("inv-slack-tide"), "no tide without the Tide-Keeper")
+	check("work-altar-neris" not in host.menu_works(), "her altar waits until she's kneeled to")
+	host.player.position = host.shrines[2].position
+	check(host.intent_interact(), "kneel at the fallen shrine in the south")
+	check("god-neris" in host.attuned_for(1) and host.devotion.state[1]["god-neris"].rank == 1, "Neris is with you — three gods now")
+	check("work-altar-neris" in host.menu_works(), "her altar opens on the build menu")
+	host.camp_center = host.player.position   # ring follows the player for the scattered build below
+	host.inventory.add(1, "item-salt", 12)
+	host.inventory.add(1, "item-wreck-timber", 8)
+	host.inventory.add(1, "item-bronze-salvage", 2)
+	check(host.intent_build("work-altar-neris"), "her altar rises")
+	check(host.sanctum.is_altar(host.sanctum.altar_for("god-neris")), "and the Sanctum knows it")
+
+	# Slack Tide: the world forgets to move — a brief stun on whatever crowds her caster
+	var hound_ts := _enemy_of(host, "creature-salt-hound")
+	check(hound_ts != null, "a hound remains for a time-slip demonstration")
+	host.player.position = hound_ts.position + Vector2(60, 0)
+	host.devotion.state[1]["god-neris"].vigor = host.devotion.max_vigor("god-neris")
+	var neris_vigor0: float = host.devotion.state[1]["god-neris"].vigor
+	check(host.intent_cast("inv-slack-tide"), "Slack Tide: for a held breath, the world forgets to move")
+	check(hound_ts._stun > 0.0, "the hound stands frozen in the held breath")
+	check(host.devotion.state[1]["god-neris"].vigor < neris_vigor0, "and Neris paid for it")
+	host.player.position = Vector2(9999, 9999)   # clear of every hound before the long waits below
+
+	# The Returning Wave (rank 2): what was taken comes back, slowly — regen on the caster
+	host.devotion.state[1]["god-neris"].rank = 2
+	host.devotion.state[1]["god-neris"].vigor = host.devotion.max_vigor("god-neris")
+	host.stats.actors[1].hp = maxf(host.stats.max_hp(1) - 40.0, 1.0)
+	var hp_before_wave := host.stats.hp(1)
+	check(host.intent_cast("inv-returning-wave"), "The Returning Wave: what was taken from you comes back")
+	for i in 20:
+		await get_tree().physics_frame
+	check(host.stats.hp(1) > hp_before_wave, "the tide pulls your hurt back out, a little at a time")
+
+	# the Tide-Bell: rings itself at 06:00/18:00, counts as in-use, bumps dawn output
+	host.camp_center = host.player.position   # ring follows the player again (we wandered off to the hound)
+	host.inventory.add(1, "item-bronze-salvage", 8)
+	check(host.intent_build("work-tide-bell"), "the Tide-Bell rises")
+	var bell_inst := -1
+	for iid: Variant in host.works.placed:
+		if str(host.works.placed[iid].work_id) == "work-tide-bell":
+			bell_inst = int(iid)
+	check(bell_inst >= 0 and not host.works.placed[bell_inst].in_use, "quiet, for now")
+	check(host._tide_bell_output_bonus() == 0.0, "no bonus before the bell rings")
+	host._tick_tide_bell(6 * 60 - 1)
+	check(not host.tide_bell_rang_today, "not yet six")
+	host._tick_tide_bell(6 * 60)
+	check(host.works.placed[bell_inst].in_use, "the bell rang and counts as tended")
+	check(host.tide_bell_rang_today and host._tide_bell_output_bonus() == 0.5, "Neris keeps count — the village works a little better today")
+
+	# the Healing Bath: stand within it and mend
+	host.inventory.add(1, "item-wreck-timber", 10)
+	host.inventory.add(1, "item-salt", 15)
+	host.inventory.add(1, "item-pearl", 2)
+	host.devotion.state[1]["god-neris"].favor = 30.0
+	check(host.intent_build("work-healing-bath"), "the Healing Bath rises")
+	var bath_pos := host.work_pos("work-healing-bath")
+	host.player.position = bath_pos
+	host.stats.actors[1].hp = 20.0
+	host.stats.actors[1].stamina = 0.0
+	var bath_hp0 := host.stats.hp(1)
+	for i in 90:
+		await get_tree().physics_frame
+	check(host.stats.hp(1) > bath_hp0, "the warm brine mends you while you soak")
+	var bath_inst := -1
+	for iid: Variant in host.works.placed:
+		if str(host.works.placed[iid].work_id) == "work-healing-bath":
+			bath_inst = int(iid)
+	check(bath_inst >= 0 and host.works.placed[bath_inst].in_use, "the bath counts as tended, today")
+	host.player.position = Vector2(-9999, -9999)
+	for i in 3:
+		await get_tree().physics_frame
+	check(float(host.stats.actors[1].get("bath_mult", 1.0)) == 1.0, "step out of the water and the extra mending stops")
+	host.stats.heal_full(1)   # the tests above left HP low on purpose (measuring the mend) — full health for what's next
+
 	# --- Old Shellback and the first Verdict choice --------------------------
 	var boss := _enemy_of(host, "creature-old-shellback")
 	check(boss != null and boss.is_boss, "Old Shellback guards the northwest")
@@ -737,6 +842,26 @@ func _ready() -> void:
 	host._on_sim_day(4)
 	check(not host.is_storm_day(), "the sky clears")
 	check(_node_of(host, "item-storm-glass") == null, "and takes its glass back")
+
+	# --- the Lighthouse-Keeper's Lantern, verse 3 + the rite-craft -----------
+	# verse 3: granted to every survivor on the dawn after the great storm we
+	# just lived through (day 3 was the storm; day 4's dawn just fired above)
+	check(host.inventory.count(1, "item-lantern-verse") == 3, "you made it through the storm — the last verse comes to you unbidden")
+	# drain any leftover event material from earlier tests so the gate below is real
+	var leftover_glass := host.inventory.count(1, "item-storm-glass")
+	if leftover_glass > 0:
+		host.inventory.pay(1, [{"itemId": "item-storm-glass", "qty": leftover_glass}])
+	check(not host.intent_craft("recipe-lighthouse-keepers-lantern"), "not yet — the rite still wants its materials")
+	host.inventory.add(1, "item-storm-glass", 2)
+	host.inventory.add(1, "item-bronze-salvage", 6)
+	host.inventory.add(1, "item-rope", 2)
+	check(host.equipped_mod_mult(1, "hound-aggro-mult") == 1.0, "bare of the trinket, a hound keeps its full night reach")
+	check(host.intent_craft("recipe-lighthouse-keepers-lantern"), "THE RITE IS DONE — the Lantern is forged, at any chapel")
+	check(host.inventory.count(1, "item-lighthouse-keepers-lantern") == 1, "the Lighthouse-Keeper's Lantern, in hand")
+	check(host.inventory.count(1, "item-lantern-verse") == 3, "the song is knowledge — not consumed")
+	host.equip_toggle(1, "item-lighthouse-keepers-lantern")
+	check(host.equipped_item(1, "trinket") == "item-lighthouse-keepers-lantern", "the first trinket in the game, worn")
+	check(host.equipped_mod_mult(1, "hound-aggro-mult") == 0.75, "carrying it, a hound's night reach narrows")
 
 	# --- the Tally: virtues in play --------------------------------------------
 	check(host.abilities.available(1) > 3, "the flats have tempered you (deeds + days: %d)" % host.abilities.available(1))
@@ -1047,13 +1172,18 @@ func _ready() -> void:
 	foe.setup(host, "creature-salt-hound")
 	host.add_child(foe); host.enemies.append(foe)
 	var foe_hp := host.stats.hp(foe)
+	# the kill lands assist XP through the REAL handler (regression: the sim's
+	# source key is "killAssist"; a wrong key here once granted silent zero) —
+	# captured BEFORE the wait: a strong-enough companion may finish foe off
+	# on its own inside the window, and the real death path grants XP too.
+	var assist_before: float = host.village.tribesmen[trainee_id].arms.xp
 	for i in 60:
 		await get_tree().physics_frame
-	check(host.stats.hp(foe) < foe_hp, "a companion fights nearby hostiles")
-	# the kill lands assist XP through the REAL handler (regression: the sim's
-	# source key is "killAssist"; a wrong key here once granted silent zero)
-	var assist_before: float = host.village.tribesmen[trainee_id].arms.xp
-	host._on_enemy_killed(foe)
+	if is_instance_valid(foe) and foe in host.enemies:
+		check(host.stats.hp(foe) < foe_hp, "a companion fights nearby hostiles")
+		host._on_enemy_killed(foe)
+	else:
+		check(true, "a companion fights nearby hostiles (foe already fell to it)")
 	check(float(host.village.tribesmen[trainee_id].arms.xp) > assist_before, "a kill nearby grants killAssist XP")
 
 	# wardens help villagers, NOT players (Jeff 2026-07-17): a hostile menacing

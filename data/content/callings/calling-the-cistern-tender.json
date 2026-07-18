@@ -1,0 +1,76 @@
+{
+  "id": "calling-the-cistern-tender",
+  "title": "The Cistern Tender",
+  "tier": "vignette",
+  "source": "peoples",
+  "giver": {
+    "name": "Sten Aal, Brinefolk pool-warden",
+    "wound": "His mother's generation drank the last open sea dry keeping their pools going through the Withdrawal's first lean years, and Sten has spent his whole life terrified of being the warden who lets the last of it evaporate on his watch. He checks the pool's level every morning before he checks anything else, including his own children."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 2.5 },
+    "playstyle": { "builder": 1.5 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Sten meets you at the pool's edge, water level noticeably lower than the mark he scratched into the stone last season. 'The sky's taking more than it used to,' he says. 'Every clear day steals a little.' He wants help building a proper cover before the pool loses another season to open air — the Brinefolk have survived worse, but never with this few pools left to lose.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "goto",
+      "text": "You gather wreck-timber and ship-cloth from the flats — enough to frame a real covered cistern, not the driftwood lean-to Sten's been patching every storm season. He watches every board go down like it's a promise being kept.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "build",
+      "text": "You raise the covered cistern together over the pool, sealing the frame so the water stops giving itself to the sky. Sten checks the seams three times before he'll believe it's done. When the first evening passes without the level dropping, he doesn't say anything — he just sits by it a while, the way you'd sit with someone recovering.",
+      "next": "s4"
+    },
+    {
+      "id": "s4",
+      "type": "turn",
+      "text": "Word travels fast among the Brinefolk, and the pool three groves over — tended by Sten's estranged sister, who split from the family stillmasters over a dispute nobody outside the family fully remembers — asks for the same covering, through a messenger, rather than through Sten. He clearly wants to build it himself and hand-deliver the peace along with the timber. He also clearly doesn't trust himself not to reopen the old argument the second he sees her.",
+      "options": [
+        {
+          "text": "Go with him. Whatever the argument was, a covered pool is a better opening line than none at all, and he shouldn't do this alone.",
+          "next": "s5-together",
+          "ledger": [{ "ledger": "peoples", "amount": 6, "note": "helping mend Brinefolk kinship, not just infrastructure" }]
+        },
+        {
+          "text": "Build the second cistern yourself and let him stay behind. Some bridges are safer built by a stranger first.",
+          "next": "s5-alone",
+          "ledger": [{ "ledger": "peoples", "amount": 4, "note": "quiet aid, no family reckoning forced" }]
+        }
+      ]
+    },
+    {
+      "id": "s5-together",
+      "type": "goto",
+      "text": "You walk with Sten to his sister's pool. The conversation is stiff and short, but the cistern goes up between them instead of just around them — she thanks him directly, once, and he takes it like water in a drought.",
+      "next": null
+    },
+    {
+      "id": "s5-alone",
+      "type": "goto",
+      "text": "You build the second cistern without Sten. His sister asks who sent you; you tell her, and she says nothing, but the next Brinefolk trade caravan through your village carries an extra jar of god-water addressed, simply, 'for Sten's friend.'",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Together: both cisterns stand, and Brinefolk traders start routing through your village specifically, mentioning the warden who mended two things with one roof. Alone: the second cistern stands quietly, Sten never learns the full story, and the Brinefolk's fair-trade line to your village gets a little steadier for reasons he can't quite name.",
+    "worldFlags": ["brinefolk-cisterns-both-family-mended", "brinefolk-cisterns-both-quiet"],
+    "dialogueKeys": ["sten-aal-cistern"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-god-water", "qty": 4 }
+    ],
+    "favor": { "god-neris": 3 }
+  },
+  "status": "draft",
+  "curatorNote": "Covers tending a brine pool via the Brinefolk's own save-action (build-pool-cistern in peoples/brinefolk.json) wrapped in a named giver and family wound. Turn: the quest quietly widens from infrastructure into Brinefolk kinship. Tuning-unsure: peoples ledger amount scale — used the same rough magnitude as brinefolk.json's own saveActions (brinkDelta ~6-14) translated to a one-off ledger nudge, may need retuning against the Brink numbers directly."
+}

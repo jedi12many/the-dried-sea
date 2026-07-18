@@ -1,0 +1,76 @@
+{
+  "id": "calling-glass-after-the-storm",
+  "title": "Glass After the Storm",
+  "tier": "vignette",
+  "source": "tribesman",
+  "giver": {
+    "name": "Petch Ivo, storm-glass collector",
+    "wound": "Her father was struck by the same lightning that first fused sand into storm-glass on the flats the night the sea began truly leaving for good — he lived, barely, and spent his remaining years certain the glass held a piece of whatever the lightning had been trying to say. She's collected it since she could walk, convinced eventually one piece will tell her plainly what he never could."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 2.2 },
+    "devotion": { "god-maren": 1.6 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Petch grabs your arm as the sky greens over — a great storm building fast on the horizon. 'Best glass forms in the first hour after the lightning stops, before the wind scatters it,' she says. 'I need someone steady enough to go out right after, not during, not tomorrow. Right after.' She'll wait with you at the palisade gate until it's safe to move.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "wait",
+      "text": "You wait out the storm together at the gate, watching lightning walk the flats in long white strides, Petch counting strikes under her breath the way her father used to. The storm breaks harder than either of you expected — twice the usual span of a great storm — and by the time the wind drops, the sky is a color neither of you has words for.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "collect",
+      "text": "You go out into the still-smoking flats and gather storm-glass by the fused strike-scars — warm to the touch, oddly heavy for their size, more of it than either of you has ever seen from a single storm. Petch works fast and quiet, filling a satchel she clearly reserves only for the best hauls.",
+      "next": "s4"
+    },
+    {
+      "id": "s4",
+      "type": "turn",
+      "text": "At the largest strike-scar, buried under fused sand, you find something the lightning didn't make: a wrecked hull, freshly surfaced, that wasn't part of the flats yesterday. The storm didn't just make glass — it shifted the seabed enough to expose a ship nobody in the village has ever seen before. Petch's collecting trip has turned into the discovery of a new wreck.",
+      "options": [
+        {
+          "text": "Mark the wreck's location clearly and tell the village at large — a find like this belongs to whoever gets there fastest, fairly.",
+          "next": "s5-share",
+          "ledger": [{ "ledger": "shepherd", "amount": 4, "note": "sharing a windfall instead of sitting on it" }]
+        },
+        {
+          "text": "Help Petch keep it quiet a little longer, so she can search it herself first for anything that might finally explain her father's glass.",
+          "next": "s5-quiet",
+          "ledger": [{ "ledger": "shepherd", "amount": 1, "note": "a small, understandable selfishness" }]
+        }
+      ]
+    },
+    {
+      "id": "s5-share",
+      "type": "goto",
+      "text": "You mark the wreck plainly and word spreads by evening. Salvage teams strip it fairly over the following days. Petch gets no more claim to it than anyone else — but she does get first pick of the glass fused around its hull, which turns out to be the strangest, clearest pieces she's ever collected.",
+      "next": null
+    },
+    {
+      "id": "s5-quiet",
+      "type": "goto",
+      "text": "You help Petch search the wreck alone for two days before word gets out anyway. She finds nothing that explains the lightning or her father, only an ordinary merchant's hold, long since looted by the sea itself. She's disappointed, but she keeps the best glass from the strike-scar regardless — the closest thing to an answer she's found yet, even if it isn't one.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Share: the new wreck becomes common salvage ground, marked on every villager's mental map within a week, and Petch is known as the one who found it even though she shared it. Quiet: the wreck sits picked-over and forgotten within a season, but Petch keeps a private shelf of the storm's glass, and still turns each piece over at night looking for whatever her father saw.",
+    "worldFlags": ["storm-wreck-shared", "storm-wreck-kept-quiet"],
+    "dialogueKeys": ["petch-ivo-storm-glass"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-storm-glass", "qty": 3 }
+    ],
+    "favor": { "god-maren": 5 }
+  },
+  "status": "draft",
+  "curatorNote": "Covers storm-glass gathering during/after a great storm with a real wait step for the storm itself, plus a turn (the storm exposed a whole wreck, not just glass). Tuning-unsure: whether the wait step should be gated to an actual scheduled great-storm event or can fire narratively any time this calling is drawn — wrote it assuming the draw system only offers storm-tagged callings during/near a real storm window, per WORLD-SPEC's storm loop, but I can't confirm that gating from content alone."
+}

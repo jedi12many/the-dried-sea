@@ -254,7 +254,28 @@
    "godAffinity": "god-halor",
    "history": "The keeper lit it the night the sea left, and swore it would burn until the water came back for it. He kept half the promise. The dark biomes respect it."
   },
-  "text": "It never goes out."
+  "effects": [
+   {
+    "type": "night-light-radius",
+    "magnitude": 90,
+    "target": "self"
+   },
+   {
+    "type": "hound-aggro-mult",
+    "magnitude": 0.75,
+    "target": "self"
+   }
+  ],
+  "text": "It never goes out.",
+  "slot": "trinket"
+ },
+ {
+  "id": "item-lantern-verse",
+  "name": "Verse of the Keeper's Tale",
+  "category": "relic",
+  "tier": 1,
+  "stackSize": 3,
+  "text": "A fragment of the old song the lighthouse-keepers sang to each other across the dark. Three verses, they say, and the song teaches the rite that keeps a lantern lit forever. This one is yours now."
  },
  {
   "id": "item-driftwood-club",
@@ -323,5 +344,40 @@
    "defense": 7
   },
   "text": "Salvage-bronze sewn to a cloth backing, scale over scale. Heavy, honest, and it has stopped worse than a hound."
+ },
+ {
+  "id": "item-bronze-spear",
+  "name": "Bronze Spear",
+  "category": "weapon",
+  "tier": 1,
+  "stackSize": 1,
+  "slot": "weapon",
+  "stats": {
+   "damage": 23
+  },
+  "text": "Reach, before the raiders learn you have it. Salvage-bronze on a driftwood haft, bound tight."
+ },
+ {
+  "id": "item-bronze-mattock",
+  "name": "Bronze Mattock",
+  "category": "tool",
+  "tier": 1,
+  "stackSize": 1,
+  "tool": {
+   "tier": 2
+  },
+  "text": "A workbench-ground head on a good haft. Nothing in the Shallows needs it yet — the reef will. (Tool tier 2 — opens B2 nodes once the gather-gate lands at M3; inert for now.)"
+ },
+ {
+  "id": "item-ship-cloth-bindings",
+  "name": "Ship-Cloth Bindings",
+  "category": "armor",
+  "tier": 0,
+  "stackSize": 1,
+  "slot": "armor",
+  "stats": {
+   "defense": 5
+  },
+  "text": "Sailcloth wound tight and knotted the way a rigger knots a line — over the arms and chest, where a claw usually lands first."
  }
 ]

@@ -166,6 +166,16 @@ var node_defs: Array = []         # deterministic layout: storms respawn from th
 const STORM_GLASS_IDX_BASE := 1000  # ephemeral nodes: never persisted
 var storm_flash := 0.0
 
+# THE LIGHTHOUSE-KEEPER'S LANTERN (B1 legend #2, the Harpoon's template):
+# verse 1 rides intent_kneel (Halor's shrine); verse 2 is the marked wreck below;
+# verse 3 rides _storm_dawn (surviving a great-storm day). Per-player, like the
+# harpoon-verses — the world piece (the wreck) never depletes, so the grant is
+# tracked per pid instead of by the item leaving the world.
+const LANTERN_WRECK_POS := Vector2(TILE * 10, TILE * 26)  # the westernmost of the three beached wrecks in _build_ground()
+var lantern_wreck_inspected: Dictionary = {}   # pid -> bool
+var lantern_verse3_taken: Dictionary = {}      # pid -> bool
+var tide_bell_rang_today := false              # Neris's Tide-Bell: rang at 06:00 or 18:00 today
+
 # STYLE-BIBLE salt-shallows palette (placeholder blocks, right colors)
 const ITEM_COLORS := {
 	"item-driftwood": Color("a08768"), "item-wreck-timber": Color("6e5138"),
@@ -444,6 +454,9 @@ func save_game() -> void:
 		"node_left": _node_left_dict(),
 		"sanctum": sanctum.to_save(),
 		"message": message,
+		"lantern_wreck_inspected": lantern_wreck_inspected.duplicate(),
+		"lantern_verse3_taken": lantern_verse3_taken.duplicate(),
+		"tide_bell_rang_today": tide_bell_rang_today,
 	}
 	SaveSystem.write_file(save_path, s)
 
@@ -473,6 +486,9 @@ func load_game() -> void:
 	if work_pos("work-hearth") != Vector2.INF:
 		_recenter_on_hearth()
 	rites_done_today = g.get("rites_done_today", {})
+	lantern_wreck_inspected = SaveSystem._int_keys(g.get("lantern_wreck_inspected", {}))
+	lantern_verse3_taken = SaveSystem._int_keys(g.get("lantern_verse3_taken", {}))
+	tide_bell_rang_today = bool(g.get("tide_bell_rang_today", false))
 	message = str(g.get("message", "The flats are as you left them."))
 	# world state: remove harvested nodes, rebuild work visuals, restore the boss & Anna
 	# (JSON floats -> ints: Array.has is TYPE-STRICT — 40 in [40.0] is false)
@@ -574,6 +590,7 @@ func _physics_process(delta: float) -> void:
 	if net_mode != "client":
 		clock.advance(delta)
 		stats.tick(delta)
+		_tick_healing_bath(delta)
 		for pid: Variant in petrify.keys():
 			if int(petrify[pid]) > 0:
 				petrify[pid] = int(petrify[pid]) - 1
@@ -626,6 +643,8 @@ func current_prompt() -> String:
 	for s in shrines:
 		if player.position.distance_to(s.position) < interact_range() and s.get_meta("god_id") not in attuned_for(my_pid):
 			return "[E] Kneel"
+	if player.position.distance_to(LANTERN_WRECK_POS) < interact_range() and not lantern_wreck_inspected.get(my_pid, false):
+		return "[E] Inspect the wreck"
 	if survivor != null and not survivor.rescued and player.position.distance_to(survivor.position) < interact_range():
 		return "[E] Rescue her"
 	if _offertory_takes_e() >= 0:
@@ -875,6 +894,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		intent_cast("inv-pillar-of-salt")
 	elif event.is_action_pressed("cast_2"):
 		intent_cast("inv-call-squall")
+	elif event.is_action_pressed("cast_3"):
+		intent_cast("inv-slack-tide")
+	elif event.is_action_pressed("cast_4"):
+		intent_cast("inv-returning-wave")
 	elif event.is_action_pressed("consume"):
 		intent_consume_remnant()
 	elif event.is_action_pressed("sheet"):
@@ -915,6 +938,8 @@ func intent_interact() -> bool:
 		var god_id: String = s.get_meta("god_id")
 		if acting_pos().distance_to(s.position) < interact_range() and god_id not in attuned_for(acting_pid):
 			return intent_kneel(god_id)
+	if acting_pos().distance_to(LANTERN_WRECK_POS) < interact_range() and not lantern_wreck_inspected.get(acting_pid, false):
+		return intent_inspect_wreck()
 	# what you're standing ON wins: a chapel's rite before a nearby stranger
 	for god_id: String in chapels:
 		if acting_pos().distance_to(chapels[god_id]) < interact_range():
@@ -1411,6 +1436,7 @@ func _carrying_remnant() -> bool:
 const KNEEL_HINTS := {
 	"god-halor": "[Q] Pillar of Salt, when the pinch comes.",
 	"god-maren": "[R] Call the Squall, when they crowd you.",
+	"god-neris": "[Z] Slack Tide, when they crowd you. [N] The Returning Wave, to mend.",
 }
 
 func intent_kneel(god_id: String) -> bool:
@@ -1426,8 +1452,23 @@ func intent_kneel(god_id: String) -> bool:
 	if god_id == "god-maren":
 		inventory.add(acting_pid, "item-harpoon-verse", 1)
 		message += "\nTucked in the shrine-stones: a VERSE OF THE HARPOON-SONG. Whalers say there are three."
+	elif god_id == "god-halor":
+		inventory.add(acting_pid, "item-lantern-verse", 1)
+		message += "\nTucked in the shrine-stones: a VERSE OF THE KEEPER'S TALE. The homestead god keeps the keepers' stories too — they say there are three."
 	abilities.earn(acting_pid, 1)   # kneeling to a god tempers you
 	_toggle_menu(false)
+	_refresh_hud()
+	return true
+
+## The Lighthouse-Keeper's Lantern, verse 2: one of the three beached wrecks
+## on the flats (see _build_ground) carries the keeper's second verse. The
+## wreck itself is a permanent landmark — it never depletes — so the grant is
+## tracked per player instead of by the world losing the item.
+func intent_inspect_wreck() -> bool:
+	lantern_wreck_inspected[acting_pid] = true
+	inventory.add(acting_pid, "item-lantern-verse", 1)
+	sfx("harvest")
+	message = "You pick through the ribs of the beached wreck. Wedged under a bulkhead, dry for decades: a VERSE OF THE KEEPER'S TALE.\nKeepers say there are three."
 	_refresh_hud()
 	return true
 
@@ -1523,6 +1564,21 @@ func _apply_effect(effect: Dictionary) -> void:
 				target.on_hit()
 				if stats.damage(target, 25.0):
 					_on_enemy_killed(target)
+		"time-slip":
+			# Neris's Slack Tide: "for a held breath, the world forgets to move.
+			# You do not." — a brief stun/slow on everything crowding the caster,
+			# the same executor aoe-knockdown uses (DSEnemy.stun), keyed by the
+			# invocation's duration rather than a fixed 2.5s.
+			var slip_radius := float(effect.get("radius", 6)) * TILE
+			var slip_dur := float(effect.get("duration", 3))
+			for e in enemies.duplicate():
+				if is_instance_valid(e) and acting_pos().distance_to(e.position) <= slip_radius:
+					e.stun(slip_dur)
+		"heal-over-time":
+			# Neris's The Returning Wave: "what was taken from you comes back —
+			# slowly, the way tides do." Regen on the caster via the stats system
+			# (StatsSystem.apply_hot), not an instant chunk.
+			stats.apply_hot(acting_pid, float(effect.get("magnitude", 0)), float(effect.get("duration", 1)))
 		_:
 			pass  # unimplemented effect types are silently inert at this stage
 
@@ -1533,6 +1589,53 @@ func _flash_bolt(at: Vector2) -> void:
 	bolt.color = Color("c9a648")
 	add_child(bolt)
 	get_tree().create_timer(0.25).timeout.connect(bolt.queue_free)
+
+## Every player's current position, keyed by pid — single-player/offline reads
+## straight off the body; a real server reads the synced avatars dict. Shared
+## by anything that needs "who's standing where" outside combat's nearest_threat.
+func _active_player_positions() -> Dictionary:
+	if net_mode == "server":
+		return avatars.duplicate()
+	return {acting_pid: player.position}
+
+const HEALING_BATH_RADIUS := 90.0
+const HEALING_BATH_HP_PER_SEC := 2.0
+const HEALING_BATH_STAMINA_MULT := 1.5
+
+## Neris's Healing Bath: stand within ~90px and mend — +2 HP/sec, stamina
+## regen x1.5 (StatsSystem.bath_mult, alongside the virtue-driven regen_mult).
+## Counts as in-use on any day someone bathed (favor trickles the same as any
+## other tended work; dawn resets in_use like everything else).
+func _tick_healing_bath(delta: float) -> void:
+	var bath_insts: Array[int] = []
+	var bath_positions: Array[Vector2] = []
+	for inst_id: Variant in works.placed:
+		if str(works.placed[inst_id].work_id) == "work-healing-bath":
+			var inst: Dictionary = works.placed[inst_id]
+			bath_insts.append(int(inst_id))
+			bath_positions.append(Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))))
+	if bath_insts.is_empty():
+		return
+	var any_bathed := false
+	var positions := _active_player_positions()
+	for pid: Variant in positions:
+		var pos: Vector2 = positions[pid]
+		var bathing := false
+		for bpos: Vector2 in bath_positions:
+			if pos.distance_to(bpos) < HEALING_BATH_RADIUS:
+				bathing = true
+				break
+		if not bathing or not stats.actors.has(pid):
+			if stats.actors.has(pid):
+				stats.actors[pid].bath_mult = 1.0
+			continue
+		any_bathed = true
+		var a: Dictionary = stats.actors[pid]
+		a.hp = minf(float(a.hp) + HEALING_BATH_HP_PER_SEC * delta, stats.max_hp(pid))
+		a.bath_mult = HEALING_BATH_STAMINA_MULT
+	if any_bathed:
+		for inst_id: int in bath_insts:
+			works.set_in_use(inst_id, true)
 
 func intent_rescue() -> bool:
 	survivor.rescue()
@@ -1837,8 +1940,9 @@ func _render_build_menu() -> void:
 		if not founding and god_id != last_god:
 			last_god = god_id
 			lines.append("· %s ·" % ("salvage" if god_id == "neutral" else str(registry.get_entity(god_id).name) + "'s works"))
-		var afford := inventory.can_afford(acting_pid, work.get("buildCost", []))
-		lines.append("%d. %s%s" % [i - start + 1, str(work.name), "" if afford else "  (can't afford)"])
+		var afford := _afford_via(work.get("buildCost", []))
+		var afford_tag: String = {"pack": "", "stores": "  (the stores will cover it)", "no": "  (can't afford — pack and stores together)"}[afford]
+		lines.append("%d. %s%s" % [i - start + 1, str(work.name), afford_tag])
 		lines.append("     %s" % str(work.get("purpose", work.get("text", ""))))
 		lines.append("     cost: %s" % _cost_str(work.get("buildCost", [])))
 	if founding:
@@ -1863,13 +1967,15 @@ func _render_craft_menu() -> void:
 		var station: String = recipe.get("stationWorkId", "")
 		if station == "":
 			station = str(recipe.get("ritual", {}).get("atWorkId", ""))
-		var afford := inventory.can_afford(acting_pid, recipe.get("inputs", []))
+		var afford := _afford_via(recipe.get("inputs", []))
 		var have_station := station == "" or works.count_of(station) > 0
 		var tag := ""
 		if not have_station:
 			tag = "  (needs %s)" % str(registry.get_entity(station).name)
-		elif not afford:
-			tag = "  (can't afford)"
+		elif afford == "stores":
+			tag = "  (the stores will cover it)"
+		elif afford == "no":
+			tag = "  (can't afford — pack and stores together)"
 		var where := "  @ %s" % str(registry.get_entity(station).name) if station != "" else "  (by hand)"
 		lines.append("%d. %s ×%d%s" % [i - start + 1, str(item.name), int(recipe.output.qty), tag])
 		lines.append("     %s%s" % [_cost_str(recipe.get("inputs", [])), where])
@@ -1954,6 +2060,21 @@ func intent_attack() -> bool:
 
 func equipped_item(pid: int, slot: String) -> String:
 	return str(equipped.get(pid, {}).get(slot, ""))
+
+## Equipped-GEAR effects (the Lighthouse-Keeper's Lantern's trinket effects,
+## and any future weapon/armor effect keyed the same way) — the item-driven
+## companion to abilities.mod_mult (virtue talents). Multiplicative across
+## every worn slot; unmatched effect types are inert (x1), same convention.
+func equipped_mod_mult(pid: int, effect_type: String) -> float:
+	var total := 1.0
+	for slot: String in ["weapon", "armor", "trinket"]:
+		var item_id := equipped_item(pid, slot)
+		if item_id == "":
+			continue
+		for eff: Dictionary in registry.get_entity(item_id).get("effects", []):
+			if str(eff.get("type", "")) == effect_type:
+				total *= float(eff.get("magnitude", 1.0))
+	return total
 
 ## Equip an item from the pack into its doll slot; any current occupant returns
 ## to the pack. Toggling an already-equipped item unequips it.
@@ -2240,28 +2361,37 @@ func intent_build(work_id: String) -> bool:
 			message = "Too far from the hearth. Build within the ring."
 			_refresh_hud()
 			return false
-	_stores_cover(work.get("buildCost", []))   # in camp, the community stores chip in
+	var stores_drawn := _stores_cover(work.get("buildCost", []))   # in camp, the community stores chip in
 	if not inventory.pay(acting_pid, work.get("buildCost", [])):
 		message = "Not enough to raise the %s — your pack and the stores together." % str(work.name).to_lower()
 		_refresh_hud()
 		return false
 	var inst_id := works.place(work_id, acting_pid, pos)
 	sanctum.register(inst_id, work_id)
+	var build_msg := ""
 	if work_id == "work-hearth":
 		_recenter_on_hearth()   # the ring centers on the hearth, always
 		if not has_hearth:
-			message = "You raise the Great Hearth. The village will grow around its fire."
+			build_msg = "You raise the Great Hearth. The village will grow around its fire."
 	elif work.get("respawn", false):
-		message = "You pitch the %s. Fall out there and you'll wake here." % str(work.name).to_lower()
+		build_msg = "You pitch the %s. Fall out there and you'll wake here." % str(work.name).to_lower()
 	if sanctum.is_altar(inst_id):
-		message = "The %s stands. Stand at it [E] to lay relics and offerings — splendor bears your rites up." % str(work.name).to_lower()
+		build_msg = "The %s stands. Stand at it [E] to lay relics and offerings — splendor bears your rites up." % str(work.name).to_lower()
 	sfx("build", pos)
 	if work_id == "work-chapel":
 		# dedicate to the first attuned god who lacks one
 		for god_id: String in attuned_for(acting_pid):
 			if not chapels.has(god_id):
-				message = "A chapel to %s, raised from wreck-timber. Hold rites here [E] — their strength returns through worship." % str(registry.get_entity(god_id).name)
+				build_msg = "A chapel to %s, raised from wreck-timber. Hold rites here [E] — their strength returns through worship." % str(registry.get_entity(god_id).name)
 				break
+	# every other work was building in total silence before (Jeff: "I can't
+	# build from the stores" — half of that was this: a success with no
+	# message reads exactly like a no-op). Every build gets SOME confirmation.
+	if build_msg == "":
+		build_msg = "The %s stands." % str(work.name)
+	if stores_drawn > 0:
+		build_msg += "  (the stores provided what your pack lacked)"
+	message = build_msg
 	_spawn_work_visual(inst_id, work_id, pos, {})
 	_reassign_all_jobs()
 	_check_village_keys()
@@ -2705,8 +2835,13 @@ func intent_give_food() -> void:
 	var given := 0
 	for item_id: String in inventory._inv(acting_pid).keys():
 		var item := registry.get_entity(item_id)
+		# category "relic" catches placed legend-verses too (harpoon-verse,
+		# lantern-verse) — they carry no Sanctum relic.points of their own, but
+		# they're still personal quest-knowledge, never communal stock (the same
+		# law "the song is knowledge — not consumed" applies at the yoke of [G]).
 		if item_id in kept or not item.get("legend", {}).is_empty() \
-				or str(item.get("remnantOf", "")) != "" or not item.get("relic", {}).is_empty():
+				or str(item.get("remnantOf", "")) != "" or not item.get("relic", {}).is_empty() \
+				or str(item.get("category", "")) == "relic":
 			continue   # your story stays in your pack
 		var n := inventory.count(acting_pid, item_id)
 		if n <= 0:
@@ -2725,9 +2860,13 @@ func intent_give_food() -> void:
 
 ## The stores provide: while you stand in the hearth's ring, costs you can't
 ## cover from your pack are drawn from the community stock.
-func _stores_cover(cost: Array) -> void:
+## Returns the total units actually drawn from the stores (0 if none, or if
+## out of the ring) — the caller reports it, so a stores-covered build/craft
+## doesn't look like it happened for free out of nowhere.
+func _stores_cover(cost: Array) -> int:
 	if camp_center == Vector2.INF or acting_pos().distance_to(camp_center) > CAMP_RADIUS:
-		return
+		return 0
+	var drawn := 0
 	for c: Dictionary in cost:
 		var item_id := str(c.itemId)
 		var short := int(c.qty) - inventory.count(acting_pid, item_id)
@@ -2738,6 +2877,25 @@ func _stores_cover(cost: Array) -> void:
 			village_stock[item_id] = have - take
 			if village_stock[item_id] <= 0:
 				village_stock.erase(item_id)
+			drawn += take
+	return drawn
+
+## Whether a cost line-up is affordable from the pack alone, needs the camp
+## stores to chip in (only while standing in the ring — the same gate
+## _stores_cover itself checks), or can't be covered even together. The build
+## and craft menus render this so "the stores will cover it" never reads as
+## "can't afford" (regression: Jeff couldn't tell stores-building still worked).
+func _afford_via(cost: Array) -> String:
+	if inventory.can_afford(acting_pid, cost):
+		return "pack"
+	if camp_center == Vector2.INF or acting_pos().distance_to(camp_center) > CAMP_RADIUS:
+		return "no"
+	for c: Dictionary in cost:
+		var item_id := str(c.itemId)
+		var have := inventory.count(acting_pid, item_id) + int(village_stock.get(item_id, 0))
+		if have < int(c.qty):
+			return "no"
+	return "stores"
 
 ## --- CALLINGS: the per-player journal ---------------------------------------
 func _active_callings(pid: int) -> Array:
@@ -3205,9 +3363,10 @@ func _spawn_work_visual(inst_id: int, work_id: String, pos: Vector2, chapel_hint
 		"work-hearth": "hearth", "work-driftwood-wall": "wall", "work-yoke-post": "yoke_post",
 		"work-salt-cellar": "salt_cellar", "work-lightning-rod": "lightning_rod",
 		"work-storm-cistern": "storm_cistern",
-		"work-altar-halor": "altar", "work-altar-maren": "altar",
+		"work-altar-halor": "altar", "work-altar-maren": "altar", "work-altar-neris": "altar",
 		"work-driftwood-cot": "cot_hut", "work-tent": "tent",
 		"work-salt-wheel": "salt_wheel",
+		"work-tide-bell": "tide_bell", "work-healing-bath": "healing_bath",
 	}
 	var fallback := Color("6e5138") if not work.get("grim", false) else Color("5b3a6e")
 	if work_id == "work-altar-halor":
@@ -3359,9 +3518,11 @@ func _spawn_one_node(item_id: String, pos: Vector2, idx: int) -> Area2D:
 	return node
 
 func _spawn_shrines() -> void:
-	# Halor waits in the north; Maren on the east edge, where the weather comes from.
+	# Halor waits in the north; Maren on the east edge, where the weather comes from;
+	# Neris waits in the south, where the tide would be if there still were one.
 	_spawn_one_shrine("god-halor", Vector2(WORLD.x * TILE / 2.0, TILE * 5.0), Color.WHITE)
 	_spawn_one_shrine("god-maren", Vector2(WORLD.x * TILE - TILE * 4.0, WORLD.y * TILE / 2.0), Color(0.82, 0.88, 1.0))
+	_spawn_one_shrine("god-neris", Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE - TILE * 5.0), Color(0.75, 0.9, 0.95))
 
 func _spawn_one_shrine(god_id: String, pos: Vector2, tint: Color) -> void:
 	var s := Node2D.new()
@@ -3503,6 +3664,12 @@ func _dawn_drill_training() -> Array[String]:
 		notes.append("%s drilled at the yard" % dv.display_name)
 	return notes
 
+## Neris's Tide-Bell (CRAFT-AND-BUILD-SPEC Part 6): a rung day nudges the
+## village's dawn output — "the village keeps time." Read by the dawn labor
+## loop above; tide_bell_rang_today resets in _on_sim_day after this runs.
+func _tide_bell_output_bonus() -> float:
+	return 0.5 if tide_bell_rang_today else 0.0
+
 func _village_dawn() -> void:
 	_recompute_memorial()
 	var rite_led := rites_done_today.values().any(func(v: bool) -> bool: return v)
@@ -3541,7 +3708,7 @@ func _village_dawn() -> void:
 					works.set_in_use(int(inst_id), true)
 					break
 		var suit: float = float(CLASS_SUIT.get(v.def_class, {}).get(task, 0.5))
-		var qty := int(round(TASK_BASE * suit * village.output_per_hour(v.tribesman_id)))
+		var qty := int(round(TASK_BASE * suit * village.output_per_hour(v.tribesman_id) + _tide_bell_output_bonus()))
 		if qty <= 0:
 			continue
 		# gather tasks work a REAL node: the nearest within the forage leash, worn
@@ -3980,6 +4147,7 @@ func _on_sim_day(_day: int) -> void:
 	# clears rites_done_today below — this is the day that just ended.
 	var rites_yesterday: Dictionary = rites_done_today.duplicate()
 	_village_dawn()
+	tide_bell_rang_today = false   # the bonus applied for today; tomorrow needs its own ring
 	devotion.villager_trickle_day(acting_pid, "god-halor", village.devout_count("god-halor"))
 	# Godhead: the devout-villager trickle and the neglect check are WORLD-level,
 	# so — unlike the per-player devotion call above (Halor only, pre-existing) —
@@ -4029,6 +4197,18 @@ func is_storm_day() -> bool:
 	return clock.day % 4 == 3
 
 func _storm_dawn() -> void:
+	# the Lighthouse-Keeper's Lantern, verse 3: granted to every survivor on the
+	# dawn AFTER a great storm (clock.day is already the NEW day here — the
+	# storm was clock.day - 1). Per-player, once ever, like the harpoon-verses.
+	if clock.day > 0 and (clock.day - 1) % 4 == 3:
+		var verse_msg := ""
+		for pid: Variant in stats.actors:
+			if pid is int and not lantern_verse3_taken.get(pid, false):
+				lantern_verse3_taken[pid] = true
+				inventory.add(int(pid), "item-lantern-verse", 1)
+				verse_msg = "You made it through the great storm. Something in you remembers a keeper's verse now, word for word, like you'd always known it."
+		if verse_msg != "":
+			message = (message + "\n" + verse_msg) if message != "" else verse_msg
 	# yesterday's storm-glass sinks back into the flats
 	for node in resource_nodes.duplicate():
 		if is_instance_valid(node) and int(node.get_meta("idx", -1)) >= STORM_GLASS_IDX_BASE:
@@ -4124,11 +4304,29 @@ func _spawn_enemies() -> void:
 	enemies.append(boss)
 
 ## --- day/night + HUD ---------------------------------------------------------------
+const TIDE_BELL_RING_MINUTES := [6 * 60, 18 * 60]   # 06:00 and 18:00
+
+## Neris's Tide-Bell: rings itself (no tending needed), counts as in-use on
+## days it rang (favor trickle), and marks the day for _village_dawn's output
+## bump. minute_of_day is an int (SimClock), so no float/int membership gotcha.
+func _tick_tide_bell(minute: int) -> void:
+	if minute not in TIDE_BELL_RING_MINUTES:
+		return
+	var rang := false
+	for inst_id: Variant in works.placed:
+		if str(works.placed[inst_id].work_id) == "work-tide-bell":
+			works.set_in_use(int(inst_id), true)
+			rang = true
+	if rang:
+		tide_bell_rang_today = true
+		sfx("rite")   # an existing god-bell asset stands in until a dedicated one lands
+
 func _on_sim_minute(_m: int) -> void:
 	_minutes_since_hour += 1
 	if _minutes_since_hour >= 60:
 		_minutes_since_hour = 0
 		works.favor_hour()
+	_tick_tide_bell(clock.minute_of_day)
 	var tint := _tint_for_minute(clock.minute_of_day)
 	if is_storm_day():
 		tint = tint * Color(0.72, 0.76, 0.86)   # storm-gray over everything
@@ -4140,7 +4338,47 @@ func _on_sim_minute(_m: int) -> void:
 		sound.ambience("amb_storm" if is_storm_day() else ("amb_night" if clock.is_night() else "amb_day"))
 	if net_mode == "server" and clock.minute_of_day % 5 == 0:
 		rpc("cl_world_sync", _world_sync())
+	if net_mode != "server":
+		_update_lantern_glow()
 	_refresh_hud()
+
+var _lantern_light: PointLight2D = null
+static var _lantern_glow_tex: GradientTexture2D = null
+
+## The Lighthouse-Keeper's Lantern: a personal light radius at night, client
+## visual only — reuses the daynight-tint idea (nothing here is sim state; a
+## server never runs it, and a client that isn't wearing the trinket at night
+## just never spawns the node). item.effects "night-light-radius" sizes it.
+func _update_lantern_glow() -> void:
+	if player == null:
+		return
+	var carrying := equipped_item(my_pid, "trinket") == "item-lighthouse-keepers-lantern"
+	var active := carrying and clock.is_night()
+	if active and _lantern_light == null:
+		_lantern_light = PointLight2D.new()
+		if _lantern_glow_tex == null:
+			var g := Gradient.new()
+			g.set_color(0, Color(1, 0.92, 0.75, 1))
+			g.set_color(1, Color(1, 0.92, 0.75, 0))
+			var tex := GradientTexture2D.new()
+			tex.gradient = g
+			tex.fill = GradientTexture2D.FILL_RADIAL
+			tex.fill_from = Vector2(0.5, 0.5)
+			tex.fill_to = Vector2(1.0, 0.5)
+			tex.width = 128
+			tex.height = 128
+			_lantern_glow_tex = tex
+		_lantern_light.texture = _lantern_glow_tex
+		var mag := 90.0
+		for eff: Dictionary in registry.get_entity("item-lighthouse-keepers-lantern").get("effects", []):
+			if str(eff.get("type", "")) == "night-light-radius":
+				mag = float(eff.get("magnitude", 90.0))
+		_lantern_light.texture_scale = mag / 64.0
+		_lantern_light.energy = 1.1
+		player.add_child(_lantern_light)
+	elif not active and _lantern_light != null:
+		_lantern_light.queue_free()
+		_lantern_light = null
 
 ## Gradual light: night -> warm dawn -> blinding day -> gold dusk -> night.
 func _tint_for_minute(m: int) -> Color:
@@ -4373,7 +4611,8 @@ func _refresh_hud() -> void:
 		"  — night. NIGHT BELONGS TO THE HOUNDS." if clock.is_night() else "",
 		"  |  fed ×%d" % fed if fed > 0 else "", _direction_hints(),
 		inv if inv != "" else "(empty hands)",
-		("  [Q] Pillar of Salt" if "god-halor" in attuned_for(my_pid) else "") + ("  [R] Call the Squall" if "god-maren" in attuned_for(my_pid) else ""), message]
+		("  [Q] Pillar of Salt" if "god-halor" in attuned_for(my_pid) else "") + ("  [R] Call the Squall" if "god-maren" in attuned_for(my_pid) else "") \
+			+ ("  [Z] Slack Tide  [N] Returning Wave" if "god-neris" in attuned_for(my_pid) else ""), message]
 
 ## Where the unfinished business is: unvisited shrines, the stranded woman.
 func _direction_hints() -> String:
@@ -4418,6 +4657,10 @@ static func _setup_input() -> void:
 		"interact": [KEY_E], "craft": [KEY_C], "build": [KEY_B], "eat": [KEY_F],
 		"attack": [KEY_SPACE], "cast": [KEY_Q], "cast_2": [KEY_R], "consume": [KEY_X],
 		"save": [KEY_F5], "sheet": [KEY_T], "inventory": [KEY_I], "village": [KEY_V], "give_food": [KEY_G], "journal": [KEY_J],
+		# Neris's two invocations (CRAFT-AND-BUILD-SPEC M2.75): Z and N are the
+		# nearest unclaimed keys to the existing Q/R cast pattern — checked
+		# against every bound action above (T/C/B/V/J/I/F/G/Q/R/X/SPACE/F5 taken).
+		"cast_3": [KEY_Z], "cast_4": [KEY_N],
 	}
 	for action: String in keys:
 		if InputMap.has_action(action):

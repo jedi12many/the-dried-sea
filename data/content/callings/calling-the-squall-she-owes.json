@@ -1,0 +1,72 @@
+{
+  "id": "calling-the-squall-she-owes",
+  "title": "The Squall She Owes",
+  "tier": "vignette",
+  "source": "god-dream",
+  "sourceGodId": "god-maren",
+  "giver": {
+    "name": "Corvin Hask, storm-watcher",
+    "wound": "He stood on the shore-road the night of the Withdrawal daring the sky to do something, anything, rather than just let the water go quietly. It didn't. He's been angry at weather ever since, in a way that reads, to everyone who doesn't know him, as devotion."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 1.8 },
+    "devotion": { "god-maren": 2.0 },
+    "playstyle": { "fighter": 1.3 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Corvin wakes you before dawn, soaked in sweat that smells like rain that hasn't fallen. He dreamed of Maren standing over a debt-board like a dockmaster's, his name chalked at the top under a column he doesn't recognize. 'She said I owe her a storm,' he says, half a laugh in it. 'Not weathered one. Owe her one.' He wants help figuring out what that means before the sky decides for him.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "goto",
+      "text": "You walk the shore-road with him to the spot he stood the night the sea left — a bootprint-shaped hollow in old salt-stone that's never quite filled in, no matter how many storms have crossed it since. Corvin won't set foot in the hollow itself. He never has.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "turn",
+      "text": "It isn't a debt of worship Maren wants settled — it's the shouting match. Corvin has spent three generations daring the storm and never once let it actually reach him; he watches from the same safe rise every time, chalk-marking the lightning like a man keeping score from the stands. Maren doesn't want an offering. She wants him to finally stand in the hollow during the next storm and take what he's been demanding of the sky since he was a boy.",
+      "options": [
+        {
+          "text": "Talk him into it. Stand with him in the hollow when the next great storm rolls in — dared weather, taken honestly, together.",
+          "next": "s4-stand",
+          "ledger": [{ "ledger": "gods", "amount": 8, "note": "Maren rewards a dare finally kept" }]
+        },
+        {
+          "text": "Tell him to let the debt lapse. Some men need the shouting more than they need the answer, and his anger has kept him alive, not just loud.",
+          "next": "s4-lapse",
+          "ledger": [{ "ledger": "shepherd", "amount": 4, "note": "mercy toward a grief that works, even if it isn't healthy" }]
+        }
+      ]
+    },
+    {
+      "id": "s4-stand",
+      "type": "wait",
+      "text": "You wait together for the sky to turn, and when the squall comes in low and mean, you stand with Corvin in the hollow while the rain finally lands on him instead of past him. He doesn't say anything after. He doesn't need to; you watch fifteen years fall out of his shoulders in about a minute.",
+      "next": null
+    },
+    {
+      "id": "s4-lapse",
+      "type": "goto",
+      "text": "You tell Corvin the debt's forgiven, whatever that's worth from you. He nods like he half-expected it and goes back to his rise above the hollow. Nothing changes about how he watches storms. Somehow, though, he starts sleeping through the ones that don't matter.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Stand: Corvin moves his watch-post down into the hollow itself, permanently — the village's storm-sense gets sharper because he's finally reading weather from inside it instead of above it. Lapse: Corvin keeps his rise, but stops chalk-marking every strike; he only counts the ones that would have hit him, which is a smaller, gentler number.",
+    "worldFlags": ["corvin-hollow-stood", "corvin-debt-lapsed"],
+    "dialogueKeys": ["corvin-hask-storm-watch"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-storm-glass", "qty": 1 }
+    ],
+    "favor": { "god-maren": 5 }
+  },
+  "status": "draft",
+  "curatorNote": "Turn: the dream-debt isn't worship, it's cowardice dressed as courage — Maren calls it correctly. Tuning-unsure: whether the wait step should require an actual in-fluctuation great-storm window or just play out narratively; wrote it narrative-only since I can't confirm the storm-scheduling hook from content alone."
+}

@@ -1,0 +1,75 @@
+{
+  "id": "calling-the-captive-at-the-yoke-post",
+  "title": "The Captive at the Yoke-Post",
+  "tier": "chain",
+  "source": "tribesman",
+  "giver": {
+    "name": "Bren Otts, bound at the yoke-post",
+    "wound": "Raided your salvage line for grain, not glory — his own camp lost their last freshwater still to the Withdrawal's slow salt-creep, and he was the one who volunteered to steal rather than watch his people starve first. He's said as much to every warden who's asked, and none of them have believed a captive's excuse before."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 2.0 },
+    "village": { "hosts-unlit-priest": 1.3 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Your warden reports the yoke-post's newest captive won't stop talking, which is unusual — most go quiet or go feral. Bren Otts spends his watch-shifts explaining, calmly and consistently, exactly why he raided you: his camp's still failed, and grain was faster to steal than water was to find. He's not asking for sympathy. He's asking to be believed enough to be worked with instead of just held.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "goto",
+      "text": "You check his story at the raider camp's old ground, a day's walk out — abandoned, exactly as described, its still cracked clean through with dried salt-creep. Whatever else Bren is, he isn't lying about why.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "turn",
+      "text": "Back at the yoke-post, your warden lays out both options plainly, the way the job requires: build the Salt-Wheel and grind Bren into the Broken within days — productive immediately, no risk of another raid, no more talking. Or commit to the Unbinding — good treatment, patience, and enough warden coverage to wait him out, with no guarantee he doesn't run the first unwatched night. Bren, for his part, asks only one thing of you either way: that whichever choice you make, you make it knowing his camp is still out there, starving, right now, while you decide.",
+      "options": [
+        {
+          "text": "Choose the Unbinding. Feed him properly, grant shrine access, and give him the time the rite needs — patience is the whole cost, and it's the one his own camp never got the chance to pay.",
+          "next": "s4-unbind",
+          "ledger": [{ "ledger": "shepherd", "amount": 9, "note": "the slower, kinder door, chosen with the harder facts in hand" }]
+        },
+        {
+          "text": "Build the Salt-Wheel and grind him quickly. His camp's suffering doesn't change what he did to yours, and a village can't run a charity for every raider with a good excuse.",
+          "next": "s4-wheel",
+          "ledger": [{ "ledger": "gods", "amount": -7, "note": "Ur-Noth feeds well off a captive's fast breaking" }, { "ledger": "shepherd", "amount": -4, "note": "efficient, and Halor watches how villages keep even the guilty" }]
+        }
+      ]
+    },
+    {
+      "id": "s4-unbind",
+      "type": "wait",
+      "text": "You feed Bren properly, grant him shrine access, and wait out the season the rite requires under steady warden watch. He works the whole time without needing to be told twice — a man used to hard labor for a reason he believes in. When the Unbinding finally takes, he asks, first, whether the village can spare enough to send relief to his old camp. It's the same request he opened with, months on, unchanged.",
+      "next": "s5-unbind"
+    },
+    {
+      "id": "s4-wheel",
+      "type": "build",
+      "text": "You raise the Salt-Wheel and put Bren to it. He grinds fast and well, obedient the way the Broken always are — dim, productive, no more talking. Priests passing the wheel mutter under their breath and don't stay long. Nobody asks what happened to the camp he mentioned.",
+      "next": null
+    },
+    {
+      "id": "s5-unbind",
+      "type": "goto",
+      "text": "You send a small relief party to Bren's old camp with what grain and water the village can spare, at his direct request. They find it still abandoned — his people scattered to find water elsewhere, alive, as far as anyone can tell. Bren takes the news as the closest thing to good news his story was ever going to get.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Unbind: Bren becomes one of your steadiest true villagers, and word of the relief party reaches scattered survivors of his old camp — two eventually arrive at your gate months later, asking for the man who sent for them. Wheel: the Salt-Wheel gains its first turn and Ur-Noth's voice, priests report, sounds a little warmer that week; Bren works well and remembers nothing of the camp he raided for, which is exactly the point of the wheel and exactly the cost of using it.",
+    "worldFlags": ["bren-unbound-relief-sent", "bren-broken-on-the-wheel"],
+    "dialogueKeys": ["bren-otts-yoke-post"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-rope", "qty": 4 }
+    ]
+  },
+  "status": "draft",
+  "curatorNote": "The Salt-Wheel-adjacent captive choice — the kind door (Unbinding) is real and gets its own payoff scene (the relief party), and the grim door (the Wheel) is genuinely useful (fast, no risk) rather than a strawman, per the design law that the grim alternative must actually tempt. Deliberately gave this calling no god-favor reward (rewards apply regardless of branch in this schema): a flat favor grant would either reward the Wheel path with a god who should be dimming toward it, or feel like a thumb on the scale toward Unbinding. Left as items-only; Jeff may want to split this into branch-specific favor once/if the schema supports conditional rewards."
+}

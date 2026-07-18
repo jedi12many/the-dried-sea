@@ -1,0 +1,72 @@
+{
+  "id": "calling-full-cellar",
+  "title": "The Full Cellar",
+  "tier": "vignette",
+  "source": "god-dream",
+  "sourceGodId": "god-halor",
+  "giver": {
+    "name": "Petra Vance, keeper of the Salt Cellar",
+    "wound": "Her mother rationed grain to the gram through the three starving years after the Withdrawal, and died still counting shelves by lamplight. Petra inherited the ledger and the habit — she counts people the same cold way she counts salt."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 2.0 },
+    "devotion": { "god-halor": 2.0 },
+    "playstyle": { "builder": 1.3 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Petra corners you by the cellar door, ledger under her arm, and admits she dreamed of Halor last night — not a voice so much as a weight, the way a full shelf sits different than an empty one. He showed her the cellar with one shelf standing bare no matter how she stocked it, and said only: 'you have been counting the wrong things.' She wants you to walk the ration line with her and tell her what she's missing, because she genuinely cannot see it.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "goto",
+      "text": "Her ledger has a name circled twice in red: Fenn Odar, marked for removal from the ration line next tally — 'produces less than he eats,' in her mother's exact handwriting, copied down like scripture. You go to find him before Petra's schedule does.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "turn",
+      "text": "Fenn isn't hoarding or shirking — you catch him at the smokehouse door past curfew, splitting his own ration in half and carrying the smaller half to old Sennet, who's too proud to ask and too weak to hunt her own share. Fenn has been eating less than the ledger thinks, not more. Petra's numbers were right and her arithmetic was wrong: she never had a column for kindness. What do you tell her?",
+      "options": [
+        {
+          "text": "Tell her the truth and ask her to give the shelf a name instead of a number — let Fenn and Sennet share the ration openly, on the books.",
+          "next": "s4-shelf",
+          "ledger": [{ "ledger": "shepherd", "amount": 7, "note": "the empty shelf gets a name" }]
+        },
+        {
+          "text": "Tell her the ledger's right and let the cut stand. Rules that bend for one villager bend for all of them, and Petra's cellar has kept this village alive for a reason.",
+          "next": "s4-cut",
+          "ledger": [{ "ledger": "shepherd", "amount": -6, "note": "efficient, and Halor is watching how, not just what" }]
+        }
+      ]
+    },
+    {
+      "id": "s4-shelf",
+      "type": "talk",
+      "text": "Petra rewrites the line in her own hand, and for the first time in three generations a Vance ledger has a name on it that isn't a debt. She leaves an offering at Halor's altar that night — salt, plainly, the way he likes it — and doesn't count it twice to make sure she gave enough.",
+      "next": null
+    },
+    {
+      "id": "s4-cut",
+      "type": "goto",
+      "text": "Fenn is quietly struck from the line. Sennet's share thins with his. Petra sleeps better, ledger balanced. The cellar stays full. Something else, harder to tally, goes a little emptier.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Shelf: the ration line now has a shared entry — Fenn and Sennet — and Halor's chapel keeps a warmer glow at dusk; villagers passing the cellar mention Petra by name instead of by ledger. Cut: the cellar's spoilage numbers stay perfect, but Sennet is thinner at the hearth come winter, and Petra stops sleeping with the lamp lit, which everyone reads as peace and no one asks about.",
+    "worldFlags": ["petra-shelf-shared", "petra-cut-stands"],
+    "dialogueKeys": ["petra-vance-cellar"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-salt-ration", "qty": 3 }
+    ],
+    "favor": { "god-halor": 5 }
+  },
+  "status": "draft",
+  "curatorNote": "Turn: the dream is never about the cellar — it's about who the ledger has already decided doesn't count. Halor's virtue (keeping people, not just food) made literal. Tuning-unsure: whether the shelf-shared echo should also nudge Fenn/Sennet toward becoming a discoverable Key pair for a future villager calling."
+}

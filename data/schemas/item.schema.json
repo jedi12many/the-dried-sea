@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "item.schema.json",
- "$comment": "v3 — adds relic (the Sanctum's Splendor score, WORLD-SPEC); adds gather (multi-hit world nodes)",
+ "$comment": "v4 — adds tool (B2+ gather-gate tier; inert until the M3 node-gating pass reads it)",
  "type": "object",
  "required": [
   "id",
@@ -118,6 +118,20 @@
    "required": [
     "hits"
    ],
+   "additionalProperties": false
+  },
+  "tool": {
+   "type": "object",
+   "description": "B2+ node-gating tier (CRAFT-AND-BUILD-SPEC Part 1 Law 2: one tool per tier, best-in-pack). Not read by any gameplay system yet — inert until the M3 tool-tier gate lands on world nodes.",
+   "required": [
+    "tier"
+   ],
+   "properties": {
+    "tier": {
+     "type": "integer",
+     "minimum": 1
+    }
+   },
    "additionalProperties": false
   }
  }

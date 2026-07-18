@@ -1,0 +1,76 @@
+{
+  "id": "calling-the-letter-that-begged-to-stop",
+  "title": "The Letter That Begged to Stop",
+  "tier": "vignette",
+  "source": "dead-letter",
+  "giver": {
+    "name": "Hollis Brahm, who drowned nine times before the tenth took",
+    "wound": "A wreck-diver who went into the trench-edge shallows more times than any sane salvager should have, and came up dead more times than that — pulled back each time by something patient in the dark that liked the taste of nearly-lost things. He wrote a letter after the fifth drowning, in case there wasn't a sixth. There were four more."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 1.8 },
+    "village": { "hosts-unlit-priest": 1.4 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "collect",
+      "text": "A waxed letter, found tucked in a diving-satchel abandoned at the trench-edge shallows, addressed to no one — just 'whoever finds this after I stop coming back up.' The hand gets shakier with every line, like it was written across several different days, each one a little less steady than the last.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "goto",
+      "text": "The letter names a specific ledge in the shallows where Hollis dove the ninth time — deep enough to be trench-adjacent, the kind of water salvagers only try once. You go to see it for yourself: nothing marks it as special except a stillness in the brine that doesn't match the current anywhere nearby.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "talk",
+      "text": "A Brinefolk elder working the nearby pools knows the ledge by reputation and won't go near it. 'Something down there likes bringing men back,' she says. 'Not saving them. Bringing them back. There's a difference, and Hollis knew it by the third time.' She tells you the letter's last line, the one she's heard secondhand for years: 'tell whoever finds this — I stopped being afraid of drowning. I got afraid of waking up.'",
+      "next": "s4"
+    },
+    {
+      "id": "s4",
+      "type": "turn",
+      "text": "You find what's left of Hollis at the ledge — not a body exactly, more a shape the shallows have been keeping half-preserved, like something didn't want to let the tenth drowning finish properly either. The letter wasn't a warning about the dive. It was a plea, addressed to whoever came looking, not to try to help him the way he'd been 'helped' nine times already.",
+      "options": [
+        {
+          "text": "Bury what's left of him properly, in salt and silence, well clear of the ledge — a real ending, no rite that might call attention back to him.",
+          "next": "s5-bury",
+          "ledger": [{ "ledger": "shepherd", "amount": 7, "note": "letting a man stay dead, which is what he asked for" }]
+        },
+        {
+          "text": "Hold a full rite for him at the village chapel instead, names spoken aloud, offerings made — the honor his family never got to give him, whatever the risk of drawing notice.",
+          "next": "s5-rite",
+          "ledger": [{ "ledger": "gods", "amount": 4, "note": "an honest rite, even here" }, { "ledger": "shepherd", "amount": -3, "note": "his letter asked for quiet, not ceremony" }]
+        }
+      ]
+    },
+    {
+      "id": "s5-bury",
+      "type": "goto",
+      "text": "You dig the grave well back from the ledge, no markers pointing toward the water, no words that could be mistaken for an invitation. The stillness in the brine at the ledge thins out over the following days, like something patient finally lost interest.",
+      "next": null
+    },
+    {
+      "id": "s5-rite",
+      "type": "talk",
+      "text": "The village priest speaks Hollis's name at chapel, and for one evening the whole village knows a man who drowned nine times and is finally allowed his tenth. The stillness at the ledge doesn't go away. If anything, it feels a little more attentive — patient, the way a debt collector is patient.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Bury: the ledge stops feeling watched; salvagers report it's just ordinary deep water now, and a small unmarked cairn nearby is the only sign anyone was ever there. Rite: the chapel's rite log carries Hollis's name and his exact count — nine — and the priest privately admits the ledge still gives them a chill they can't shake, ledger or no ledger.",
+    "worldFlags": ["hollis-buried-quiet", "hollis-rite-held"],
+    "dialogueKeys": ["brinefolk-elder-hollis"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-bronze-salvage", "qty": 3 }
+    ],
+    "favor": { "god-halor": 3 }
+  },
+  "status": "draft",
+  "curatorNote": "Flavor-only echo of the Waker mechanic (tuning/godhead.json waker section — 'washIfAttuned', repeated feedPct decay) applied narratively to a dead NPC, never touching the Godhead system itself. Turn: the letter reads as a warning about the dive but is really a plea not to be brought back again. Tuning-unsure: whether drawWeights.village hosts-unlit-priest is the right condition here versus a dedicated 'waker-adjacent' tag that doesn't exist yet — used the one example the schema names."
+}

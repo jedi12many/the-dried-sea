@@ -1,0 +1,70 @@
+{
+  "id": "calling-whose-knife-is-it",
+  "title": "Whose Knife Is It",
+  "tier": "vignette",
+  "source": "tribesman",
+  "giver": {
+    "name": "Nib Sorrel, the loudest voice at the open stores",
+    "wound": "Salvaged his good bronze knife himself from a wreck the week after the Withdrawal, alone, half-starved, and has treated it as the one thing the drowning didn't get to take from him personally. Everything else he owns, he's fine sharing."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 2.0 },
+    "playstyle": { "builder": 1.1 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Nib corners you loudly by the workbench, absolutely certain someone has stolen his good bronze knife from the open stores. He wants you to find the thief and get it back — and he wants it known, publicly, that this was theft and not the usual communal borrowing, because his knife is different, apparently, in a way he can't quite explain except that it matters to him more.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "goto",
+      "text": "You check the open stores' shelf where the knife should sit. It's not there. Neither is a hide-scraper, a coil of rope, or half the smokehouse's spare salt — all perfectly normal, all borrowed by name in the stores' log, which Nib has apparently never once checked.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "turn",
+      "text": "The log shows the knife signed out three days ago by a nine-year-old, in careful, proud lettering, for 'cutting bait, will return.' She's been using it to help the smokehouse crew all week, unasked, because she wanted to contribute and the bronze knife was simply the sharpest tool she could reach. Nib's stolen treasure has been doing honest, useful work the entire time it was 'missing.'",
+      "options": [
+        {
+          "text": "Bring Nib to see her using it well, and let him decide for himself whether it still feels stolen once he sees the work it's been doing.",
+          "next": "s4-show",
+          "ledger": [{ "ledger": "shepherd", "amount": 3, "note": "a small, gentle lesson in what 'communal' actually means" }]
+        },
+        {
+          "text": "Just fetch the knife back quietly and hand it to Nib without explanation, so he can keep believing what he wants to believe.",
+          "next": "s4-fetch",
+          "ledger": [{ "ledger": "shepherd", "amount": -1, "note": "conflict-avoidant, and it teaches the girl the wrong lesson about asking" }]
+        }
+      ]
+    },
+    {
+      "id": "s4-show",
+      "type": "goto",
+      "text": "Nib watches her clean fish with his knife, quick and careful, clearly proud of doing it right. He grumbles that she could've asked him directly — then spends the next week teaching her how to keep an edge properly, which is as close to an apology as Nib gets.",
+      "next": null
+    },
+    {
+      "id": "s4-fetch",
+      "type": "goto",
+      "text": "You retrieve the knife and return it to Nib, who declares the matter solved and tells anyone who'll listen about 'catching' the thief. The girl quietly stops volunteering at the smokehouse, unsure what she did wrong, and nobody explains it to her.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Show: Nib starts teaching knife-care at the open stores twice a week, half grumbling and half delighted to have an audience, and the stores' borrowing log starts actually getting checked before anyone shouts 'thief.' Fetch: the knife stays exclusively Nib's from then on, quietly re-shelved somewhere only he knows, and the smokehouse crew loses a volunteer nobody ever explains the loss of.",
+    "worldFlags": ["nib-knife-taught-openly", "nib-knife-quietly-hoarded"],
+    "dialogueKeys": ["nib-sorrel-knife"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-bronze-knife", "qty": 1 }
+    ],
+    "favor": { "god-halor": 2 }
+  },
+  "status": "draft",
+  "curatorNote": "The light one — the world smiling occasionally, per the coverage note. Turn: there was no theft, just a kid doing good communal work with the sharpest tool in reach; the real question is whether the giver can let go of ownership over something the village's whole open-stores model says isn't really his to hoard. Uses item-bronze-knife which exists in items.json."
+}

@@ -1,0 +1,70 @@
+{
+  "id": "calling-a-generous-offer",
+  "title": "A Generous Offer",
+  "tier": "vignette",
+  "source": "tribesman",
+  "giver": {
+    "name": "Ness Coyle, night-shift smith",
+    "wound": "Lost his forge-partner and both hands' worth of steady work to a raid the village watch arrived at too late — the same kind of raid that picked off half his family in the lawless scramble after the Withdrawal. He doesn't blame the watch loudly, but he's stopped sleeping through the night, and lately he's been talking to the new arrival who sits up with him — the one nobody remembers inviting."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 1.8 },
+    "village": { "hosts-unlit-priest": 2.5 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Ness catches you alone at the workbench, unusually cheerful for a man who barely sleeps. He's learned a recipe, he says, that could genuinely help — a way to render down what the rendering-vat would otherwise waste, stretching every remnant your village finds twice as far. He offers to teach it to you outright, no cost mentioned, as a thank-you for something you don't remember doing for him.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "goto",
+      "text": "He walks you to where he learned it — not a book, not a wreck manifest, but a quiet spot behind the chapel where he's taken to sitting with the Unlit congregant everyone assumes someone else invited. The recipe, it turns out, came from there, offered the same easy, reasonable way Ness is now offering it to you.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "turn",
+      "text": "The recipe itself would work exactly as promised — that's the whole design of it. It's not a trick disguised as generosity; it's real generosity, genuinely useful, that happens to run through Ur-Noth's hand on its way to yours, the same way every one of his gifts does. Ness isn't lying to you and doesn't think he's doing anything wrong. That's what makes it work on him, and what would make it work on you.",
+      "options": [
+        {
+          "text": "Take the recipe. It's useful, it's freely offered, and refusing every gift that touches the dark isn't the same thing as staying clean of it.",
+          "next": "s4-take",
+          "ledger": [{ "ledger": "gods", "amount": -6, "note": "a small, real debt to the Unlit, taken with open eyes" }]
+        },
+        {
+          "text": "Decline the recipe, and sit up with Ness yourself for a few nights instead — the actual gap in his life the congregant has been filling.",
+          "next": "s4-decline",
+          "ledger": [{ "ledger": "shepherd", "amount": 8, "note": "the kinder, slower alternative was real company, not a recipe" }]
+        }
+      ]
+    },
+    {
+      "id": "s4-take",
+      "type": "goto",
+      "text": "You learn the recipe. It works exactly as promised, every time you use it. Ness looks a little more pleased with himself each time you do, like a man who's finally found something he can give that people actually want.",
+      "next": null
+    },
+    {
+      "id": "s4-decline",
+      "type": "goto",
+      "text": "You start sitting up with Ness a few nights a week instead — no recipe, just company at the forge. The congregant doesn't say anything about it, but visits Ness less. Ness sleeps a little more, though he never quite explains why he stopped talking about the offer.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Take: the rendering-vat's yield improves village-wide, quietly, and priests who notice the sudden efficiency start giving your workbench a wider berth without saying why. Decline: Ness's forge output holds steady rather than improving, but the village's dawn tally shows the Unlit congregant with one fewer regular visitor — a small, unglamorous win nobody but you will ever know to credit.",
+    "worldFlags": ["ness-took-the-recipe", "ness-got-company-instead"],
+    "dialogueKeys": ["ness-coyle-offer"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-bronze-salvage", "qty": 3 }
+    ],
+    "favor": { "god-halor": 3 }
+  },
+  "status": "draft",
+  "curatorNote": "The grim temptation ask — the corrupt-arrival pattern from WORLD-SPEC's grim-recipes law #2 (recipes arrive corruptly, via whispers) made literal, weighted to villages hosting an Unlit priest. Turn: the offer is genuinely useful and genuinely not a lie, which is the actual danger, not a hidden catch. No new recipe/item is granted mechanically here (I only referenced the existing work-rendering-vat's flavor) since I can't add recipe entities in this content-only pass."
+}

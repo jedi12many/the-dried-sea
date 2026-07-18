@@ -1,0 +1,85 @@
+{
+  "id": "calling-the-first-tide",
+  "title": "The First Tide",
+  "tier": "chain",
+  "source": "god-dream",
+  "sourceGodId": "god-neris",
+  "giver": {
+    "name": "Wynn Ames, the last net-mender",
+    "wound": "She still mends nets for a fishing fleet that will never launch again — beached the night the sea left, hulls dry-rotting where they grounded. Her grandmother made her promise the nets would be ready when the water came home. Wynn is the only one left who remembers the promise was ever made."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 2.0 },
+    "devotion": { "god-neris": 2.5 },
+    "playstyle": { "night-walker": 1.2 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Wynn finds you at first light, hands still moving through mending-knots she isn't holding any rope for. She dreamed of Neris for the first time in her life last night — not a vision so much as a rhythm, the pull-and-slack of a tide she has never once felt with her own body. 'She didn't say anything,' Wynn tells you. 'She just breathed, in and out, slow. Like she was teaching me the count.' She wants to know if you've felt it too, and if it means what she's afraid it means.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "goto",
+      "text": "You walk with her to the beached fleet at low salt — hulls she has kept sound for three generations against a tide that never returns. She wants to stand where the water would first touch the keels, if it ever came back, and see whether the dream-rhythm matches anything real in the ground beneath her.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "collect",
+      "text": "Buried in the dry sand under the foremost hull, wrapped in oilcloth gone stiff as bark, you find a water-clock — an old and patient instrument, Nael's make by the look of the tide-stone fittings, the kind Neris's keepers built to count a rhythm even when there was nothing left to count. It has not run in three generations. When Wynn lifts it, the internal float shifts, once, on its own.",
+      "next": "s4"
+    },
+    {
+      "id": "s4",
+      "type": "wait",
+      "text": "You and Wynn sit with the clock through a full day and night, waiting to see if it moves again on its own rhythm rather than being wound. Twice, at what should be the old high-water hours, the float shivers — faint, but real. Neris is not gone. She is keeping time in an instrument built for exactly this drought, one breath every twelve hours, patient past patience.",
+      "next": "s5"
+    },
+    {
+      "id": "s5",
+      "type": "turn",
+      "text": "The dream was never a warning or a gift — it was an introduction. Wynn realizes, watching the float shiver on schedule, that Neris has been keeping this particular rhythm since the night the sea left, waiting for someone alive to notice and mend it the way Wynn mends nets: not to use, but to keep faith with. The clock doesn't need repair. It needs a keeper who visits.",
+      "options": [
+        {
+          "text": "Build the clock a proper housing at the water's edge and visit it yourself, on the rhythm, the way Wynn does her nets — a quiet devotion, kept without an audience.",
+          "next": "s6-tend",
+          "ledger": [{ "ledger": "gods", "amount": 10, "note": "Neris meets patience with patience" }]
+        },
+        {
+          "text": "Give the clock to Wynn outright. Let the fleet's last net-mender become its first new keeper — her family already kept one promise to the tide; let her keep two.",
+          "next": "s6-give",
+          "ledger": [{ "ledger": "shepherd", "amount": 6, "note": "handing a devotion to someone who's earned it" }]
+        }
+      ]
+    },
+    {
+      "id": "s6-tend",
+      "type": "build",
+      "text": "You and Wynn set the water-clock into a housing of salt-stone and wreck-timber at the tide-line, low enough that a real tide would touch it first. You start visiting it on the old rhythm — twelve hours, twelve hours — and Wynn starts mending nets again with her whole hand instead of half her attention.",
+      "next": null
+    },
+    {
+      "id": "s6-give",
+      "type": "goto",
+      "text": "You set the clock in Wynn's keeping. She builds it a shelf beside her mending-bench, within sight of the beached fleet, and starts a private ritual of her own — a breath in, a breath out, every time she checks it, the way Neris breathed for her in the dream.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Tend: the water-clock's housing becomes a minor pilgrimage stop — visiting priests remark that the rhythm reads truer here than anywhere else in the village, and Neris's rite recovery ticks faster within sight of it. Give: Wynn is quietly, permanently changed — she mends nets AND keeps a tide now, and the fleet's rot slows, as if something is finally being kept faith with again. Either way, this is the first time in the campaign Neris has spoken to anyone directly rather than through an old measure left behind.",
+    "worldFlags": ["neris-clock-tended", "neris-clock-given-to-wynn"],
+    "dialogueKeys": ["wynn-ames-water-clock"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-rope", "qty": 4 },
+      { "itemId": "item-salt", "qty": 6 }
+    ],
+    "favor": { "god-neris": 10 }
+  },
+  "status": "draft",
+  "curatorNote": "This is meant to be the introductory Neris calling now that she's newly reachable — tide-rhythm, patience, and a literal first meeting rather than a request. Chain across a full wait-day to earn the 'patient one' fantasy. Tuning-unsure: whether the wait step's two float-shivers should be a hard scripted beat or randomized — wrote it as guaranteed since this is a first-contact moment, not a gameplay grind."
+}

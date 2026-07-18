@@ -76,6 +76,17 @@ func heal_full(actor_id: Variant) -> void:
 	a.stamina = max_stamina(actor_id)
 	changed.emit(actor_id)
 
+## Regen-over-time (Neris's The Returning Wave, etc): `total_amount` spread
+## evenly across `duration` seconds, ticked in tick() below. A second cast
+## simply replaces the pending heal (no stacking) — the tide only comes back
+## on its own schedule.
+func apply_hot(actor_id: Variant, total_amount: float, duration: float) -> void:
+	if not actors.has(actor_id) or duration <= 0.0:
+		return
+	var a: Dictionary = actors[actor_id]
+	a.hot_per_sec = total_amount / duration
+	a.hot_seconds_left = duration
+
 ## Returns false (and spends nothing) if the actor is too tired.
 func spend_stamina(actor_id: Variant, amount: float) -> bool:
 	if not actors.has(actor_id):
@@ -87,7 +98,10 @@ func spend_stamina(actor_id: Variant, amount: float) -> bool:
 	changed.emit(actor_id)
 	return true
 
-## Frame tick: stamina recovers toward the fed maximum; food wears off.
+## Frame tick: stamina recovers toward the fed maximum; food wears off; a
+## pending heal-over-time (apply_hot) trickles in; a bath_mult (Neris's
+## Healing Bath — set/cleared by the caller each frame from proximity) stacks
+## multiplicatively onto stamina regen alongside the virtue-driven regen_mult.
 func tick(delta: float) -> void:
 	for id: Variant in actors:
 		var a: Dictionary = actors[id]
@@ -101,7 +115,14 @@ func tick(delta: float) -> void:
 				a.hp = minf(float(a.hp), max_hp(id))
 				a.stamina = minf(float(a.stamina), max_stamina(id))
 				changed.emit(id)
+		if float(a.get("hot_seconds_left", 0.0)) > 0.0:
+			# clamp to the remaining owed duration — a big single delta (a lag
+			# spike, or a test calling tick() with a large step) must not heal
+			# past the fixed total apply_hot promised.
+			var hot_delta := minf(delta, float(a.hot_seconds_left))
+			a.hp = minf(float(a.hp) + float(a.get("hot_per_sec", 0.0)) * hot_delta, max_hp(id))
+			a.hot_seconds_left = maxf(float(a.hot_seconds_left) - delta, 0.0)
 		var ms := max_stamina(id)
 		if ms > 0.0 and float(a.stamina) < ms:
-			var regen := STAMINA_REGEN_PER_SEC * float(a.get("regen_mult", 1.0))
+			var regen := STAMINA_REGEN_PER_SEC * float(a.get("regen_mult", 1.0)) * float(a.get("bath_mult", 1.0))
 			a.stamina = minf(float(a.stamina) + regen * delta, ms)

@@ -251,5 +251,112 @@
         "item-bronze-salvage"
       ]
     }
+  },
+  {
+    "id": "recipe-bronze-spear",
+    "track": "tree",
+    "output": {
+      "itemId": "item-bronze-spear",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-bronze-salvage",
+        "qty": 4
+      },
+      {
+        "itemId": "item-driftwood",
+        "qty": 2
+      },
+      {
+        "itemId": "item-rope",
+        "qty": 1
+      }
+    ],
+    "stationWorkId": "work-workbench",
+    "unlock": {
+      "byItems": [
+        "item-bronze-salvage"
+      ]
+    }
+  },
+  {
+    "id": "recipe-bronze-mattock",
+    "track": "tree",
+    "output": {
+      "itemId": "item-bronze-mattock",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-bronze-salvage",
+        "qty": 5
+      },
+      {
+        "itemId": "item-wreck-timber",
+        "qty": 3
+      }
+    ],
+    "stationWorkId": "work-workbench",
+    "unlock": {
+      "byItems": [
+        "item-bronze-salvage"
+      ]
+    },
+    "$comment": "B1-completeness tool: tier-2 gather gate is inert until M3 reads item.tool.tier on world nodes."
+  },
+  {
+    "id": "recipe-ship-cloth-bindings",
+    "track": "tree",
+    "output": {
+      "itemId": "item-ship-cloth-bindings",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-ship-cloth",
+        "qty": 3
+      },
+      {
+        "itemId": "item-rope",
+        "qty": 2
+      }
+    ],
+    "unlock": {
+      "byItems": [
+        "item-ship-cloth"
+      ]
+    }
+  },
+  {
+    "id": "recipe-lighthouse-keepers-lantern",
+    "track": "legend",
+    "output": {
+      "itemId": "item-lighthouse-keepers-lantern",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-storm-glass",
+        "qty": 2
+      },
+      {
+        "itemId": "item-bronze-salvage",
+        "qty": 6
+      },
+      {
+        "itemId": "item-rope",
+        "qty": 2
+      }
+    ],
+    "unlock": {
+      "fragments": 3
+    },
+    "fragmentItemId": "item-lantern-verse",
+    "ritual": {
+      "atWorkId": "work-chapel",
+      "eventMaterial": "item-storm-glass"
+    },
+    "$comment": "B1 legend #2, the Harpoon's template applied. Verses PLACED: kneeling at Halor's shrine (the homestead god keeps the keepers' stories) / inspecting the marked beached wreck / surviving a great-storm day (granted the dawn after). Rite-craft at ANY chapel — the Lantern predates the pantheon quarrels."
   }
 ]

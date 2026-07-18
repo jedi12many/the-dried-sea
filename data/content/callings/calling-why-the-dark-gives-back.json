@@ -1,0 +1,83 @@
+{
+  "id": "calling-why-the-dark-gives-back",
+  "title": "Why the Dark Gives Back",
+  "tier": "chain",
+  "source": "rumor",
+  "giver": {
+    "name": "Ceda Wren, night-warden",
+    "wound": "She's walked the palisade at night since the Withdrawal took her brother — not to a drowning, but to the flats themselves, where he wandered out grieving and simply never came back, no body, no Drowned sighting, nothing. She keeps a count of every Drowned she's seen on watch, certain that if she counts long enough she'll finally recognize his walk among them."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 1.8, "biome-reef-forest": 1.2 },
+    "playstyle": { "night-walker": 1.6 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Ceda shows you her watch-ledger, years of tally marks against 'Drowned seen' and, in a separate column, 'Drowned laid to rest, stayed down.' The second column is smaller than the first, and shrinking relative to it — more of the Drowned are coming back after burial than used to. She wants to know why the dark keeps giving them back, and whether her brother is one of the ones it's kept.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "goto",
+      "text": "You walk her watch route at night, the same twenty low places where the Drowned surface, marking which graves along the shore-road are freshly disturbed. Three of them, all laid to rest within the last season, show the same thing: shallow, fresh footprints leading away from ground that should be settled.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "talk",
+      "text": "A Brinefolk elder who's studied the old tide-charts has a theory Ceda's never heard: the Drowned aren't wandering out of spite or hunger. They're following a pull — the last half-memory of a tide that isn't there anymore — and without a real sea to carry them all the way home, they walk the pull endlessly instead of completing it. Laying them to rest interrupts the walk. It doesn't end the pull.",
+      "next": "s4"
+    },
+    {
+      "id": "s4",
+      "type": "goto",
+      "text": "You test the theory at one of the disturbed graves, ringing a hand-bell in the old tide-rhythm Neris's keepers still teach — twelve hours, twelve hours — right where the footprints start. The ground settles differently that night; no fresh prints the next morning. The rhythm seems to be doing something the burial alone couldn't.",
+      "next": "s5"
+    },
+    {
+      "id": "s5",
+      "type": "turn",
+      "text": "Ceda realizes what this means for her brother before you say it out loud: he was never one of the Drowned, because he never drowned — which means the tide-rhythm can't call him home, because there's nothing of him following the pull. The mystery you set out to solve for the whole village turns out to have no answer for the one person who mattered to her. What do you tell her?",
+      "options": [
+        {
+          "text": "Tell her plainly: the rhythm explains the Drowned, but her brother was never among them. He's simply gone, in a way nothing you've found can soften.",
+          "next": "s6-truth",
+          "ledger": [{ "ledger": "gods", "amount": 5, "note": "Neris rewards an honest reckoning with what tide-rhythm can and can't answer" }]
+        },
+        {
+          "text": "Tell her the rhythm might still be working on him, slower, further out — a kindness that isn't quite a lie, since no one actually knows the limit of the pull.",
+          "next": "s6-hope",
+          "ledger": [{ "ledger": "shepherd", "amount": 3, "note": "a gentler answer than the evidence strictly supports" }]
+        }
+      ]
+    },
+    {
+      "id": "s6-truth",
+      "type": "talk",
+      "text": "Ceda closes her watch-ledger's second column for good — no more counting, no more searching a specific walk in a crowd of strangers' walks. She keeps walking the palisade at night anyway. 'Somebody should,' she says. 'Doesn't have to be about him.'",
+      "next": null
+    },
+    {
+      "id": "s6-hope",
+      "type": "goto",
+      "text": "Ceda keeps her count, a little lighter now, a little less desperate. She starts ringing the tide-bell rhythm herself on her rounds, for the Drowned and, quietly, for one walk that was never among them.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Truth: the village adopts the tide-rhythm bell-ring as a standing burial rite for the Drowned, and disturbed-grave reports drop sharply — a real, systemic answer born of Ceda's grief. Hope: the rite spreads the same way, but Ceda's watch-ledger keeps a private third column no one else reads, and she never quite stops looking for one particular walk.",
+    "worldFlags": ["dark-pull-explained-truth", "dark-pull-explained-hope"],
+    "dialogueKeys": ["ceda-wren-night-watch"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-rope", "qty": 3 },
+      { "itemId": "item-salt", "qty": 4 }
+    ],
+    "favor": { "god-neris": 6 }
+  },
+  "status": "draft",
+  "curatorNote": "Investigates why the Drowned return after burial without ever touching Godhead mechanically — the answer (an incomplete tide-pull, echoing Neris's tide-rhythm and the missing All-Tide) is flavor and world-lore only. Turn: the mystery's answer has no comfort for the giver's own grief, which is the point."
+}

@@ -500,6 +500,24 @@ func _test_stats() -> void:
 	stats.tick(60.0)
 	check(stats.max_hp("hero") == 100.0, "unfed again")
 
+	# heal-over-time (Neris's The Returning Wave): a fixed total spread across
+	# a duration, not an instant chunk — and it clamps at max_hp like anything else
+	stats.actors["hero"].hp = 50.0
+	stats.apply_hot("hero", 30.0, 10.0)   # 30 hp over 10 sim-seconds = 3/sec
+	stats.tick(1.0)
+	check(absf(stats.hp("hero") - 53.0) < 0.001, "the tide brings back 3 in the first second, not all 30")
+	stats.tick(20.0)   # long past the duration
+	check(stats.hp("hero") <= stats.max_hp("hero"), "the mend never overshoots the ceiling")
+	check(absf(stats.hp("hero") - 80.0) < 0.001, "and stops once its full total has come back (50 + 30)")
+
+	# bath_mult (Neris's Healing Bath): stacks with the virtue-driven regen_mult,
+	# doesn't replace it
+	stats.actors["hero"].stamina = 0.0
+	stats.actors["hero"].regen_mult = 2.0
+	stats.actors["hero"].bath_mult = 1.5
+	stats.tick(1.0)
+	check(absf(stats.stamina("hero") - StatsSystem.STAMINA_REGEN_PER_SEC * 3.0) < 0.001, "regen_mult and bath_mult multiply together (x2 x1.5 = x3)")
+
 ## The Sanctum: the altar is the god's character sheet — relic slots are its
 ## worn gear, the offertory bag its pack, appetites make bronze mean something
 ## to one god and nothing to another, and Splendor multiplies the rite.

@@ -1,0 +1,77 @@
+{
+  "id": "calling-the-rite-that-needs-stocking",
+  "title": "The Rite That Needs Stocking",
+  "tier": "vignette",
+  "source": "tribesman",
+  "giver": {
+    "name": "Fara Doyle, widow of a tide-reckoner",
+    "wound": "Her husband drowned checking a channel marker two days before their wedding anniversary, every year since the Withdrawal, as if the date itself pulled him under. She's held a private rite for him alone at the shore for a decade. This year she wants it done properly, at the altar, in front of people, for the first time."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 2.0 },
+    "devotion": { "god-neris": 1.8 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Fara asks you, almost apologetically, to help her stock Neris's altar properly before the anniversary — she's never laid an offering that wasn't just a handful of salt tossed into the shallows alone. She wants to do it right this time: craved offerings, not just accepted ones, and she wants witnesses in the chapel when she does.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "collect",
+      "text": "You gather what Neris craves — bronze salvage and a proper salt-votive — from the workbench and the salvage stores, enough to make the offertory more than a token gesture. Fara insists on carrying the heaviest piece herself, even after a decade of grief she's clearly decided this year gets done with her own hands.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "build",
+      "text": "You help her lay the offerings at the Altar of the Tide-Keeper — the bronze, the votive, arranged with a care that has nothing to do with maximizing Splendor and everything to do with a decade of private ritual finally becoming a public one. The altar accepts it the way altars do: quietly, and completely.",
+      "next": "s4"
+    },
+    {
+      "id": "s4",
+      "type": "turn",
+      "text": "As the rite begins, Fara admits the real reason this year is different: she's found someone new, a fellow tide-reckoner's apprentice, and she's terrified that holding the anniversary rite in public means admitting, out loud, in front of witnesses, that grief and moving forward aren't opposites — and that some part of her worries her husband's memory needs the rite to stay small and private to stay honest.",
+      "options": [
+        {
+          "text": "Tell her a public rite doesn't shrink a private grief — it just means she doesn't have to carry the whole weight of it alone anymore.",
+          "next": "s5-public",
+          "ledger": [{ "ledger": "gods", "amount": 5, "note": "Neris rewards a grief finally shared, not just kept" }]
+        },
+        {
+          "text": "Offer to hold the rite with just the two of you present after all, if that's what actually feels honest to her, whatever she said she wanted going in.",
+          "next": "s5-private",
+          "ledger": [{ "ledger": "shepherd", "amount": 4, "note": "letting her change her mind without shame" }]
+        }
+      ]
+    },
+    {
+      "id": "s5-public",
+      "type": "goto",
+      "text": "Fara holds the rite in front of the full chapel. Her voice shakes through her husband's name and steadies through everything after. The new apprentice stands quietly at the back, invited, present, and entirely unremarked-upon — exactly the balance Fara needed.",
+      "next": null
+    },
+    {
+      "id": "s5-private",
+      "type": "goto",
+      "text": "You clear the chapel and hold the rite with just the two of you present, the way she's done it for ten years, except this time she isn't alone doing it. She thanks you afterward for not making her defend the choice she almost talked herself out of.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Public: the chapel keeps an open anniversary rite on its calendar now, and other grieving villagers have started asking to hold their own there, following Fara's lead. Private: Fara's rite stays quiet, but she starts stocking the altar generously year-round rather than just once — a standing devotion grown out of one witnessed grief.",
+    "worldFlags": ["fara-rite-public", "fara-rite-private"],
+    "dialogueKeys": ["fara-doyle-anniversary"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-bronze-salvage", "qty": 2 },
+      { "itemId": "item-salt-votive", "qty": 1 }
+    ],
+    "favor": { "god-neris": 5 }
+  },
+  "status": "draft",
+  "curatorNote": "Covers stocking an altar for a rite that matters to a specific villager, using Neris's real craved offerings (item-bronze-salvage, item-salt-votive per gods/neris.json). Turn: the anniversary rite was never really about her husband alone — it's about whether she's allowed to grieve and move forward in the same breath."
+}

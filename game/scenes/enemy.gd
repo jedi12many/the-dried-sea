@@ -100,6 +100,7 @@ func _physics_process(delta: float) -> void:
 	var run_speed := speed * (1.35 if bold else 1.0)
 	if creature_id == "creature-salt-hound" and target_pid > 0:
 		aggro *= host.abilities.mod_mult(target_pid, "hound-aggro-mult")  # Soft-Step
+		aggro *= host.equipped_mod_mult(target_pid, "hound-aggro-mult")   # the Lighthouse-Keeper's Lantern
 	if is_boss:
 		aggro = 240.0   # he guards his hoard; he does not hunt
 		run_speed = speed

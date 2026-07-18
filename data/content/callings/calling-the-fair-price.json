@@ -1,0 +1,76 @@
+{
+  "id": "calling-the-fair-price",
+  "title": "The Fair Price",
+  "tier": "chain",
+  "source": "peoples",
+  "giver": {
+    "name": "Iri Voss, Brinefolk stillmaster",
+    "wound": "She distilled her first batch of god-water alone at fourteen, the season both her parents went under trying to keep the family pool from being claimed by a raider camp. She has run the family still ever since on the theory that more water traded means more protection bought — a theory that has never once been tested against a buyer who'd take advantage of it."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 2.2 },
+    "village": { "hosts-unlit-priest": 1.3 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Iri offers you a deal no trader has ever put on the table: triple your usual god-water allotment, today, no waiting on the still's normal cycle. All she wants in return is driftwood and rope, cheap and plentiful, the kind of trade that looks generous on both sides at first glance.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "goto",
+      "text": "You go to collect the water at the still and find Iri running it well past its safe pace — the pool behind her noticeably lower than the mark her own family scratched into the stone a generation ago. She's not hiding it. She just hasn't looked at the mark in a while.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "turn",
+      "text": "Iri isn't profiteering — she's panicking. A rumor's reached her that raiders are scouting the pools again, and she's decided the fastest way to buy protection is to flood the market with water now, trading favor and goodwill for muscle before the camp arrives. The 'generous' deal is actually her burning the community's future water to buy a defense that may not even be real yet.",
+      "options": [
+        {
+          "text": "Take the deal, water and all, and use the trade goods to fund real defenses at her pool instead — armed watches, not rumor-chasing.",
+          "next": "s4-take",
+          "ledger": [{ "ledger": "peoples", "amount": -8, "note": "the pool drains faster than it should have, even for a good reason" }]
+        },
+        {
+          "text": "Refuse the triple deal. Offer to help her verify the raider rumor first, and trade at the normal fair rate in the meantime.",
+          "next": "s4-refuse",
+          "ledger": [{ "ledger": "peoples", "amount": 10, "note": "protecting the pool from its own warden's fear" }]
+        }
+      ]
+    },
+    {
+      "id": "s4-take",
+      "type": "collect",
+      "text": "You take the water and spend the proceeds arming a real watch around Iri's still. It works, mostly — the pool is safer, but noticeably shallower, and the next season's yield comes in thinner than it should. Iri notices, and doesn't quite meet your eyes about it anymore.",
+      "next": "s5"
+    },
+    {
+      "id": "s4-refuse",
+      "type": "goto",
+      "text": "You track the raider rumor to its source — a trader's exaggeration, three retellings removed from a scouting party that turned out to be Reefkin traders lost on the flats. You bring the truth back to Iri before she drains another gallon.",
+      "next": "s5"
+    },
+    {
+      "id": "s5",
+      "type": "talk",
+      "text": "Iri sits with the truth of what she almost did — either the drained pool or the false alarm — for a long moment. 'My parents ran the still like a debt that could never be paid down,' she says. 'I think I've been doing the same thing, waiting for the raid that took them to happen again.' She marks her family's old water-level stone with a fresh line, present tense, not memorial.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Take: the pool runs shallow for two full seasons, and Iri's fair-trade rate quietly worsens while she rebuilds the reserve — a windfall bought at a real, lasting Brinefolk cost. Refuse: the pool holds steady, Iri's fair-trade line improves for the honesty, and she starts sharing water-level readings openly with her trading partners instead of guarding them like a family secret.",
+    "worldFlags": ["brinefolk-pool-drained-for-defense", "brinefolk-pool-fear-corrected"],
+    "dialogueKeys": ["iri-voss-still"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-god-water", "qty": 6 }
+    ],
+    "favor": { "god-neris": 4 }
+  },
+  "status": "draft",
+  "curatorNote": "The 'god-water trade gone morally sideways' ask — the twist is the trade isn't predatory, it's a scared warden about to do to her own people what raiders would. The choice should hurt because taking the deal is genuinely useful (real defenses bought fast) even though it costs the Brinefolk their reserve. Tuning-unsure: peoples ledger of -8 for 'take' may be too harsh given the deal is well-intentioned rather than exploitative — flagging since the existing exploitActions in peoples/brinefolk.json are all clearly predatory and this one isn't, so I had to guess a lighter magnitude."
+}

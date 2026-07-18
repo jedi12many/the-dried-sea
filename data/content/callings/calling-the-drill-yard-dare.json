@@ -1,0 +1,77 @@
+{
+  "id": "calling-the-drill-yard-dare",
+  "title": "The Drill-Yard Dare",
+  "tier": "vignette",
+  "source": "tribesman",
+  "giver": {
+    "name": "Dabb Ostrey, salvager's second",
+    "wound": "His father carried a raider's spear-thrust for him the night the flats camps hit their salvage crew, and died of it slow, over a season. Dabb has carried the guilt of standing frozen instead of fighting ever since — every wreck he strips, he strips a little too carefully, like caution now could undo caution then."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 1.8 },
+    "playstyle": { "fighter": 1.4 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Dabb catches you by the workbench, turning a bronze salvage-knife over in his hands like it might bite him. He wants to be trained — actually trained, arms and a stance and a reason not to freeze — but he's too ashamed to ask a warden directly. He's decided you're safer to admit this to, since you weren't there the day his father died.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "goto",
+      "text": "There's no drill-yard standing yet — just a stretch of packed salt-flat behind the workbench where the ground has been scuffed by nobody's boots in particular. Dabb points at it anyway, like he's already decided that's where this needs to happen.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "build",
+      "text": "You and Dabb raise a proper Drill-Yard on the scuffed ground — sparring post, ring of sand, the works. He won't meet your eyes while you're building it, mutters something about how his father would've had it built in an afternoon. You take twice as long. That's fine.",
+      "next": "s4"
+    },
+    {
+      "id": "s4",
+      "type": "turn",
+      "text": "The first time you put a weapon in Dabb's hands at the new yard, he doesn't freeze from fear of a blade — he freezes because his hands remember his father's exact grip, and using it feels like a theft. This was never about courage. It's about permission to hold the thing his father held and not feel like he's stealing a dead man's stance.",
+      "options": [
+        {
+          "text": "Tell him to build his own grip from scratch, wrong-handed if he has to — his own stance, not an inherited one.",
+          "next": "s5-own",
+          "ledger": [{ "ledger": "shepherd", "amount": 5, "note": "helping someone step out of a dead man's shadow" }]
+        },
+        {
+          "text": "Tell him to keep the grip exactly as it was. Some inheritances are meant to be worn, not replaced.",
+          "next": "s5-keep",
+          "ledger": [{ "ledger": "gods", "amount": 3, "note": "Maren honors a stance kept true, even borrowed" }]
+        }
+      ]
+    },
+    {
+      "id": "s5-own",
+      "type": "goto",
+      "text": "Dabb spends a week at the drill-yard building an ugly, awkward, entirely his own stance. It's worse than his father's by every measure a warden would score. He stops flinching at wrecks the same week.",
+      "next": null
+    },
+    {
+      "id": "s5-keep",
+      "type": "goto",
+      "text": "Dabb trains in his father's exact grip until it stops feeling borrowed and starts feeling like a continuation. He still strips wrecks too carefully. He carries a spear like a man who intends to use it this time.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Own: Dabb trains toward Warrior with a stance the drill-yard log describes, dryly, as 'technically incorrect, mysteriously effective' — he starts sparring newcomers himself within a month. Keep: Dabb trains steadily and quietly leaves a spear-oiled cloth at his father's memorial marker every drill-day, a small maintained ritual nobody asked him to keep.",
+    "worldFlags": ["dabb-own-stance", "dabb-fathers-grip"],
+    "dialogueKeys": ["dabb-ostrey-drill-yard"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-rope", "qty": 4 },
+      { "itemId": "item-wreck-timber", "qty": 8 }
+    ],
+    "favor": { "god-maren": 4 }
+  },
+  "status": "draft",
+  "curatorNote": "Covers the TRAINED ask with a real build step (drill-yard doesn't exist yet in the fiction, so raising it together is the quest, not a fetch to an existing one). Turn: the freeze was never about the blade, it was about his father's grip. Tuning-unsure: whether the echo should mechanically nudge Dabb toward arms-warrior specifically, since he references his father's spear-grip, or leave the class choice fully player-driven."
+}

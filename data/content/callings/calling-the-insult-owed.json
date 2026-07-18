@@ -1,0 +1,69 @@
+{
+  "id": "calling-the-insult-owed",
+  "title": "The Insult Owed",
+  "tier": "vignette",
+  "source": "tribesman",
+  "giver": {
+    "name": "Guthry Pell, once a Hearth-Warden's apprentice",
+    "wound": "Prayed to Halor every night for a season while his brother lay dying of a wound the Withdrawal's chaos left untended too long — clean prayers, proper offerings, everything the god is owed. His brother died anyway. Guthry has never told a priest he thinks Halor simply didn't bother to answer."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 1.8 },
+    "devotion": { "god-halor": 1.5 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Guthry asks you, flatly, to lay a piece of crab-meat on Halor's altar — something the god openly can't stand, by every account of his appetites. Not as a joke. He wants Halor insulted, deliberately, on the record, and he'd rather it be done by someone who wasn't there for his brother's death and won't flinch doing it.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "goto",
+      "text": "You go with him to the smokehouse where his brother died, still standing, still in use, the exact hearth Guthry prayed beside for a season straight. He hasn't set foot inside it since. He wants you to see it before you decide whether to do what he's asking.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "turn",
+      "text": "Guthry doesn't actually want Halor insulted — he wants someone, anyone, to finally treat his grief as a real grievance against a real god instead of an unfortunate accident nobody's at fault for. The offense is a stand-in for a conversation he's never had the nerve to start with a priest directly: was his brother's death Halor's failure, or just the world's, and does the god even owe him an answer either way.",
+      "options": [
+        {
+          "text": "Lay the crab-meat on the altar as asked. Let the offense stand as the honest, angry prayer it actually is.",
+          "next": "s4-offend",
+          "ledger": [{ "ledger": "gods", "amount": -4, "note": "a deliberate offense, taken with real grief behind it" }]
+        },
+        {
+          "text": "Talk him into speaking with a priest instead — bring his actual question to someone who can at least sit with it, rather than settling for a gesture at an altar.",
+          "next": "s4-priest",
+          "ledger": [{ "ledger": "shepherd", "amount": 6, "note": "trading a symbolic wound for a real conversation" }]
+        }
+      ]
+    },
+    {
+      "id": "s4-offend",
+      "type": "goto",
+      "text": "You lay the crab-meat on the Altar of the Salt-Father in front of Guthry. Nothing dramatic happens — no thunder, no visible wrath — which somehow makes it worse and better at once. Guthry stands there a long moment, then finally, quietly, says his brother's name out loud for the first time in years.",
+      "next": null
+    },
+    {
+      "id": "s4-priest",
+      "type": "talk",
+      "text": "The Hearth-Warden hears Guthry out without flinching, and gives him an answer that isn't comfort exactly: 'Halor keeps what's kept well. Your brother wasn't kept well — not by the god, not by the world that broke that season, not by any of us. That's not a verdict on you or him. It's just true.' Guthry doesn't look forgiven. He looks, for the first time, believed.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Offend: the altar's offense is recorded plainly in the chapel's ledger, and Guthry starts visiting the smokehouse again, slowly, on his own terms. Priest: Guthry becomes a regular presence at chapel, not as a devotee exactly, but as someone finally allowed to be angry at a god in front of the god's own people.",
+    "worldFlags": ["guthry-altar-offended", "guthry-spoke-to-priest"],
+    "dialogueKeys": ["guthry-pell-grievance"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-salt", "qty": 3 }
+    ]
+  },
+  "status": "draft",
+  "curatorNote": "The 'someone wants a god insulted' ask, using Halor's actual offends-lane item (item-crab-meat, per gods/halor.json). Turn: the offense is really a stand-in for an ungrieved anger the giver has never spoken aloud. Deliberately no god-favor reward — a calling built around insulting Halor shouldn't hand out his favor regardless of branch chosen."
+}

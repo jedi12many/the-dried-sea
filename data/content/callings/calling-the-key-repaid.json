@@ -1,0 +1,83 @@
+{
+  "id": "calling-the-key-repaid",
+  "title": "The Key Repaid",
+  "tier": "chain",
+  "source": "tribesman",
+  "giver": {
+    "name": "Sorel Nye, once idle, now Keeper of the Tide-Bell",
+    "wound": "Sorel washed up the year after the Withdrawal, half-starved and convinced her whole salvage crew's drowning was her fault for suggesting the dive. She spent years marked 'idle' in every ledger that ever counted her, unable to work for the guilt, until someone found her Key: shrine access to Neris, and permission to grieve out loud instead of alone."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 2.0 },
+    "devotion": { "god-neris": 1.5 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Sorel finds you at the tide-bell she now tends, the first steady work she's held since she washed up. 'You're the reason I'm not still marked idle,' she says, plainly, no drama in it. 'I want to pay that back. Properly. Not with salt.' She's found something she thinks only she can do for you, and she's clearly been working up the nerve to offer it for weeks.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "goto",
+      "text": "She leads you to a stretch of shallows she's avoided since she washed up — the exact water her crew went down in. She knows it holds something: a strongbox from the dive that killed them, never recovered because no one who survived could bear to go back for it.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "collect",
+      "text": "You wade the shallows together. The strongbox is where Sorel always knew it would be, bronze-cornered and barely silted over — shallow water keeps its dead close. Inside: her crew's shared salvage-shares, split three ways in wax-sealed paper, untouched. Proof they'd have all come home rich, if they'd come home at all.",
+      "next": "s4"
+    },
+    {
+      "id": "s4",
+      "type": "turn",
+      "text": "Sorel doesn't want the money — she wants to finish the dive she suggested, the one that killed two people and spared her. There's a deeper compartment in the strongbox, wedged shut, that her crew never opened. She's asking you to help her open it, here, now, in the water where they died, because she's decided repaying you means finally repaying them.",
+      "options": [
+        {
+          "text": "Open it with her. Whatever's inside, she shouldn't face it alone twice.",
+          "next": "s5-open",
+          "ledger": [{ "ledger": "gods", "amount": 6, "note": "Neris honors a grief finally faced at its source" }]
+        },
+        {
+          "text": "Talk her out of it. The shares are enough of an ending — some compartments are better left shut, and her debt to you was already paid the day she stopped being marked idle.",
+          "next": "s5-leave",
+          "ledger": [{ "ledger": "shepherd", "amount": 5, "note": "mercy toward a grief that's done enough work" }]
+        }
+      ]
+    },
+    {
+      "id": "s5-open",
+      "type": "collect",
+      "text": "The compartment holds a single unsent letter, addressed to Sorel, from the crewmate who died beside her: 'if only one of us gets to be sorry about this, let it be me — you didn't make anyone dive, you made a suggestion, and the sea did the rest.' Sorel reads it twice, sits down in the shallow water, and cries for the first time anyone's seen since she washed up. When she stands, she leaves the letter in the box and reseals it — not to bury it again, but to let it stay found.",
+      "next": "s6"
+    },
+    {
+      "id": "s5-leave",
+      "type": "goto",
+      "text": "You close the strongbox gently and carry it back to shore unopened. Sorel doesn't argue. She sets it on a shelf near the tide-bell where she can see it every day without needing to look inside — proof enough, for now, that it was found at all.",
+      "next": "s6"
+    },
+    {
+      "id": "s6",
+      "type": "goto",
+      "text": "Walking back, Sorel rings the tide-bell early, off its usual schedule, just once. 'Nobody will notice,' she says. 'But I will.' It's the first thing she's done since washing up purely because she wanted to, not because a ledger told her to.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Open: the tide-bell rings a private, off-schedule note every year on the anniversary of the dive, and villagers who ask why get told the whole story now, not the shorthand version. Leave: the sealed strongbox sits visibly by the bell, and Sorel starts telling newcomers her own idle-to-Key story unprompted, as proof the ledger can be wrong about a person.",
+    "worldFlags": ["sorel-letter-opened", "sorel-box-kept-sealed"],
+    "dialogueKeys": ["sorel-nye-repayment"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-bronze-salvage", "qty": 4 },
+      { "itemId": "item-salt-votive", "qty": 1 }
+    ],
+    "favor": { "god-neris": 6 }
+  },
+  "status": "draft",
+  "curatorNote": "Covers the bloomed-villager-repaying-their-Key ask. Turn: the repayment isn't a gift to the player, it's Sorel using the player's trust to finally do the thing her Key (shrine access, permission to grieve) made possible. Tuning-unsure: whether this should hard-require the player to have actually been the one who found Sorel's Key originally, or work as generic bloomed-villager flavor since the Key system's per-villager tracking isn't something I can verify from content alone."
+}

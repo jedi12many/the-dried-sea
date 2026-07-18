@@ -254,7 +254,7 @@
   "useDetection": "rings-on-rhythm",
   "favorTrickle": 1,
   "text": "Rings the hours of a tide that isn't there. Neris keeps count anyway.",
-  "purpose": "Marks Neris's tide-rhythm hours. Feeds her favor. (effects: coming soon)"
+  "purpose": "Rings itself at dawn-six and dusk-eighteen (an existing god-bell sounds it) — no tending needed. Counts as in-use on any day it rang, feeding Neris favor, and the village keeps time a little better: +0.5 dawn output on a rung day."
  },
  {
   "id": "work-healing-bath",
@@ -283,10 +283,18 @@
     "type": "heal-over-time",
     "magnitude": 2,
     "target": "ally"
+   },
+   {
+    "type": "stat-mod",
+    "params": {
+     "stat": "stamina-regen"
+    },
+    "magnitude": 1.5,
+    "target": "ally"
    }
   ],
   "text": "Warm brine, drawn right. The closest thing to the sea's embrace left standing.",
-  "purpose": "Slowly heals whoever rests in it. Feeds Neris. (effects: coming soon)"
+  "purpose": "Stand within it and mend: +2 HP/sec, stamina regen x1.5. Counts as in-use on any day someone bathed, feeding Neris favor."
  },
  {
   "id": "work-way-beacon",
@@ -488,5 +496,115 @@
   },
   "text": "Bronze fittings bolted to a slab that's taken a strike before and kept standing. Maren doesn't want quiet devotion. She wants to see what you brought her.",
   "purpose": "Maren's altar. Relics displayed and offerings laid here strengthen her rites."
+ },
+ {
+  "id": "work-altar-neris",
+  "name": "Altar of the Tide-Keeper",
+  "godId": "god-neris",
+  "category": "worship",
+  "buildCost": [
+   {
+    "itemId": "item-salt",
+    "qty": 12
+   },
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 8
+   },
+   {
+    "itemId": "item-bronze-salvage",
+    "qty": 2
+   }
+  ],
+  "sanctum": {
+   "relicSlots": 4,
+   "slotsPerTier": 2
+  },
+  "text": "A shelf of salt-scoured stone, kept just above the old waterline, cut for things worth keeping. Neris has never asked for gold either. She asks what you're willing to wait for.",
+  "purpose": "Neris's altar. Relics displayed and offerings laid here strengthen her rites."
+ },
+ {
+  "id": "work-altar-vessa",
+  "name": "Altar of the Current-Runner",
+  "godId": "god-vessa",
+  "category": "worship",
+  "buildCost": [
+   {
+    "itemId": "item-rope",
+    "qty": 6
+   },
+   {
+    "itemId": "item-coralwood",
+    "qty": 6
+   },
+   {
+    "itemId": "item-wreck-timber",
+    "qty": 4
+   }
+  ],
+  "sanctum": {
+   "relicSlots": 4,
+   "slotsPerTier": 2
+  },
+  "text": "A slab set at an angle that looks wrong until you notice it points exactly toward the reef road. Vessa never stays to see it finished — she's already moved on to where you're going next.",
+  "purpose": "Vessa's altar (B2 arrival). Relics displayed and offerings laid here strengthen her rites — data-complete, naturally unreachable until her shrine stands in the Reef Forest."
+ },
+ {
+  "id": "work-altar-ghal",
+  "name": "Altar of the Leviathan-Shepherd",
+  "godId": "god-ghal",
+  "category": "worship",
+  "buildCost": [
+   {
+    "itemId": "item-coralwood",
+    "qty": 6
+   },
+   {
+    "itemId": "item-reef-iron",
+    "qty": 4
+   },
+   {
+    "itemId": "item-rope",
+    "qty": 4
+   }
+  ],
+  "sanctum": {
+   "relicSlots": 4,
+   "slotsPerTier": 2
+  },
+  "text": "Built low and wide, the way a den is built, not a shrine. Ghal doesn't want you kneeling — he wants you sitting still long enough for something wild to decide you're safe.",
+  "purpose": "Ghal's altar (B2 arrival). Relics displayed and offerings laid here strengthen his rites — data-complete, naturally unreachable until his shrine stands in the Reef Forest."
+ },
+ {
+  "id": "work-altar-ur-noth",
+  "name": "Reliquary of the Unlit",
+  "godId": "god-ur-noth",
+  "category": "grim",
+  "grim": true,
+  "buildCost": [
+   {
+    "itemId": "item-trench-pearl",
+    "qty": 3
+   },
+   {
+    "itemId": "item-tidebrass",
+    "qty": 4
+   },
+   {
+    "itemId": "item-reef-iron",
+    "qty": 6
+   }
+  ],
+  "sanctum": {
+   "relicSlots": 3,
+   "slotsPerTier": 1
+  },
+  "grimRules": {
+   "kinderAlternative": "Every offering a Reliquary would take, any other god's altar accepts the same relic and points you at the church ladder instead — nothing here is a door that only he holds.",
+   "recipeSource": "Not learned. Remembered, the first time you hold a remnant a beat too long and he offers, gently, to keep it for you.",
+   "testimony": "Priests of the other five won't enter the room it stands in. Pilgrims reroute around the block it's built on. Saved Peoples call it 'the quiet shelf' and never look at it directly."
+  },
+  "text": "A shelf, kept exactly like the others, in a room that dims itself politely when it's finished listening. He asks what you're willing to not need again.",
+  "purpose": "GRIM: Ur-Noth's altar (B3 set-piece — the Reliquary, WORLD-SPEC). Relics displayed and offerings laid here strengthen his rites, and the room remembers you for it. Data-complete, unreachable until his fallen shrine is found in the Drop."
  }
 ]

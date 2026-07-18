@@ -1,0 +1,76 @@
+{
+  "id": "calling-the-name-not-yet-carved",
+  "title": "The Name Not Yet Carved",
+  "tier": "vignette",
+  "source": "tribesman",
+  "giver": {
+    "name": "Wick Aldern, net-hauler",
+    "wound": "His hauling partner Tam died three days ago on a salvage expedition into the drowned shallows that Wick sent him on alone, because Wick himself was too sick to go — a decision that made perfect sense and has eaten him alive ever since. He hasn't said Tam's name out loud since the burial."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 2.0 },
+    "devotion": { "god-halor": 1.4 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Wick finds you the way people find someone when they've been rehearsing the request for days. He wants the village to raise a proper Memorial Stone — nothing stands yet — so Tam's name can be carved somewhere that isn't just Wick's own memory. He can't bring himself to ask the mason directly. Asking you first feels safer, somehow, like a rehearsal for the real thing.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "collect",
+      "text": "You gather salt, wreck-timber, and bronze salvage for the stone. Wick insists on carrying his share personally, even the pieces too heavy for one trip, like the weight of it is doing something the grief alone hasn't managed to.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "build",
+      "text": "You raise the Memorial Stone together at the village heart. When it's time to carve the first name, Wick's hand shakes so badly he can't hold the chisel straight — three days of silence, and the actual moment of writing Tam's name down is the thing that finally breaks it.",
+      "next": "s4"
+    },
+    {
+      "id": "s4",
+      "type": "turn",
+      "text": "Wick admits, chisel still in hand, that he isn't sure what to carve beneath the name. The village's habit is a single line — a trade, a virtue, a cause of death. He wants something true, but 'died on an expedition his partner was too sick to join' feels like a confession dressed as an epitaph, and he's asking you, essentially, to help him decide how much of his own guilt gets carved in stone next to his friend's name forever.",
+      "options": [
+        {
+          "text": "Suggest something about Tam himself, not the circumstances of his death — what he was like, not how the day went wrong.",
+          "next": "s5-about-tam",
+          "ledger": [{ "ledger": "shepherd", "amount": 6, "note": "letting the dead be remembered as themselves, not as someone's guilt" }]
+        },
+        {
+          "text": "Tell him to carve the truth, guilt and all — 'sent alone, missed dearly' — and carry the honesty of it instead of hiding from it.",
+          "next": "s5-truth",
+          "ledger": [{ "ledger": "gods", "amount": 4, "note": "Halor keeps even the hard truths well" }]
+        }
+      ]
+    },
+    {
+      "id": "s5-about-tam",
+      "type": "goto",
+      "text": "Wick carves 'laughed loudest at bad weather' beneath Tam's name — the first thing that comes to him that isn't about the day he died. He says Tam's name out loud for the first time since the burial, reading the stone back to himself, and it comes easier the second time.",
+      "next": null
+    },
+    {
+      "id": "s5-truth",
+      "type": "goto",
+      "text": "Wick carves 'sent alone, missed dearly' with a steadier hand than you expected. He tells people the whole story now when they ask about the stone, guilt and all, instead of the smoothed-over version he'd been rehearsing.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "About Tam: the Memorial Stone's first line becomes the village's new default epitaph style — who someone was, not how they died — and Wick starts helping other grieving villagers choose their own. Truth: the stone carries an unusually honest line for its first entry, and Wick's openness about it makes the whole village a little less afraid of naming exactly how someone was lost.",
+    "worldFlags": ["memorial-first-name-about-tam", "memorial-first-name-truth"],
+    "dialogueKeys": ["wick-aldern-memorial"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-salt", "qty": 5 }
+    ],
+    "favor": { "god-halor": 4 }
+  },
+  "status": "draft",
+  "curatorNote": "The grief/memorial ask — the quest IS the asking, per the coverage note, so most of the steps are the emotional labor of raising the stone rather than a fetch quest with grief bolted on. Uses the existing work-memorial (griefDays halving per tuning/villagers.json). Tuning-unsure: assumed no Memorial Stone stands yet in this village, mirroring the drill-yard calling's build-if-none-stands pattern — if a village already has one, this should probably read as 'the first NAME on the stone' rather than the stone's construction; flagging since I can't check per-save state from content."
+}

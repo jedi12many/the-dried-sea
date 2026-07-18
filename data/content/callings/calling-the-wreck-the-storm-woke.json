@@ -1,0 +1,71 @@
+{
+  "id": "calling-the-wreck-the-storm-woke",
+  "title": "The Wreck the Storm Woke",
+  "tier": "vignette",
+  "source": "chart",
+  "giver": {
+    "name": "Rook Adair's last sounding-chart",
+    "wound": "Rook charted the deep shoals for a merchant house that went under with the sea, and marked one wreck 'safe only in stillness' — a warning she underlined twice. She drowned the same week she finished the chart, checking her own soundings a final time in weather she should have waited out."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 2.0 },
+    "devotion": { "god-maren": 1.4 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "goto",
+      "text": "The chart surfaces in a salvage-crate after the last great storm, its ink still sharp under decades of wax sealing. One wreck is marked with Rook's underlined warning — 'safe only in stillness' — and a fresh gap in the flats nearby shows the storm has finally torn open the ground that used to bury it.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "collect",
+      "text": "You reach the exposed wreck: an old storm-hunter's vessel, hull split along an old strike-scar, its hold spilled open onto the salt. Inside, lashed down against exactly this kind of exposure, are crates of storm-glass, still catching light like the lightning that made them is somehow still inside.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "turn",
+      "text": "Rook's warning wasn't about the storm that sank the ship — it was about the storm-glass itself. A logbook page wedged in the crates explains: this crew was harvesting glass deliberately, mid-storm, chasing bigger and bigger strikes for a buyer who paid by the size of the fused chunk. The last entry, in a different, shakier hand than the rest: 'we should have stopped three storms ago. It isn't the lightning I'm afraid of anymore.' Whatever they were chasing, they never got to name.",
+      "options": [
+        {
+          "text": "Take the glass but leave the logbook and the wreck itself undisturbed as a warning marker — mark it on your own charts the way Rook marked hers.",
+          "next": "s4-mark",
+          "ledger": [{ "ledger": "gods", "amount": 4, "note": "Maren respects a warning heeded, not just glass collected" }]
+        },
+        {
+          "text": "Strip the wreck completely — glass, fittings, everything salvageable. A warning from a dead crew isn't a reason to leave good salvage on the flats.",
+          "next": "s4-strip",
+          "ledger": [{ "ledger": "shepherd", "amount": -2, "note": "practical, and a little deaf to what the warning cost the people who wrote it" }]
+        }
+      ]
+    },
+    {
+      "id": "s4-mark",
+      "type": "goto",
+      "text": "You take the crated glass and leave the hull marked with a stone cairn, the same shorthand Rook used for danger. Salvagers passing after you give it a wider berth than they would an ordinary wreck, without quite knowing why.",
+      "next": null
+    },
+    {
+      "id": "s4-strip",
+      "type": "collect",
+      "text": "You strip the wreck to the ribs — timber, fittings, every last shard of glass. It's a good haul. The flats feel a little more ordinary afterward, the warning stripped away along with everything else worth taking.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Mark: the cairn becomes a known landmark, and storm-chasers who hear the logbook's story start rationing how hard they push a storm for glass — a small, real check on greed the wreck itself couldn't provide while it was buried. Strip: the wreck vanishes into the village's stores within a week, and the next great storm sees at least one salvager push further into the lightning than they should, chasing the same kind of haul.",
+    "worldFlags": ["wreck-marked-warning", "wreck-stripped-clean"],
+    "dialogueKeys": ["rook-adair-chart"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-storm-glass", "qty": 4 },
+      { "itemId": "item-bronze-salvage", "qty": 2 }
+    ],
+    "favor": { "god-maren": 4 }
+  },
+  "status": "draft",
+  "curatorNote": "Covers the chart-to-storm-exposed-wreck ask, mirroring calling-chart-leads-deep's giver-as-document pattern. Turn: the old crew's warning was about their own greed chasing bigger strikes, not the storm itself — echoes the storm-glass-collector quest's theme from a different angle without repeating it."
+}

@@ -1,0 +1,70 @@
+{
+  "id": "calling-past-the-palisade",
+  "title": "Past the Palisade",
+  "tier": "vignette",
+  "source": "tribesman",
+  "giver": {
+    "name": "Ilo Marsh, born in the wall's shadow",
+    "wound": "Born the winter after the Withdrawal, inside the first driftwood palisade her parents ever raised. She has never once stepped past it — her mother made her promise, on the theory that whatever took the sea might still be listening for footsteps on open ground. Ilo has kept the promise for twenty years out of love, not belief."
+  },
+  "drawWeights": {
+    "biome": { "biome-salt-shallows": 2.0 },
+    "playstyle": { "night-walker": 1.0 }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "type": "talk",
+      "text": "Ilo asks you, quietly and all at once like she's been rehearsing it, to walk her past the palisade gate — just once, just to the first salt-pillar and back, just so she knows what the flats look like from outside the fence she was born inside. She asks you specifically because you come and go so easily it must not be as dangerous as her mother swore.",
+      "next": "s2"
+    },
+    {
+      "id": "s2",
+      "type": "escort",
+      "text": "You walk her out the gate at a pace slower than either of you is used to. She flinches at the open sky the way people flinch at loud noise — twenty years of walled horizon doesn't unlearn in one step. You keep close, name every threat before she sees it, and let her set the speed.",
+      "next": "s3"
+    },
+    {
+      "id": "s3",
+      "type": "turn",
+      "text": "At the first salt-pillar, Ilo doesn't want to turn back. She wants to keep walking — toward the beached fishing fleet, toward the horizon, toward the exact unbounded nothing her mother spent twenty years protecting her from. This was never a walk to satisfy curiosity. It's the first move in leaving the promise behind entirely, and she's asking you, without saying it outright, whether you'll let her.",
+      "options": [
+        {
+          "text": "Keep walking with her, further than planned. Let today be the day the promise breaks, on her own two feet, with you beside her.",
+          "next": "s4-further",
+          "ledger": [{ "ledger": "shepherd", "amount": 6, "note": "helping someone outgrow an inherited fear" }]
+        },
+        {
+          "text": "Turn her back at the pillar as agreed. The promise deserves a slower ending than an afternoon; today was enough of one.",
+          "next": "s4-turn-back",
+          "ledger": [{ "ledger": "shepherd", "amount": 3, "note": "patience over momentum" }]
+        }
+      ]
+    },
+    {
+      "id": "s4-further",
+      "type": "goto",
+      "text": "You walk her all the way to the beached fleet and back, in one long afternoon. She doesn't say much. When you reach the gate again, she touches the palisade wood on the way through like she's saying goodbye to it, not thanking it.",
+      "next": null
+    },
+    {
+      "id": "s4-turn-back",
+      "type": "goto",
+      "text": "You bring her back at the pillar, as promised. She's quiet on the walk in, and asks — not that day, but a few days later — if you'll take her out again sometime. She wants the whole horizon eventually. Just not all in one go.",
+      "next": null
+    }
+  ],
+  "echo": {
+    "text": "Further: Ilo starts volunteering for gate-watch and short flats errands, and the village gains a villager willing to go where she was raised never to go — a small, real widening of who can be sent where. Turn back: Ilo keeps asking for short walks past the gate, on her own schedule now instead of her mother's, and the palisade gains a new habit — someone leaning on it at dusk, looking out instead of in.",
+    "worldFlags": ["ilo-walked-far", "ilo-walked-slow"],
+    "dialogueKeys": ["ilo-marsh-palisade"]
+  },
+  "rewards": {
+    "items": [
+      { "itemId": "item-ship-cloth", "qty": 2 }
+    ],
+    "favor": { "god-vessa": 4 }
+  },
+  "status": "draft",
+  "curatorNote": "Covers the WALK THE ROAD ask as an escort/goto shape rather than a fetch. Turn: what looks like a short reassurance walk is actually Ilo testing whether she's allowed to break her mother's promise at all. Reward favor to Vessa (movement/travel domain) even though no god-dream is involved — flag if that's an unwanted implicit favor grant outside the god-dream source type."
+}
