@@ -395,8 +395,12 @@ THE DARK TAKES YOU.        UR-NOTH  carries his own  (±0%)
 the same player within a 3-day window ×0.6 (so +0.24%, +0.14%, …), floor
 +0.05%; window resets after 3 deathless days. With a neutral death penalty
 the decay is the *only* farm-guard, so it stays. Economy-model assertions:
-a full day of deliberate suicide-diving feeds Ur-Noth less than one grim
-rite; an Ur-Noth-attuned player's deaths sum to exactly zero over any run.
+a full day of deliberate suicide-diving (10 deaths) sums to ~1.2% — under a
+third of the undecayed 4% — and an Ur-Noth-attuned player's deaths sum to
+exactly zero over any run. *(Corrected 2026-07-18: the original "less than
+one grim rite" bound was arithmetically impossible — the FIRST death alone
+(0.4%) nearly equals a grim rite (0.5%), so two deaths always exceeded it.
+Implementation asserts the true bound; caught by the sim agent's tests.)*
 
 Design law: **dying is ledger-neutral** — being bad at the game is not a
 moral failing; the ledgers never count deaths.
@@ -512,3 +516,150 @@ pitch.
    faithful call — cheapest, fine); or a soft pressure tell (darker nights,
    +whisper frequency, villager susceptibility drift +) so a fat Ur-Noth is
    *felt*. Lean: the tell — the world should know what it's been feeding.
+
+---
+
+# Part III — Beasts at Heel
+
+*(Jeff, 2026-07-17: "a companion. recruit a villager. tame a beast. add that
+to the tally tree. tamed beasts level up." The companion picture completes:
+Part I gave you a person for the road; this gives you an animal for it — and
+hangs taming where it always belonged, on the Tally's WILD virtue. The
+scuttle-crab has carried a dormant `tamable: true` in creatures.json since
+M0. It was a promise. This is the keeping.)*
+
+## 1. Two slots, not one
+
+A player's traveling party has **two distinct slots**:
+
+| Slot | Filled by | From |
+|---|---|---|
+| **The road slot** | one Arms-classed villager | Part I §5 — "Walk with me" |
+| **The heel slot** | one tamed beast | this Part |
+
+A hound at heel never costs you your villager, and vice versa — the full kit
+is you, a person, and an animal, which is the correct adventuring party in
+any mythology. (M3's party-cap growth applies to the road slot only; one
+beast at heel is the law — a second beast doesn't heel, it packs, and packs
+are Ghal's endgame content, not EA's.)
+
+## 2. Taming — the WILD ladder
+
+Taming is **virtue-gated, never god-gated**: the Tally is what the sea left
+in *you*, and Temper is godless currency. Old Ghal *sweetens* taming; he is
+never the toll. The three existing WILD talents keep their ids and their
+current effects, and each **gains a taming tier**:
+
+| WILD | Talent (existing) | New taming grant |
+|---|---|---|
+| 3 | Soft-Step | Tame **small** beasts (scuttle-crab) |
+| 6 | Crab-Friend | Tame **pack-hunters** (salt-hound; eel-wolf when biome 2 lands) |
+| 9 | Herd-Sense | Tame the **great beasts** (one named apex per biome, never bosses) |
+
+**The Shepherd's Way (how taming works):** no domination, no minigame. Drop
+the species' craved food on the ground and stand off; the beast comes, eats,
+and *trusts* — one meal, one trust point, **numbers shown** ("salt-hound —
+trust 2/3"). Trust filled → tamed, named, at heel. Rules with teeth:
+
+- An **aggroed** beast won't eat: calm it first — back away out of aggro, or
+  beat it below 25% HP (the raider-surrender pattern reads onto beasts: a
+  subdued beast kneels and CAN be fed — mercy-taming, the same door the
+  Taken get), or cast **the Shepherd's Voice** (Ghal rank 1), which calms
+  instantly *and counts as a meal* — the god shortcut, riding godhead like
+  every invocation.
+- Meals required by tier (2 / 3 / 4, tuning), **minus one per Ghal
+  attunement rank** (min 1) — the god's sweetener.
+- Craved food per species in data: crabs want smoked meat (they're cannibals,
+  it's fine, nobody tell them); hounds want raw crab meat; apexes want
+  something biome-expensive.
+
+## 3. What a beast does at heel
+
+Behavior comes from the species' `tame.behavior` block, same shape the Arms
+classes use:
+
+- **Scuttle-crab — the porter.** Doesn't fight; adds **+N carry slots** (the
+  pack with legs). Threatened → hides in its shell and cannot be hurt (crabs
+  never die at heel; they hide and wail until it's over — the one companion
+  the game will never make you bury).
+- **Salt-hound — the fighter-tracker.** Warrior-kit melee off its own level,
+  plus the living-radar: **growls toward the nearest hostile before you can
+  see it** (a directional tell riding the existing HUD-bearing pattern —
+  Blood-scent lite, no map magic, just a dog doing dog things).
+- **Apex (biome 2+, M3)** — a great beast that fights like a small boss and
+  is the visible proof of a WILD-9 life.
+
+Idle beasts live at the **work-kennel** (Ghal's first buildable in the
+game): houses beasts, feeds them from stores at dawn (an unfed beast's mood
+drops and it won't walk that day — it never deserts; it's a dog, not a
+tribesman; loyalty is the species' whole argument).
+
+## 4. Beasts level up
+
+Same spine as villagers — one growth system, three wearers (player virtues /
+villager Arms / beast levels):
+
+- **Same XP curve** (25·n², L1–10, the villagers.json block — shared, not
+  duplicated) and the same source verbs where they apply: kill-assist by
+  tier, expeditionReturn on a fought-then-home dismiss; crabs earn instead a
+  quiet **porterDay** trickle (a day carried is a day trained). No
+  drill-yard for beasts — beasts train by *doing*.
+- **Instincts** ignite at 3/6/9 (the game's one rhythm), 3 per species in
+  data: hound — *Fangs* (damage), *Blood-Scent* (the growl-radar range
+  grows), *Deathgrip* (its hits briefly pin); crab — *Deep Pockets* (+2
+  slots), *Tide-Shell* (once a day its shell blocks a hit meant for YOU),
+  *Old Barnacle* (hounds aggro slower near it — walking calm).
+- HP and damage ride level via the same hpPerLevelPct/primary mults.
+
+**Death:** downed 30s → [E] revive, same as villagers; the timer running out
+is permadeath. No gear drops and no village grief (the village never knew
+it) — the beast leaves a **keepsake** (a fang, a shell-plate): an item Ghal's
+altar *craves*. You bury your dog by giving it to the god of beasts, and the
+Sanctum system already knows what to do with that. Naming: auto-assigned
+from a species pool at tame; rename at the kennel (numbered pool, no free
+text at EA).
+
+## 5. Data & system deltas (Part III)
+
+- `creatures.json`: the crab's `tamable` flag graduates into a full `tame`
+  block — {tier, cravedFood, meals, behavior{...}, instincts[3],
+  porter{slots}?} on crab + hound (+apexes later); creature.schema bump.
+- `virtues.json`: WILD talents gain `tame-tier` effects (ids untouched).
+- `works.json`: work-kennel (Ghal — his first work in the game).
+- `tuning/beasts.json`: mealsByTier, ghal-rank meal discount, mood/fed
+  rules, porterDay XP; XP curve **referenced** from villagers.json, not
+  copied.
+- Sim: `beast_system.gd` (one system per file): roster, trust ledgers,
+  levels via the shared curve helpers, mood; save + both sync pools +
+  client mirrors, the full Part-I checklist applies verbatim.
+- The [V] panel (or the kennel modal) lists beasts: name, species, level,
+  XP, instincts lit, mood, at-heel/kenneled.
+
+## 6. Milestones
+
+- **Next slice (M2.5):** crab + hound tameable via WILD 3/6, trust-by-meals,
+  kennel, instincts, leveling, heel-slot follow/fight/porter, keepsakes.
+- **M3:** apex beasts with biome 2, rename modal, Ghal's shrine + Voice
+  making taming sing, eel-wolf.
+- **M4:** the full beast-yard set (pens/stables as Ghal's works), pack play.
+
+## Decisions taken (2026-07-17, this Part)
+
+- **Companion = two slots**: one villager (road) + one beast (heel), per
+  player. Neither costs the other.
+- **Taming lives on the Tally**: WILD 3/6/9 gate small/pack/apex. Ghal
+  sweetens (meal discount, the Voice); he never gates.
+- **Beasts level like villagers**: same curve, instincts at 3/6/9.
+
+## Open questions (Part III, for Jeff)
+
+8. **Crab immortality** — spec'd as never-dies-at-heel (hides in shell).
+   Right call, or should the shell be breakable by biome-2 threats so the
+   stakes return with depth? Lean: immortal at EA; it's the game's one
+   guaranteed-safe love, and that's worth protecting.
+9. **Hound damage source** — own stat line per level (spec'd), or claim
+   stock weapons like villagers (a hound with a harpoon in its mouth)? Lean:
+   own stats; the armory stays human.
+10. **Tide-Shell target** — blocks a hit for the PLAYER (spec'd, dramatic)
+    or for any party member (kinder, fuzzier)? Lean: player — "my crab took
+    the hit for me" is a story; "my crab optimized party mitigation" is not.
