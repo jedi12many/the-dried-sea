@@ -126,4 +126,24 @@ func _ready() -> void:
 			waited += 0.2
 		check(stranger.on_road, "the client mirror shows on_road after a wire recruit")
 
+	# 7. Godhead (VILLAGER-AND-GODHEAD-SPEC Part II §7) mirrors world-level, not
+	# per-player — every srv_intent above already carried a world_sync, so the
+	# client's local GodheadSystem should already reflect the fresh server's
+	# state: base 10% under a 40% cap (one biome keystone down, set at boot).
+	check(absf(host.godhead.godhead("god-halor") - 10.0) < 0.01, "Godhead's base value mirrors to the client (%.1f%%)" % host.godhead.godhead("god-halor"))
+	check(absf(host.godhead.cap() - 40.0) < 0.01, "and so does the cap (%.1f%%)" % host.godhead.cap())
+
+	# 8. the Waker (§5): a real, server-authoritative player death over the
+	# wire. Real hound combat has no deterministic timing to assert against,
+	# so this rides the same test-only "test_die" hook net_smoke needs (see
+	# main.gd srv_intent) — it calls the exact damage_player() path an enemy
+	# hit does, self-targeted, and the ledger line rides home on the EXISTING
+	# player_state/message channel (cl_player_state), same as any other event.
+	host.rpc_id(1, "srv_intent", "test_die", [])
+	waited = 0.0
+	while not host.message.contains("DARK TAKES YOU") and waited < 6.0:
+		await get_tree().create_timer(0.2).timeout
+		waited += 0.2
+	check(host.message.contains("DARK TAKES YOU") and host.message.contains("UR-NOTH"), "a client's own death gets the Waker's ledger line over the wire")
+
 	_finish()

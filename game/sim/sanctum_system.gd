@@ -133,9 +133,14 @@ func splendor(inst_id: int) -> float:
 ## --- the dawn tithe ------------------------------------------------------------------
 ## Each dawn the god takes a little of what was laid out — craved first — and
 ## that consumption IS worship: a stocked altar is a small standing prayer.
-## Returns {god_id: vigor} for the host to feed into devotion.
+## Returns {"vigor": {god_id: vigor}, "craved": {god_id: count}} — the host
+## feeds "vigor" into devotion (per-player Vigor) and "craved" into
+## godhead_system.tithe_day (VILLAGER-AND-GODHEAD-SPEC Part II §3: "+0.05% per
+## craved item taken" — world-level, so only craved-lane items count, not the
+## lesser "accepts" lane that also restores Vigor above).
 func dawn_tithe() -> Dictionary:
 	var fed := {}
+	var craved := {}
 	var types_per := int(tune.get("titheTypesPerDawn", 2))
 	var qty_per := int(tune.get("titheQtyPerType", 1))
 	var vigor_per := float(tune.get("titheVigorPerUnit", 1.0))
@@ -158,8 +163,10 @@ func dawn_tithe() -> Dictionary:
 			if int(bag[item_id]) <= 0:
 				bag.erase(item_id)
 			fed[god_id] = float(fed.get(god_id, 0.0)) + vigor_per * lane_mult(god_id, item_id) * take
+			if lane(god_id, item_id) == "craves":
+				craved[god_id] = int(craved.get(god_id, 0)) + take
 			taken += 1
-	return fed
+	return {"vigor": fed, "craved": craved}
 
 ## --- persistence ----------------------------------------------------------------------
 func to_save() -> Dictionary:

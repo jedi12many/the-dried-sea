@@ -117,6 +117,12 @@ func favor_tier(player_id: int, god_id: String) -> int:
 	return tier
 
 ## --- blessing dim curve --------------------------------------------------------
+## NOTE (VILLAGER-AND-GODHEAD-SPEC Part II §2): passive blessings (a god's
+## effectsByRank, e.g. Ur-Noth's Dark-Sight) are not yet wired to any gameplay
+## consumer — this curve has no caller today. Whoever adds that consumer MUST
+## multiply the result by `godhead_system.effective_mult(god_id)` too (the
+## "Patron's ward" Acolyte talent, arms-talent-patrons-ward's channel-blessing
+## effect, is in the same boat — data exists, executor doesn't yet).
 func blessing_strength(player_id: int, god_id: String) -> float:
 	var s := _god_state(player_id, god_id)
 	if s.rank == 0 or s.dormant:

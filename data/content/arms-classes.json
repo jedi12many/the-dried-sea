@@ -80,7 +80,7 @@
   {
     "id": "arms-acolyte",
     "name": "Acolyte",
-    "$comment": "channelStrength magnitudes are the FRACTION of the patron invocation's effect the Acolyte channels. Part II (Godhead, UNIMPLEMENTED) will multiply these live: effective = base x channelStrength x godhead. Until godhead_system exists the multiplier is 1.0.",
+    "$comment": "channelStrength magnitudes are the FRACTION of the patron invocation's effect the Acolyte channels. Part II (Godhead) multiplies these live: effective = base x channelStrength x arms_primary_mult x godhead — wired in main.gd companion_channel(). A guttered/consumed patron's Acolytes channel nothing.",
     "text": "A lens for their patron — village-scale god-magic. They channel, not cast: the god does the work, the Acolyte does the kneeling.",
     "primaries": ["channel-strength", "cast-range"],
     "hpPerLevelPct": 8,

@@ -9,8 +9,10 @@ const SAVE_VERSION := 1
 ## Pure funcs (Dictionary) -> Dictionary. NEVER edit a shipped migration.
 static var MIGRATIONS: Array[Callable] = []
 
-static func to_save(clock: SimClock, devotion: DevotionSystem, village: VillageSystem, works: WorksSystem, verdict: VerdictSystem) -> Dictionary:
-	return {
+## `godhead` is optional (default null) so existing call sites keep compiling
+## unchanged — additive, the way sanctum's state is bolted on by the caller.
+static func to_save(clock: SimClock, devotion: DevotionSystem, village: VillageSystem, works: WorksSystem, verdict: VerdictSystem, godhead: GodheadSystem = null) -> Dictionary:
+	var out := {
 		"saveVersion": SAVE_VERSION,
 		"clock": {"day": clock.day, "minute_of_day": clock.minute_of_day},
 		"devotion": devotion.state.duplicate(true),
@@ -25,9 +27,11 @@ static func to_save(clock: SimClock, devotion: DevotionSystem, village: VillageS
 		"verdict": {
 			"ledgers": verdict.ledgers.duplicate(true),
 			"history": verdict.history.duplicate(true),
-			"god_world_strength": verdict.god_world_strength.duplicate(true),
 		},
 	}
+	if godhead != null:
+		out["godhead"] = godhead.to_save()
+	return out
 
 static func migrate(save: Dictionary) -> Dictionary:
 	var v := int(save.get("saveVersion", 1))
@@ -37,7 +41,7 @@ static func migrate(save: Dictionary) -> Dictionary:
 		save["saveVersion"] = v
 	return save
 
-static func apply(save_in: Dictionary, clock: SimClock, devotion: DevotionSystem, village: VillageSystem, works: WorksSystem, verdict: VerdictSystem) -> void:
+static func apply(save_in: Dictionary, clock: SimClock, devotion: DevotionSystem, village: VillageSystem, works: WorksSystem, verdict: VerdictSystem, godhead: GodheadSystem = null) -> void:
 	var save := migrate(save_in)
 	clock.day = int(save.clock.day)
 	clock.minute_of_day = int(save.clock.minute_of_day)
@@ -51,7 +55,11 @@ static func apply(save_in: Dictionary, clock: SimClock, devotion: DevotionSystem
 	works._next_id = int(save.works.next_id)
 	verdict.ledgers = _int_keys(save.verdict.ledgers)
 	verdict.history = _int_keys(save.verdict.history)
-	verdict.god_world_strength = save.verdict.god_world_strength
+	# NOTE: pre-Godhead saves may still carry a verdict.god_world_strength key
+	# (the ad-hoc worldwide-dim hack this system used before Part II) — it is
+	# simply ignored now; godhead_system.apply() below is the one true source.
+	if godhead != null and save.has("godhead"):   # additive since Godhead (Part II); old saves have no key, godhead keeps its _init defaults
+		godhead.apply(save.godhead)
 
 static func write_file(path: String, save: Dictionary) -> bool:
 	var f := FileAccess.open(path, FileAccess.WRITE)

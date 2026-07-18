@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "god.schema.json",
-  "$comment": "v3 — a member of the Pantheon of the Drowned; adds offerings (the Sanctum) and worshipChant (per-god rite audio)",
+  "$comment": "v4 — a member of the Pantheon of the Drowned; adds wakerWhispers (VILLAGER-AND-GODHEAD-SPEC Part II §5 — Ur-Noth's whisper-on-wake pools, optional, additive; existing gods need no changes)",
   "type": "object",
   "required": ["id", "name", "title", "domain", "voice", "blessing", "invocations", "priest"],
   "additionalProperties": false,
@@ -82,6 +82,23 @@
       "additionalProperties": false
     },
     "worshipChant": { "type": "string", "description": "sfx asset basename (in assets/sfx/) played at this god's rite; falls back to the generic rite bell if the file is absent" },
-    "lore": { "type": "string" }
+    "lore": { "type": "string" },
+    "wakerWhispers": {
+      "type": "object",
+      "description": "VILLAGER-AND-GODHEAD-SPEC Part II §5: the Waker's whisper-on-wake lines, one drawn each player death, keyed by lifetime death count (tuning/godhead.json waker.whisperPoolThresholds picks the pool). Ur-Noth only at EA (he alone restores dead players) but schema'd generically in case that ever changes.",
+      "required": ["early", "familiar", "proprietary"],
+      "additionalProperties": false,
+      "properties": {
+        "early": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "curious — early deaths" },
+        "familiar": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "he knows your habits" },
+        "proprietary": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "you are mostly his to lose" },
+        "milestones": {
+          "type": "object",
+          "description": "exact lifetime-death-count -> a single one-off flavor line (pure whisper content, NOT the parked debt-milestone Callings)",
+          "additionalProperties": { "type": "string" },
+          "propertyNames": { "pattern": "^[0-9]+$" }
+        }
+      }
+    }
   }
 }

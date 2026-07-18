@@ -41,6 +41,7 @@ var village: VillageSystem
 var works: WorksSystem
 var verdict: VerdictSystem
 var sanctum: SanctumSystem
+var godhead: GodheadSystem
 var respawn_bind: Dictionary = {}   # pid -> work inst_id you chose as your rest point (tent/hearth)
 var offertory_open := false
 var offertory_inst := -1        # which altar the open Offertory is looking at
@@ -67,6 +68,8 @@ var hp_bar: ColorRect
 var stamina_bar: ColorRect
 var vigor_bar: ColorRect
 var maren_bar: ColorRect
+var halor_godhead_label: Label
+var maren_godhead_label: Label
 var boss_bar: ColorRect
 var boss_name: Label
 var daynight: CanvasModulate
@@ -188,8 +191,15 @@ func _ready() -> void:
 	works = WorksSystem.new(registry, devotion)
 	verdict = VerdictSystem.new(registry)
 	sanctum = SanctumSystem.new(registry)
+	godhead = GodheadSystem.new(registry)
+	# the Salt Shallows test world = one biome keystone down -> cap 40% (VILLAGER-
+	# AND-GODHEAD-SPEC Part II §1). Reef Forest / the Drop arrivals raise this to
+	# 2 / 3 later (cap 70% / 100%) — presentation will call set_biomes_cleared()
+	# again wherever a biome keystone death is recorded.
+	godhead.set_biomes_cleared(1)
 	sanctum.offense_laid.connect(func(p: int, god_id: String, _item: String) -> void:
 		verdict.record(p, "gods", -3.0, "an offense laid before %s" % god_id, clock.day)
+		godhead.offense_laid(god_id)   # the Offertory's `offends` lane gets teeth (Part II §3)
 		message = "%s turns from the altar. The flats remember what you laid there." % str(registry.get_entity(god_id).name)
 		_refresh_hud())
 	inventory = InventorySystem.new(registry)
@@ -399,7 +409,7 @@ func _notification(what: int) -> void:
 func save_game() -> void:
 	if net_mode == "client":
 		return  # the server owns the world
-	var s := SaveSystem.to_save(clock, devotion, village, works, verdict)
+	var s := SaveSystem.to_save(clock, devotion, village, works, verdict, godhead)
 	s["game"] = {
 		"inventory": inventory.inventories.duplicate(true),
 		"player_stats": stats.actors.get(acting_pid, {}).duplicate(true),
@@ -439,7 +449,7 @@ func load_game() -> void:
 	var s := SaveSystem.read_file(save_path)
 	if s.is_empty():
 		return
-	SaveSystem.apply(s, clock, devotion, village, works, verdict)
+	SaveSystem.apply(s, clock, devotion, village, works, verdict, godhead)
 	var g: Dictionary = s.get("game", {})
 	inventory.inventories = SaveSystem._int_keys(g.get("inventory", {}))
 	if g.has("player_stats"):
@@ -1326,6 +1336,14 @@ func intent_tend(inst_id: int) -> bool:
 
 ## The Salt-Wheel: grind the nearest held captive into the Broken. Fast, dark,
 ## and the flats will know — priests mutter, Ur-Noth warms.
+##
+## NOT wired to godhead.grim_rite_drain() (VILLAGER-AND-GODHEAD-SPEC Part II
+## §3's "-0.5% per rite from a god of your choice"): this is Ur-Noth flavor
+## (feeds his own devotion_system favor via work_favor_hour below), but it
+## isn't the spec's grim rite — it doesn't drain a CHOSEN god's Godhead, and
+## it isn't a Verdict ledger entry the way the spec's grim rite must be.
+## grim_rite_drain stays unwired until an actual "pick a god to bleed" verb
+## exists; it's still callable (tested in run_tests.gd's _test_godhead).
 func intent_salt_wheel(inst_id: int) -> bool:
 	var captive: DSVillager = null
 	for v: DSVillager in all_villagers():
@@ -1364,9 +1382,10 @@ func intent_kneel(god_id: String) -> bool:
 		return false
 	attuned_for(acting_pid).append(god_id)
 	var god := registry.get_entity(god_id)
-	message = "You kneel at the fallen shrine. %s: '%s'\n%s is with you — %s Their strength is not endless." % [
+	message = "You kneel at the fallen shrine. %s: '%s'\n%s is with you — %s Their strength is not endless.\n%s — godhead %d%% (cap %d%%)." % [
 		str(god.voice.tone).split(";")[0], str(god.voice.sampleLine),
-		str(god.name).to_upper(), str(KNEEL_HINTS.get(god_id, ""))]
+		str(god.name).to_upper(), str(KNEEL_HINTS.get(god_id, "")),
+		str(god.name).to_upper(), int(godhead.godhead(god_id)), int(godhead.cap())]
 	sfx("kneel")
 	if god_id == "god-maren":
 		inventory.add(acting_pid, "item-harpoon-verse", 1)
@@ -1381,6 +1400,14 @@ func intent_cast(invocation_id: String = "inv-pillar-of-salt") -> bool:
 	if net_mode == "client":
 		rpc_id(1, "srv_intent", "cast", [invocation_id])
 		return true
+	# Godhead (Part II §4): a guttered or consumed god grants NO magic, for
+	# everyone — checked before devotion.cast() so a dead god never even spends
+	# your Vigor. Diegetic block, not a silent no-op (the UI law holds here too).
+	var found0 := devotion._find_invocation(invocation_id)
+	if not found0.is_empty() and (godhead.is_guttered(found0.god_id) or godhead.is_consumed(found0.god_id)):
+		message = "%s is a silence where a voice was — nothing answers." % str(registry.get_entity(found0.god_id).name)
+		_refresh_hud()
+		return false
 	var inv: Dictionary = devotion.cast(acting_pid, invocation_id)
 	if inv.is_empty():
 		var found := devotion._find_invocation(invocation_id)
@@ -1388,8 +1415,11 @@ func intent_cast(invocation_id: String = "inv-pillar-of-salt") -> bool:
 			message = "%s has nothing left to give. Build them a chapel; hold a rite." % str(registry.get_entity(found.god_id).name)
 			_refresh_hud()
 		return false
+	# Godhead (Part II §2, the one formula): effective = base_magnitude x
+	# blessing_dim(vigor, already gated above by can_cast) x godhead.
+	var gh_mult := godhead.effective_mult(found0.god_id)
 	for effect: Dictionary in inv.get("effects", []):
-		_apply_effect(effect)
+		_apply_effect(_godhead_scale_effect(effect, gh_mult))
 	# cost relief: storms make Maren generous; Squall-Born makes her yours
 	var found2 := devotion._find_invocation(invocation_id)
 	if found2.get("god_id", "") == "god-maren":
@@ -1401,9 +1431,33 @@ func intent_cast(invocation_id: String = "inv-pillar-of-salt") -> bool:
 		if relief > 0.0:
 			devotion._restore(acting_pid, "god-maren",
 				float(found2.inv.vigorCost) * devotion.max_vigor("god-maren") * minf(relief, 0.9))
-	message = str(inv.text)
+	# UI law (Part II §2): the cast bar always shows live-computed strength.
+	message = "%s  (%d%% strength)" % [str(inv.text), int(gh_mult * 100.0)]
 	_refresh_hud()
 	return true
+
+## Godhead (Part II §2): scale one invocation effect dict by the god's
+## effective_mult before it reaches the executor — mirrors the pattern
+## companion_channel() already used for the Acolyte's channelStrength.
+## Plain magnitudes/durations scale linearly. Strike-COUNT magnitudes
+## (lightning-strikes) floor instead — the spec's own worked example: 3
+## strikes x 40% = 1.2, which reads as 1 strike, not 2; a min of 1 always
+## fires ("a 10% squall is pathetic but not invisible"). Radii scale at HALF
+## weight (`1 - (1-godhead)/2`) — verified against the spec's exact table:
+## an 8m radius at 40% -> 5.6m, at 10% -> 4.4m.
+func _godhead_scale_effect(effect: Dictionary, mult: float) -> Dictionary:
+	var scaled: Dictionary = effect.duplicate(true)
+	if scaled.has("magnitude"):
+		var mag := float(scaled.magnitude)
+		if str(scaled.get("type", "")) == "lightning-strikes":
+			scaled.magnitude = maxi(1, int(mag * mult))
+		else:
+			scaled.magnitude = mag * mult
+	if scaled.has("duration"):
+		scaled.duration = float(scaled.duration) * mult
+	if scaled.has("radius"):
+		scaled.radius = float(scaled.radius) * (1.0 - (1.0 - mult) / 2.0)
+	return scaled
 
 ## The effect executor: data-defined invocation effects become world changes.
 func _apply_effect(effect: Dictionary) -> void:
@@ -1479,6 +1533,9 @@ func intent_rite(god_id: String) -> bool:
 	var altar := sanctum.altar_for(god_id)
 	var splendor := sanctum.splendor(altar) if altar >= 0 else 1.0
 	devotion.rite_day(acting_pid, god_id, "chapel", 1, splendor)
+	# Godhead (Part II §3): the same rite feeds the god's WORLD-level body, not
+	# just your own Vigor — Splendor bears it up here too (same altar, same job).
+	var gh_delta := godhead.rite_day(god_id, "chapel", splendor)
 	var god_name := str(registry.get_entity(god_id).name)
 	if splendor > 1.05:
 		message = "You lead the rite at %s's chapel. The altar's splendor bears it up (×%.1f)." % [god_name, splendor]
@@ -1486,6 +1543,7 @@ func intent_rite(god_id: String) -> bool:
 		message = "You lead the rite at %s's chapel — but something on the altar sours it (×%.1f)." % [god_name, splendor]
 	else:
 		message = "You lead the rite at %s's chapel. The shrine-light steadies a little." % god_name
+	message += "  %s +%.2f%% Godhead (now %.1f%%)" % [god_name, gh_delta, godhead.godhead(god_id)]
 	_refresh_hud()
 	return true
 
@@ -1983,6 +2041,23 @@ func damage_player(amount: float, pid: int = -1) -> void:
 	if stats.damage(pid, amount):
 		if pid == my_pid:
 			sfx("death")
+		# The Waker of the Drowned (VILLAGER-AND-GODHEAD-SPEC Part II §5): Ur-
+		# Noth alone restores the dead. BEFORE respawn — dying writes NO ledger
+		# entries of its own (design law: dying is ledger-neutral); this is pure
+		# Godhead accounting plus one whisper line. `message` is set
+		# unconditionally (not gated by pid == my_pid) because it's what
+		# _net_push_state below actually delivers to the DYING player's own
+		# peer — the existing player_state/message channel every other
+		# server-side event already rides.
+		var attuned_urnoth := "god-ur-noth" in attuned_for(pid)
+		var wr: Dictionary = godhead.player_death(pid, clock.day, attuned_urnoth)
+		var ledger_line: String
+		if bool(wr.washed):
+			ledger_line = "THE DARK TAKES YOU.   UR-NOTH carries his own  (±0%)"
+		else:
+			ledger_line = "THE DARK TAKES YOU.   UR-NOTH +%.1f%% Godhead  (now %.1f%%)" % [float(wr.fed), godhead.godhead("god-ur-noth")]
+		var whisper := _waker_whisper_line(pid, int(wr.lifetime), str(wr.whisper_pool))
+		message = "%s\n\"%s\"" % [ledger_line, whisper]
 		# you wake where you're sheltered: your own tent, else the hearth, else
 		# the middle of the flats. (Death penalty otherwise stays pride-only.)
 		var wake := _respawn_point(pid)
@@ -1991,8 +2066,26 @@ func damage_player(amount: float, pid: int = -1) -> void:
 		elif pid == my_pid:
 			player.position = wake
 		stats.heal_full(pid)
+		if pid == my_pid:
+			_refresh_hud()
 	_net_push_state(pid)
 	_refresh_bars()
+
+## The Waker's whisper-on-wake (§5): one line, drawn from ur-noth.json's
+## wakerWhispers pool for this lifetime-death-count (milestones checked first,
+## exact count match), seeded per (pid, lifetime) so replay/sync is stable —
+## the same death always whispers the same line, on host and any mirror alike.
+func _waker_whisper_line(pid: int, lifetime: int, pool: String) -> String:
+	var ww: Dictionary = registry.get_entity("god-ur-noth").get("wakerWhispers", {})
+	var milestones: Dictionary = ww.get("milestones", {})
+	if milestones.has(str(lifetime)):
+		return str(milestones[str(lifetime)])
+	var lines: Array = ww.get(pool, [])
+	if lines.is_empty():
+		return "..."
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("waker:%d:%d" % [pid, lifetime])
+	return str(lines[rng.randi_range(0, lines.size() - 1)])
 
 ## Server: push a player's state to their peer (after damage etc. outside intents).
 func _net_push_state(pid: int) -> void:
@@ -2050,7 +2143,12 @@ func _creature_tier(creature_id: String) -> int:
 		_: return 1
 
 ## The Verdict, in your hands: consume a remnant for permanent strength —
-## and the god it belonged to dims, for everyone, forever.
+## and the god it belonged to dims, for everyone, forever. Godhead (Part II
+## §4) is what "dims" MEANS now: consumed() is the one truly irreversible
+## act, locking that god's Godhead at 0 forever — no rite, tithe, trickle, or
+## enshrine can ever revive them again. (This absorbs what used to be a
+## separate ad-hoc verdict.god_world_strength dim with no real gameplay
+## consumer; verdict_system keeps only the player-ledger "remnants" deed.)
 func intent_consume_remnant() -> bool:
 	if net_mode == "client":
 		rpc_id(1, "srv_intent", "consume", [])
@@ -2065,7 +2163,8 @@ func intent_consume_remnant() -> bool:
 		consumed_hp[acting_pid] = float(consumed_hp.get(acting_pid, 0.0)) + 15.0 + abilities.mod_add(acting_pid, "consume-bonus-hp")
 		_recompute_vitals()
 		verdict.remnant_consume(acting_pid, god_id)
-		message = "You eat what was left of a god's strength. You feel MAGNIFICENT.\nSomewhere, %s grows quieter — for everyone, forever. The warm voice sounds pleased." % str(registry.get_entity(god_id).name)
+		godhead.consumed(god_id)   # the one irreversible act (Part II §4)
+		message = "You eat what was left of a god's strength. You feel MAGNIFICENT.\nSomewhere, %s grows quieter — for everyone, forever. Their Godhead falls to 0%% and stays there. The warm voice sounds pleased." % str(registry.get_entity(god_id).name)
 		_refresh_hud()
 		return true
 	return false
@@ -2078,7 +2177,8 @@ func intent_enshrine(god_id_of_chapel: String) -> bool:
 		var god_id: String = item.get("remnantOf", god_id_of_chapel)
 		inventory.pay(acting_pid, [{"itemId": item_id, "qty": 1}])
 		verdict.remnant_enshrine(acting_pid, god_id)
-		message = "You set the remnant in the chapel-stone. %s steadies — the whole world's worth of them.\nThe warm voice says nothing at all." % str(registry.get_entity(god_id).name)
+		var gh_delta := godhead.enshrine_remnant(god_id)   # the mirror of consumed() — feeds instead of locking
+		message = "You set the remnant in the chapel-stone. %s steadies — the whole world's worth of them (Godhead +%.1f%%, now %.1f%%).\nThe warm voice says nothing at all." % [str(registry.get_entity(god_id).name), gh_delta, godhead.godhead(god_id)]
 		_refresh_hud()
 		return true
 	return false
@@ -3473,9 +3573,12 @@ const WARDEN_DAMAGE := 13.0
 ## Where a warden is needed: the hostile nearest a threatened worker, else the
 ## hostile nearest the camp. INF = all quiet (the warden goes back to chores).
 func warden_duty(_warden: DSVillager) -> Vector2:
-	# a beast menacing any working villager is the priority
+	# a beast menacing any working villager is the priority — but NOT road
+	# companions: a party out walking is the player's responsibility (Jeff,
+	# 2026-07-17: wardens help villagers, not players), and without this
+	# skip every aggro on the road pulled the whole watch cross-map.
 	for v: DSVillager in all_villagers():
-		if v.rescued and not v.is_captive and v.def_class != "class-warden":
+		if v.rescued and not v.is_captive and not v.on_road and v.def_class != "class-warden":
 			var e := _nearest_hostile(v.position, DSVillager.DANGER_RADIUS + 40.0)
 			if e != null:
 				return e.position
@@ -3584,8 +3687,12 @@ func _companion_credit_kill(v: DSVillager, e: DSEnemy) -> void:
 
 ## The Acolyte channels their patron's rank-1 invocation at their Lesser
 ## Invocation talent's channelStrength (arms-classes.json), scaled by their own
-## level. Godhead (Part II, UNIMPLEMENTED) will multiply this live — for now the
-## multiplier is 1.0, exactly like the talent data's own $comment says.
+## level AND now their patron's live Godhead (Part II §6, "the interlock"):
+## effective = base x channelStrength x arms_primary_mult x godhead. Feed
+## Maren and every Maren-sworn Acolyte in the village hits harder that same
+## day; let her gutter (or worse, get consumed) and effective_mult is 0 —
+## skipped outright below, so a dead god's Acolytes fire nothing: "just
+## people in robes, kneeling."
 func companion_channel(v: DSVillager) -> void:
 	var tid := v.tribesman_id
 	for talent: Dictionary in village.ignited_talents(tid):
@@ -3597,8 +3704,11 @@ func companion_channel(v: DSVillager) -> void:
 				continue   # tier-9 Intercession: a per-fight trigger, not this passive tick
 			var rank := int(params.get("patronInvocationRank", 1))
 			var patron_id := str(village.tribesmen.get(tid, {}).get("patron_god_id", ""))
+			var gh_mult := godhead.effective_mult(patron_id)
+			if gh_mult <= 0.0:
+				continue   # a guttered or consumed patron grants NO magic, even through their Acolyte
 			var patron := registry.get_entity(patron_id)
-			var strength := float(eff.get("magnitude", 0.4)) * village.arms_primary_mult(tid)
+			var strength := float(eff.get("magnitude", 0.4)) * village.arms_primary_mult(tid) * gh_mult
 			for inv: Dictionary in patron.get("invocations", []):
 				if int(inv.get("rankRequired", -1)) != rank:
 					continue
@@ -3676,15 +3786,36 @@ func on_villager_needs_help(v: DSVillager) -> void:
 	_refresh_hud()
 
 func _on_sim_day(_day: int) -> void:
+	# Godhead (Part II §3): had-worship-today snapshot, taken BEFORE _village_dawn()
+	# clears rites_done_today below — this is the day that just ended.
+	var rites_yesterday: Dictionary = rites_done_today.duplicate()
 	_village_dawn()
 	devotion.villager_trickle_day(acting_pid, "god-halor", village.devout_count("god-halor"))
+	# Godhead: the devout-villager trickle and the neglect check are WORLD-level,
+	# so — unlike the per-player devotion call above (Halor only, pre-existing) —
+	# they run for every god, but neglect only for gods someone is actually
+	# attuned to (an unworshipped god nobody has met yet isn't "neglected").
+	var attuned_anywhere: Dictionary = {}
+	for pid: Variant in attuned:
+		if pid is int:
+			for god_id: String in attuned_for(int(pid)):
+				attuned_anywhere[god_id] = true
+	for god: Dictionary in registry.all_of("god"):
+		if "missing" in god.get("flags", []):
+			continue
+		godhead.villager_trickle_day(god.id, village.devout_count(god.id))
+		if attuned_anywhere.has(god.id):
+			godhead.neglect_day(god.id, bool(rites_yesterday.get(god.id, false)))
 	# the dawn tithe: each altar's god takes a little of what was laid out, and
 	# that consumption is worship — it feeds every player attuned to that god
+	# (Vigor) and the god's own Godhead (craved items only — Part II §3) once,
+	# world-level, regardless of who's attuned.
 	var tithe := sanctum.dawn_tithe()
-	for god_id: String in tithe:
+	for god_id: String in tithe.vigor:
 		for pid: Variant in attuned:
 			if pid is int and god_id in attuned_for(int(pid)):
-				devotion.tithe_day(int(pid), god_id, float(tithe[god_id]))
+				devotion.tithe_day(int(pid), god_id, float(tithe.vigor[god_id]))
+		godhead.tithe_day(god_id, int(tithe.craved.get(god_id, 0)))
 	for inst_id: Variant in works.placed:
 		works.placed[inst_id].in_use = false   # dawn: works rest until tended
 	village.end_of_day()
@@ -3933,6 +4064,15 @@ func _build_hud() -> void:
 	vigor_bar.size = Vector2(0, 8)
 	vigor_bar.color = Color("5da8a0")   # Halor's votive flame, placeholder-shaped
 	layer.add_child(vigor_bar)
+	# Godhead (Part II §2, the UI law: "the numbers are always on screen") —
+	# a compact line next to each god's own vigor bar, e.g. "HALOR — godhead
+	# 10% (cap 40%)". Only the two gods with HUD bars get one today (the same
+	# pre-existing limitation as vigor_bar/maren_bar themselves).
+	halor_godhead_label = Label.new()
+	halor_godhead_label.position = Vector2(178, 167)
+	halor_godhead_label.add_theme_color_override("font_color", Color("3b3428"))
+	halor_godhead_label.add_theme_font_size_override("font_size", 11)
+	layer.add_child(halor_godhead_label)
 	var maren_back := ColorRect.new()
 	maren_back.position = Vector2(12, 182)
 	maren_back.size = Vector2(160, 10)
@@ -3943,6 +4083,11 @@ func _build_hud() -> void:
 	maren_bar.size = Vector2(0, 8)
 	maren_bar.color = Color("aebfc9")   # Maren's storm-light
 	layer.add_child(maren_bar)
+	maren_godhead_label = Label.new()
+	maren_godhead_label.position = Vector2(178, 181)
+	maren_godhead_label.add_theme_color_override("font_color", Color("3b3428"))
+	maren_godhead_label.add_theme_font_size_override("font_size", 11)
+	layer.add_child(maren_godhead_label)
 	boss_name = Label.new()
 	boss_name.position = Vector2(440, 640)
 	boss_name.custom_minimum_size = Vector2(400, 0)
@@ -4004,14 +4149,22 @@ func _refresh_bars() -> void:
 	if "god-halor" in attuned_for(my_pid):
 		var s: Dictionary = devotion.state.get(acting_pid, {}).get("god-halor", {})
 		vigor_bar.size.x = 158.0 * float(s.get("vigor", 0)) / devotion.max_vigor("god-halor")
+		if halor_godhead_label != null:
+			halor_godhead_label.text = "%s — godhead %d%% (cap %d%%)" % [str(registry.get_entity("god-halor").name).to_upper(), int(godhead.godhead("god-halor")), int(godhead.cap())]
 	else:
 		vigor_bar.size.x = 0.0
+		if halor_godhead_label != null:
+			halor_godhead_label.text = ""
 	if maren_bar != null:
 		if "god-maren" in attuned_for(my_pid):
 			var m: Dictionary = devotion.state.get(acting_pid, {}).get("god-maren", {})
 			maren_bar.size.x = 158.0 * float(m.get("vigor", 0)) / devotion.max_vigor("god-maren")
+			if maren_godhead_label != null:
+				maren_godhead_label.text = "%s — godhead %d%% (cap %d%%)" % [str(registry.get_entity("god-maren").name).to_upper(), int(godhead.godhead("god-maren")), int(godhead.cap())]
 		else:
 			maren_bar.size.x = 0.0
+			if maren_godhead_label != null:
+				maren_godhead_label.text = ""
 
 func _refresh_hud() -> void:
 	if hud == null:
@@ -4240,6 +4393,11 @@ func srv_intent(kind: String, args: Array) -> void:
 		"recruit": _net_villager_intent(int(args[0]), "recruit")
 		"dismiss": _net_villager_intent(int(args[0]), "dismiss")
 		"revive": _net_villager_intent(int(args[0]), "revive")
+		# test hook (net_smoke.gd): a deterministic way to trigger a REAL,
+		# server-authoritative player death over the wire — real hound combat
+		# has no deterministic timing to assert against; this calls the exact
+		# same damage_player() path an enemy hit does, self-targeted only.
+		"test_die": damage_player(999999.0, acting_pid)
 	rpc_id(peer_id, "cl_player_state", _player_state(acting_pid))
 	rpc("cl_world_sync", _world_sync())
 
@@ -4319,6 +4477,12 @@ func _world_sync() -> Dictionary:
 		"stock": village_stock,
 		"node_left": _node_left_dict(),
 		"sanctum": sanctum.to_save(),
+		# Godhead (Part II §7): world-level, so a light mirror — value + consumed
+		# per god, and the cap's biome count. Deliberately NOT godhead.to_save()
+		# (that also carries per-player lifetime_deaths/death_window, which are
+		# authoritative on the host only; a client mirror has no business
+		# resetting its own copy of that from a periodic world tick).
+		"godhead": {"state": godhead.state, "biomes_cleared": godhead.biomes_cleared()},
 	}
 
 func _players_snapshot() -> Array:
@@ -4547,7 +4711,17 @@ func cl_world_sync(w: Dictionary) -> void:
 			_toggle_offertory(true, offertory_inst)
 		else:
 			_toggle_offertory(false)   # the altar was reclaimed under us
+	# Godhead (Part II §7): mirror the world-level state directly (a light
+	# copy, not apply() — that method is for save/load and would also stomp
+	# this client's own lifetime_deaths/death_window with the missing-key
+	# defaults, since the world sync doesn't carry per-player death ledgers).
+	var gh_sync: Dictionary = w.get("godhead", {})
+	if gh_sync.has("state"):
+		godhead.state = (gh_sync.state as Dictionary).duplicate(true)
+	if gh_sync.has("biomes_cleared"):
+		godhead.biomes_cleared_count = int(gh_sync.biomes_cleared)
 	_refresh_hud()
+	_refresh_bars()
 
 @rpc("authority", "unreliable_ordered")
 func cl_positions(players: Array, enemy_nids: Array, ex: Array, ey: Array, vx: float, vy: float) -> void:

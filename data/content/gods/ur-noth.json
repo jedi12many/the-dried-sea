@@ -148,5 +148,35 @@
   ]
  },
  "lore": "The forbidden patron. His magic is the strongest in the game and every cast costs what you'd expect. His build set is the grim works. His voice gets warmer every time you consume a remnant. He is very, very patient.",
- "worshipChant": "chant_ur_noth"
+ "worshipChant": "chant_ur_noth",
+ "wakerWhispers": {
+  "early": [
+   "Light again. How brief.",
+   "There. Breathe. You forget you can, right after.",
+   "You didn't even fight the dark. Interesting.",
+   "I didn't have to go far this time.",
+   "You'll do that again. Everyone does."
+  ],
+  "familiar": [
+   "The hounds, again. You lead with the left.",
+   "Same ledge. I've started leaving a light there.",
+   "You flinch before the bite lands now. Doesn't help.",
+   "I know your patterns better than your friends do.",
+   "Careful is a word you use for other people.",
+   "Third time at that wreck. It isn't going anywhere. Neither, apparently, are you."
+  ],
+  "proprietary": [
+   "I have carried you more often than any lover will.",
+   "You are, by now, mostly mine to lose.",
+   "The others speak of you like a guest. I speak of you like a tenant.",
+   "I stopped counting. You should be flattered, not afraid.",
+   "Every drowning teaches me your shape a little better.",
+   "One day you'll stop being surprised to see me. That will be the real death."
+  ],
+  "milestones": {
+   "5": "Five now. I'm starting to recognize the sound you make going under.",
+   "15": "Fifteen. Some men name their swords. I could name you.",
+   "30": "Thirty times the dark has had you and given you back. At some point that stops being rescue and starts being routine — ours."
+  }
+ }
 }

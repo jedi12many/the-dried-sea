@@ -1,0 +1,52 @@
+{
+  "$comment": "v0 tuning — Godhead (VILLAGER-AND-GODHEAD-SPEC Part II): world-level per-god health, 0-100%, shared by every player, capped by which biome keystones are down. Numbers below are read from the spec's own tables (§1 the cap, §3 sources/sinks, §5 the Waker) wherever it gives one; anything it doesn't tabulate is marked a first guess in its own $comment. Target for tools/economy-model.mjs (not yet extended): a faithfully-worshipped god rides ~5-8% under cap; an ignored one sits near the neglect floor; guttering (0%) is reachable only by deliberate acts (consume/offense/grim-rite), never by forgetting to pray.",
+  "cap": {
+    "base": 10,
+    "perBiomeCap": 30,
+    "maxOverall": 100,
+    "$comment": "GodheadCap = base + perBiomeCap * biomesCleared, clamped 0-100 regardless (spec §1). 0 biomes -> 10% (campaign start, the pantheon at a flicker); 1 -> 40% (Salt Shallows keystone down — the current test build's ceiling); 2 -> 70% (Reef Forest); 3 -> 100% (the Drop, endgame). Every non-missing god starts AT the cap (10%) — the flicker is real from day one."
+  },
+  "sources": {
+    "riteLedByChurchTier": {
+      "shrine": 0.2,
+      "chapel": 0.35,
+      "church": 0.5,
+      "basilica": 0.6,
+      "$comment": "spec §3: 'Daily rite at that god's church | +0.2-0.6% by church tier | x Splendor'. Endpoints (shrine/basilica) are the spec's exact 0.2/0.6; chapel/church are interpolated first guesses (not spec'd) matching the church-tier ladder already in tuning/economy.json's worship.riteRecoveryPerDayByChurchTier. Caller (devotion/sanctum) multiplies by that altar's Splendor before calling feed/rite_day."
+    },
+    "dawnTithePerCravedItem": 0.05,
+    "devoutVillagerTricklePerDay": 0.01,
+    "enshrinedRemnant": 2.0,
+    "$comment": "dawnTithePerCravedItem and devoutVillagerTricklePerDay are the spec's exact +0.05%/item and +0.01%/day-each. enshrinedRemnant is NOT itemized by name in §3's source table (§3 only tables shrine-restore/keystone-dedication/deep-callings/rite/tithe/trickle/player-death) — used here as the nearest spec analog: the design intent stated for godhead_system.consumed() is 'enshrine feeds instead per the spec's source table', and the closest one-time small-exploration-style feed on that table is 'Restore a fallen shrine of theirs (world POI) | +2% one-time'. First guess pending Jeff's confirmation; shrine-restore POIs themselves are M3, out of scope here."
+  },
+  "sinks": {
+    "offenseLaidOnAltar": 0.1,
+    "urNothGrimRitePerRite": 0.5,
+    "neglect": {
+      "perDay": 0.05,
+      "floorPct": 5,
+      "onlyBelowHalfCap": true,
+      "onlyWithZeroWorshipThatDay": true,
+      "$comment": "spec §3 exact: 'Neglect | -0.05%/day, floor 5% | Only below cap/2 and only with zero worship that day'. This sink alone can never gutter a god (floor 5) — guttering is only ever reachable by the deliberate sinks (offense, grim rite, consumed remnant)."
+    },
+    "$comment": "offenseLaidOnAltar (-0.1%) and urNothGrimRitePerRite (-0.5%, 'from a god of your choice') are the spec's exact §3 numbers. Consumed remnant is not a rate — it's the godhead_system.consumed() permanent zero-and-lock, per §4."
+  },
+  "waker": {
+    "feedPct": 0.4,
+    "repeatDecay": 0.6,
+    "decayWindowDays": 3,
+    "floorPct": 0.05,
+    "washIfAttuned": true,
+    "$comment": "spec §5 exact: first death +0.4%, x0.6 per repeat within a 3-day window (+0.24%, +0.14%, ...), floor +0.05%, window resets after 3 deathless days. washIfAttuned: an Ur-Noth-attuned dying player's revival costs him exactly what it feeds him -> net +-0%; everyone else is pure income.",
+    "whisperPoolThresholds": {
+      "familiar": 5,
+      "proprietary": 15,
+      "$comment": "NOT spec'd — §5 names the three pools (early/familiar/proprietary) by feel but gives no lifetime-death-count boundaries. First guess: <5 early (curious), 5-14 familiar (he knows your habits), >=15 proprietary (mine to lose). Jeff to retune against playtest death rates."
+    },
+    "noWakerFallback": {
+      "highestGodDrainPct": 1.0,
+      "fallbackWakeHpPct": 25,
+      "$comment": "M4 wiring ('Killing the Waker' / a gutter-proof-but-not-impossible Ur-Noth) — stored now per spec §5 exact numbers ('drains your highest-attuned living god -1% Godhead', 'wash up anyway at 25% HP, and with no whisper') so the values exist in data before the fallback logic ships. godhead_system does not implement this path yet."
+    }
+  }
+}

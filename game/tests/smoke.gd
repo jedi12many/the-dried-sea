@@ -556,10 +556,13 @@ func _ready() -> void:
 	check(host.intent_build("work-chapel"), "a second chapel rises")
 	check(host.chapels.has("god-maren"), "dedicated to the Storm-Mother")
 	var m_dry: float = host.devotion.state[1]["god-maren"].vigor
+	var maren_godhead0 := host.godhead.godhead("god-maren")
 	host.player.position = host.chapels["god-maren"]
 	check(host.intent_interact(), "lead her rite")
 	check(host.devotion.state[1]["god-maren"].vigor > m_dry, "worship restores the storm")
 	check(host.devotion.devotion_spent(1) == 2, "two gods, two devotion points — the budget holds")
+	# Godhead (Part II §3): the SAME rite feeds Maren's world-level body too
+	check(host.godhead.godhead("god-maren") > maren_godhead0, "the same rite feeds Maren's Godhead, not just your own Vigor")
 
 	# --- Old Shellback and the first Verdict choice --------------------------
 	var boss := _enemy_of(host, "creature-old-shellback")
@@ -594,20 +597,65 @@ func _ready() -> void:
 			hoard_nodes += 1
 	check(hoard_nodes >= 4, "the wreck-ring opens — his hoard becomes salvage ground (%d nodes)" % hoard_nodes)
 
-	# the Verdict, in hand: CONSUME — power now, a dimmer world forever
+	# the Verdict, in hand: CONSUME — power now, Godhead LOCKED at 0 forever
+	# (VILLAGER-AND-GODHEAD-SPEC Part II §4 — this absorbs what used to be a
+	# separate, ad-hoc verdict.god_world_strength "-20, then +10 back on
+	# enshrine" hack; godhead_system.consumed() is the one true source now,
+	# and unlike the old hack it is genuinely irreversible — see below)
 	var base_hp0: float = host.stats.actors[1].base_hp
-	var halor_strength0: float = host.verdict.god_world_strength["god-halor"]
+	check(not host.godhead.is_consumed("god-halor"), "Halor's Godhead stands untouched, so far")
 	check(host.intent_consume_remnant(), "the warm voice gets its way")
 	check(host.stats.actors[1].base_hp == base_hp0 + 15.0, "you feel MAGNIFICENT — permanently")
-	check(host.verdict.god_world_strength["god-halor"] == halor_strength0 - 20.0, "and Halor dims, for everyone, forever")
+	check(host.godhead.is_consumed("god-halor") and host.godhead.godhead("god-halor") == 0.0, "and Halor's Godhead locks at 0, for everyone, forever")
+	check(host.godhead.effective_mult("god-halor") == 0.0, "a consumed god grants NO magic")
 	check(host.verdict.ledgers[1]["remnants"] < 0.0, "the ledger remembers what you ate")
 
-	# ...and ENSHRINE, the other door (a second remnant, test-granted)
+	# the invocation itself is BLOCKED now, diegetically — not merely weak
+	host.devotion.state[1]["god-halor"].vigor = host.devotion.max_vigor("god-halor")   # rule out "no Vigor" as the reason
+	check(not host.intent_cast("inv-pillar-of-salt"), "a consumed god answers no calls")
+	check(host.message.contains("nothing answers"), "the block is diegetic, not a silent no-op")
+
+	# ...and ENSHRINE, the other door (a second remnant, test-granted) — but
+	# consumption is THE one truly irreversible act (§4): enshrining Halor
+	# again does NOTHING now. (The old hack let a later enshrine partially
+	# undo a consume, which was never the intent — this is the fix.)
 	host.inventory.add(1, "item-remnant-shellback", 1)
 	host.player.position = host.chapels["god-halor"]
 	check(host.current_prompt().contains("Enshrine"), "the chapel prompt offers the better door")
 	check(host.intent_enshrine("god-halor"), "set the remnant in the chapel-stone")
-	check(host.verdict.god_world_strength["god-halor"] == halor_strength0 - 10.0, "some of what dimmed comes back")
+	check(host.godhead.godhead("god-halor") == 0.0, "consumption is FOREVER — enshrining after can't undo it")
+
+	# --- the Waker of the Drowned (VILLAGER-AND-GODHEAD-SPEC Part II §5) -----
+	# Every player death ends with Ur-Noth handing you back — a real, lethal
+	# hit through damage_player(), the exact path an enemy uses, not the
+	# petrify/Returning cheats exercised earlier in this file. A FRESH pid
+	# (88) for the spec's exact first-death numbers: pid 1 already died
+	# several times earlier in this very file (the HP/petrify tests above),
+	# so ITS streak is not a clean "first death" — used below only for the
+	# decay-direction check, which doesn't need an exact percentage.
+	host.stats.register(88, 60.0, 60.0)
+	var gh_urnoth0 := host.godhead.godhead("god-ur-noth")
+	host.damage_player(999999.0, 88)
+	check(host.message.contains("+0.4%") and host.message.contains("now"), "the death screen prints the spec's exact first-death ledger line (feed + running total)")
+	check(host.godhead.godhead("god-ur-noth") > gh_urnoth0, "and the Unlit actually gained the feed")
+	check(host.message.contains("\""), "one whisper line rides along on wake, quoted")
+	var after_first := host.godhead.godhead("god-ur-noth") - gh_urnoth0
+	host.damage_player(999999.0, 88)   # same day: the decay window is still open
+	var after_second := host.godhead.godhead("god-ur-noth") - gh_urnoth0 - after_first
+	check(after_second > 0.0 and after_second < after_first, "a second death in the same window feeds LESS, not zero")
+
+	# attuned to Ur-Noth: the revival costs him exactly what it feeds him — a wash
+	host.stats.register(77, 60.0, 60.0)
+	host.attuned_for(77).append("god-ur-noth")
+	var urnoth_before_wash := host.godhead.godhead("god-ur-noth")
+	host.damage_player(999999.0, 77)
+	check(absf(host.godhead.godhead("god-ur-noth") - urnoth_before_wash) < 0.0001, "an Ur-Noth-attuned death is a true wash — ±0% net")
+	check(host.message.contains("carries his own"), "the death screen says so, in the spec's own words")
+	check(host.godhead.lifetime_deaths.get(77, 0) == 1, "the death still counts (ledger-neutral, not unnoticed)")
+
+	# UI law: the numbers are always on screen (Part II §2) — Maren's HUD line
+	host._refresh_bars()
+	check(host.maren_godhead_label.text.to_lower().contains("godhead"), "the HUD's god line shows Godhead too (%s)" % host.maren_godhead_label.text)
 
 	# --- the flats remember: full save -> fresh world -> load ----------------
 	var take_one := _node_of(host, "item-salt")
@@ -640,7 +688,9 @@ func _ready() -> void:
 			partial2_ok = int(n2.get_meta("left", -1)) == partial_left
 	check(partial2_ok, "a half-worked node keeps its wear across save/load (%d left)" % partial_left)
 	check(_enemy_of(host2, "creature-old-shellback") == null, "Old Shellback stays dead")
-	check(absf(float(host2.verdict.god_world_strength["god-halor"]) - float(host.verdict.god_world_strength["god-halor"])) < 0.01, "the world remembers what you consumed")
+	check(host2.godhead.is_consumed("god-halor") and host2.godhead.godhead("god-halor") == 0.0, "the world remembers what you consumed — Godhead stays locked at 0 across save/load")
+	check(absf(host2.godhead.godhead("god-ur-noth") - host.godhead.godhead("god-ur-noth")) < 0.001, "Ur-Noth's fed Godhead survives save/load")
+	check(host2.godhead.lifetime_deaths.get(1, 0) == host.godhead.lifetime_deaths.get(1, 0) and host2.godhead.lifetime_deaths.get(77, 0) == host.godhead.lifetime_deaths.get(77, 0), "per-player death counts survive save/load too")
 	host2.queue_free()
 
 	# --- the great storm ------------------------------------------------------
@@ -984,6 +1034,21 @@ func _ready() -> void:
 	var assist_before: float = host.village.tribesmen[trainee_id].arms.xp
 	host._on_enemy_killed(foe)
 	check(float(host.village.tribesmen[trainee_id].arms.xp) > assist_before, "a kill nearby grants killAssist XP")
+
+	# wardens help villagers, NOT players (Jeff 2026-07-17): a hostile menacing
+	# a road companion far from home must not create warden duty — but the same
+	# villager back on the clock still gets the watch.
+	host.player.position = host.village_heart() + Vector2(700, 0)
+	trainee.position = host.player.position + Vector2(30, 0)
+	var road_foe := DSEnemy.new()
+	road_foe.position = trainee.position + Vector2(20, 0)
+	road_foe.setup(host, "creature-salt-hound")
+	host.add_child(road_foe); host.enemies.append(road_foe)
+	check(host.warden_duty(trainee) == Vector2.INF, "a threatened ROAD companion raises no warden duty")
+	trainee.on_road = false
+	check(host.warden_duty(trainee) == road_foe.position, "the same villager off the road still gets the watch")
+	trainee.on_road = true
+	host.stats.unregister(road_foe); host.enemies.erase(road_foe); road_foe.queue_free()
 
 	# downed, then revive
 	host.stats.actors[trainee].hp = 1.0

@@ -1,9 +1,18 @@
 class_name VerdictSystem
 extends RefCounted
 ## The four ledgers: gods, remnants, shepherd, peoples. Deeds are recorded per
-## player; lean is derived, never displayed as a number. Also owns shared god
-## WORLD-strength: a consumed remnant dims its god's domain for everyone, forever.
+## player; lean is derived, never displayed as a number.
 ## Wire other systems' ledger_event signals into record().
+##
+## World-wide god strength moved OUT of this system (VILLAGER-AND-GODHEAD-SPEC
+## Part II): what used to be an ad-hoc `god_world_strength` dict here (-20 on
+## consume, +10 on enshrine, no real gameplay consumer) is now the single
+## source of truth in `godhead_system.gd` — `consumed()` is the one
+## irreversible act (locks a god's Godhead at 0 forever), `enshrine_remnant()`
+## feeds a god back within their cap. The host wires those calls alongside
+## `remnant_consume`/`remnant_enshrine` below (systems don't call each other's
+## internals — see docs/ARCHITECTURE.md §2); this system keeps ONLY the
+## player-ledger bookkeeping (the "remnants" deed, per-player).
 
 var registry: Registry
 var tune: Dictionary
@@ -14,16 +23,9 @@ var ledgers: Dictionary = {}
 var history: Dictionary = {}
 const HISTORY_CAP := 500
 
-# god_id -> 0..100 shared world strength (100 = as strong as a dying god gets)
-var god_world_strength: Dictionary = {}
-
-signal god_dimmed_worldwide(god_id: String, strength: float)
-
 func _init(reg: Registry) -> void:
 	registry = reg
 	tune = reg.tuning.get("verdict", {})
-	for god: Dictionary in reg.all_of("god"):
-		god_world_strength[god.id] = 100.0
 
 func record(player_id: int, ledger: String, amount: float, note: String, day: int = -1) -> void:
 	if not tune.get("ledgers", {}).has(ledger):
@@ -57,15 +59,13 @@ func lean(player_id: int) -> String:
 	return "dark"
 
 ## --- remnants: enshrine / trade / consume -------------------------------------
+## World-wide strength is godhead_system's job now (enshrine_remnant() / consumed());
+## the host calls those alongside these — this system only records the deed.
 func remnant_enshrine(player_id: int, god_id: String) -> void:
-	god_world_strength[god_id] = minf(float(god_world_strength.get(god_id, 100.0)) + 10.0, 100.0)
 	record(player_id, "remnants", 10.0, "enshrined a remnant of %s" % god_id)
 
 func remnant_trade(player_id: int, god_id: String) -> void:
 	record(player_id, "remnants", 0.0, "traded a remnant of %s" % god_id)
 
 func remnant_consume(player_id: int, god_id: String) -> void:
-	var dim := float(tune.get("worldStrength", {}).get("consumedRemnantDim", 20))
-	god_world_strength[god_id] = maxf(float(god_world_strength.get(god_id, 100.0)) - dim, 0.0)
 	record(player_id, "remnants", -12.0, "CONSUMED a remnant of %s" % god_id)
-	god_dimmed_worldwide.emit(god_id, float(god_world_strength[god_id]))

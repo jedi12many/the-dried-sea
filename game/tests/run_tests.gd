@@ -23,6 +23,7 @@ func _init() -> void:
 	_test_save()
 	_test_stats()
 	_test_sanctum()
+	_test_godhead()
 	_test_golden_run()
 	print("\n%d checks, %d failure(s)" % [checks, failures.size()])
 	quit(1 if failures.size() > 0 else 0)
@@ -305,13 +306,14 @@ func _test_verdict() -> void:
 	ver.record(P, "shepherd", 25.0, "many keys met")
 	check(ver.lean(P) == "shepherd", "kept people -> shepherd lean")
 
-	# remnants: consume dims the god WORLD-WIDE, permanently
-	var dimmed: Array[bool] = [false]
-	ver.god_dimmed_worldwide.connect(func(_g: String, _s: float) -> void: dimmed[0] = true)
+	# remnants: the deed is recorded here; WORLD-WIDE strength moved to
+	# godhead_system (VILLAGER-AND-GODHEAD-SPEC Part II §4 — see _test_godhead's
+	# consumed()/enshrine_remnant() coverage, and smoke.gd's end-to-end version
+	# of this exact scenario). This system only keeps the player ledger now.
 	ver.remnant_consume(P, "god-neris")
-	check(dimmed[0] and ver.god_world_strength["god-neris"] == 80.0, "consuming Neris breaks a piece of everyone's tides")
+	check(ver.ledgers[P]["remnants"] == -12.0, "consuming a remnant records the deed")
 	ver.remnant_enshrine(P, "god-neris")
-	check(ver.god_world_strength["god-neris"] == 90.0, "enshrining gives some of it back")
+	check(ver.ledgers[P]["remnants"] == -2.0, "enshrining records its own, gentler deed (-12 + 10)")
 
 	# a purge spree reads dark
 	ver.record(P, "shepherd", -15.0, "execution without evidence")
@@ -470,8 +472,12 @@ func _test_sanctum() -> void:
 	sanc.deposit(P, 3, "item-storm-glass", 2)
 	sanc.deposit(P, 3, "item-rope", 4)
 	var fed := sanc.dawn_tithe()
-	check(float(fed.get("god-maren", 0.0)) > 0.0, "the tithe feeds Maren (%.1f vigor)" % float(fed.get("god-maren", 0.0)))
+	check(float(fed.vigor.get("god-maren", 0.0)) > 0.0, "the tithe feeds Maren (%.1f vigor)" % float(fed.vigor.get("god-maren", 0.0)))
 	check(int(sanc.state[3].bag.get("item-storm-glass", 0)) == 1, "the god took one craved storm-glass")
+	# Godhead (Part II §3): "craved" is reported SEPARATELY from vigor — only the
+	# craved lane feeds a god's world-level body ("+0.05% per craved item taken");
+	# the rope taken alongside it is merely "accepts" (Vigor-only, no Godhead cut).
+	check(int(fed.craved.get("god-maren", 0)) == 1, "exactly the one craved storm-glass counts toward Godhead's tithe")
 	# splendor bounded by the ceiling
 	for i in 30:
 		sanc.deposit(P, 3, "item-storm-glass", 100)
@@ -494,6 +500,158 @@ func _test_sanctum() -> void:
 	dev.state[P]["god-halor"].vigor = 10.0
 	dev.rite_day(P, "god-halor", "chapel", 1, 0.5)
 	check(dev.state[P]["god-halor"].vigor < plain, "an offended altar sours the rite (floor 0.5)")
+
+## Godhead (VILLAGER-AND-GODHEAD-SPEC Part II): the world-level god body,
+## separate from devotion_system's per-player Vigor. The cap is the world's
+## gift (biome keystones); feeding/draining moves a god within it; 0 gutters
+## (no magic, for everyone) until fed back — unless consumed(), the one
+## irreversible act. §5 the Waker: every player death feeds Ur-Noth, decaying
+## per repeat within a window, per-player, washed to zero if he's your own.
+func _test_godhead() -> void:
+	var reg := Registry.new()
+	reg.load_all()
+	check(reg.tuning.has("godhead"), "godhead tuning loaded")
+	var gh := GodheadSystem.new(reg)
+
+	# every non-missing god starts AT the cap (10%); the empty seat is untracked
+	check(gh.state.size() == 6, "six non-missing gods tracked (the empty seat excluded)")
+	check(not gh.state.has("god-all-tide"), "the All-Tide is untracked — missing, not a body to feed")
+	check(gh.godhead("god-halor") == 10.0, "campaign start: every god flickers at the base 10%")
+
+	# the cap: biomes are the ceiling (§1 exact table)
+	check(gh.cap() == 10.0, "0 biomes cleared -> cap 10%")
+	gh.set_biomes_cleared(1)
+	check(gh.cap() == 40.0, "1 biome (Salt Shallows) -> cap 40% — the current test world's ceiling")
+	gh.set_biomes_cleared(2)
+	check(gh.cap() == 70.0, "2 biomes (Reef Forest) -> cap 70%")
+	gh.set_biomes_cleared(3)
+	check(gh.cap() == 100.0, "3 biomes (the Drop) -> cap 100%, full godhead is endgame material")
+	check(gh.godhead("god-maren") == 10.0, "raising the cap never moves a god's current value")
+	gh.set_biomes_cleared(1)   # back to the test world's ceiling (40%) for everything below
+
+	# enshrine_remnant: the mirror of consumed() — the spec's §3 "restore a
+	# fallen shrine" analog used for a remnant's one-time feed (+2%, per
+	# godhead.json's own $comment), clamped like any other feed.
+	var enshrine_delta := gh.enshrine_remnant("god-halor")
+	check(absf(enshrine_delta - 2.0) < 0.001 and gh.godhead("god-halor") == 12.0,
+		"enshrine_remnant feeds +2%% one-time (now %.1f%%)" % gh.godhead("god-halor"))
+
+	# feed clamps at cap
+	gh.feed("god-maren", "rite", 50.0)
+	check(gh.godhead("god-maren") == 40.0, "feed clamps at the cap, however large the source")
+
+	# drain floors at 0, with the gutter signal
+	var guttered: Array[bool] = [false]
+	gh.god_guttered.connect(func(_g: String) -> void: guttered[0] = true)
+	gh.drain("god-maren", "grim_rite", 1000.0)
+	check(gh.godhead("god-maren") == 0.0 and guttered[0], "drain floors at 0 and fires god_guttered")
+	check(gh.is_guttered("god-maren") and gh.effective_mult("god-maren") == 0.0, "a guttered god grants NO magic")
+
+	# rekindle signal on recovery
+	var rekindled: Array[bool] = [false]
+	gh.god_rekindled.connect(func(_g: String) -> void: rekindled[0] = true)
+	gh.feed("god-maren", "rite", 5.0)
+	check(rekindled[0] and gh.godhead("god-maren") == 5.0, "feeding a guttered god fires god_rekindled")
+
+	# consumed: the one irreversible act — locks at 0, no feed can revive
+	gh.feed("god-maren", "rite", 20.0)
+	check(gh.godhead("god-maren") > 0.0, "fed back up before consuming (proves consume isn't a no-op)")
+	gh.consumed("god-maren")
+	check(gh.is_consumed("god-maren") and gh.godhead("god-maren") == 0.0, "consumed locks the god at 0")
+	gh.feed("god-maren", "rite", 20.0)
+	check(gh.godhead("god-maren") == 0.0, "consumed locks FOREVER — feed does nothing after")
+	check(gh.effective_mult("god-maren") == 0.0, "a consumed god still grants no magic")
+
+	# §5 the Waker: first death, decay per repeat, floor, window reset
+	var P := 1
+	var r1: Dictionary = gh.player_death(P, 1, false)
+	check(absf(float(r1.fed) - 0.4) < 0.001 and not r1.washed and r1.lifetime == 1 and r1.whisper_pool == "early",
+		"first death feeds 0.4%, unwashed, lifetime 1, early pool")
+	check(absf(gh.godhead("god-ur-noth") - 10.4) < 0.001, "Ur-Noth actually gained the feed")
+	var r2: Dictionary = gh.player_death(P, 2, false)
+	check(absf(float(r2.fed) - 0.24) < 0.001, "second death in-window feeds x0.6 -> 0.24%")
+	var r3: Dictionary = gh.player_death(P, 3, false)
+	check(absf(float(r3.fed) - 0.144) < 0.001, "third death in-window feeds x0.6 again -> 0.144%")
+	var last_fed := 1.0
+	for i in 8:
+		last_fed = float(gh.player_death(P, 3, false).fed)
+	check(absf(last_fed - 0.05) < 0.0001, "repeated same-day deaths floor at 0.05%")
+	var r_reset: Dictionary = gh.player_death(P, 3 + 4, false)   # 4 days later: 3 deathless days passed -> reset
+	check(absf(float(r_reset.fed) - 0.4) < 0.001, "3 deathless days resets the window — full feed again")
+
+	# the wash: attuned to Ur-Noth costs him exactly what it feeds him
+	var P2 := 2
+	var before_urnoth := gh.godhead("god-ur-noth")
+	var rw: Dictionary = gh.player_death(P2, 10, true)
+	check(bool(rw.washed) and absf(float(rw.fed)) < 0.0001, "an Ur-Noth-attuned death washes — fed reads 0")
+	check(absf(gh.godhead("god-ur-noth") - before_urnoth) < 0.0001, "the wash truly nets +-0% to his Godhead")
+	check(int(rw.lifetime) == 1, "dying is ledger-neutral, but the death still counts")
+
+	# whisper pool transitions: <5 early, 5-14 familiar, >=15 proprietary (tuning first guess)
+	var P3 := 3
+	var pools: Array[String] = []
+	for i in 20:
+		pools.append(str(gh.player_death(P3, i * 10, false).whisper_pool))   # far apart: no decay noise
+	check(pools[0] == "early" and pools[3] == "early", "deaths 1 and 4: early pool")
+	check(pools[4] == "familiar" and pools[13] == "familiar", "deaths 5 and 14: familiar pool")
+	check(pools[14] == "proprietary", "death 15: proprietary pool")
+
+	# Ur-Noth guttered still gets fed — "you cannot keep him down while anyone drowns"
+	gh.drain("god-ur-noth", "grim_rite", 1000.0)
+	check(gh.is_guttered("god-ur-noth"), "Ur-Noth guttered by a grim-rite drain")
+	gh.player_death(4, 100, false)
+	check(gh.godhead("god-ur-noth") > 0.0, "a death feeds him even guttered — the dark always takes someone")
+
+	# consumed Ur-Noth: the death still counts, but nothing reaches him anymore
+	gh.consumed("god-ur-noth")
+	var r_after_consume: Dictionary = gh.player_death(5, 200, false)
+	check(gh.godhead("god-ur-noth") == 0.0, "consumed Ur-Noth cannot be fed even by deaths")
+	check(int(r_after_consume.lifetime) == 1, "the death still counts for the ledger even though it fed no one")
+
+	# save round-trip: godhead, consumed, and both death ledgers survive
+	var dump := gh.to_save()
+	var gh2 := GodheadSystem.new(reg)
+	gh2.apply(dump)
+	check(gh2.godhead("god-maren") == gh.godhead("god-maren") and gh2.is_consumed("god-maren"),
+		"godhead value + consumed flag survive the round trip")
+	check(gh2.lifetime_deaths.get(P, 0) == gh.lifetime_deaths.get(P, 0), "lifetime death ledger survives")
+	check(int(gh2.death_window.get(P, {}).get("streak", -1)) == int(gh.death_window.get(P, {}).get("streak", -1)),
+		"the Waker's per-player decay window survives")
+	check(gh2.biomes_cleared() == gh.biomes_cleared(), "biomes_cleared survives")
+
+	# save_system wiring: additive, old-save-compatible
+	var clock := SimClock.new()
+	var dev := DevotionSystem.new(reg)
+	var vil := VillageSystem.new(reg)
+	var works := WorksSystem.new(reg, dev)
+	var ver := VerdictSystem.new(reg)
+	var gsave := SaveSystem.to_save(clock, dev, vil, works, ver, gh)
+	check(gsave.has("godhead"), "SaveSystem.to_save includes godhead when given a GodheadSystem")
+	var gh3 := GodheadSystem.new(reg)
+	SaveSystem.apply(gsave, SimClock.new(), DevotionSystem.new(reg), VillageSystem.new(reg), WorksSystem.new(reg, DevotionSystem.new(reg)), VerdictSystem.new(reg), gh3)
+	check(gh3.godhead("god-maren") == gh.godhead("god-maren"), "SaveSystem.apply restores godhead through the wiring")
+	var old_save: Dictionary = gsave.duplicate(true)
+	old_save.erase("godhead")
+	var gh4 := GodheadSystem.new(reg)
+	SaveSystem.apply(old_save, SimClock.new(), DevotionSystem.new(reg), VillageSystem.new(reg), WorksSystem.new(reg, DevotionSystem.new(reg)), VerdictSystem.new(reg), gh4)
+	check(gh4.godhead("god-halor") == 10.0, "a save with no godhead key at all (pre-Part-II) loads clean — defaults hold")
+
+	# economy sanity: the floor+decay curve suppresses same-day farming, though
+	# NOTE for Jeff — the spec's own comparison ("a day of suicide-diving feeds
+	# less than one grim rite") does not hold at N=10 with these exact numbers:
+	# floorPct (0.05%) sits close enough under feedPct (0.4%) that repeats past
+	# ~5 add nearly linearly. 10 same-day deaths total ~1.17%, over BOTH one
+	# grim rite (0.5%) and the spec's own 1.0% fallback bound. Flagging as a
+	# tuning tension rather than asserting a false bound; the true, weaker
+	# guarantee (the floor keeps it well under naive undecayed 10x0.4=4.0%)
+	# is what's asserted below.
+	var gh5 := GodheadSystem.new(reg)
+	gh5.set_biomes_cleared(1)
+	var total_fed := 0.0
+	for i in 10:
+		total_fed += float(gh5.player_death(99, 1, false).fed)
+	var undecayed := 10.0 * float(reg.tuning.godhead.get("waker", {}).get("feedPct", 0.4))
+	check(total_fed < undecayed * 0.35, "decay+floor meaningfully suppresses same-day farming (%.3f%% vs %.3f%% undecayed)" % [total_fed, undecayed])
 
 func _test_golden_run() -> void:
 	## 30 sim-days, all systems ticking together, mid-game setup.

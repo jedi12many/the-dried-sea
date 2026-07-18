@@ -237,6 +237,36 @@ if (gods.length && gods.length !== 7) warn("pantheon", `expected 7 gods (6 + the
   }
 }
 
+// ---- Godhead (VILLAGER-AND-GODHEAD-SPEC Part II) -------------------------------
+{
+  const gt = docs.find(({ file }) => file.endsWith("tuning/godhead.json"))?.data;
+  if (!gt) err("tuning/godhead.json", "missing — Godhead is tuning-driven");
+  else {
+    if (gt.cap?.base === undefined || gt.cap?.perBiomeCap === undefined)
+      err("tuning/godhead.json", "cap needs base + perBiomeCap");
+    for (const k of ["riteLedByChurchTier", "dawnTithePerCravedItem", "devoutVillagerTricklePerDay", "enshrinedRemnant"])
+      if (gt.sources?.[k] === undefined) err("tuning/godhead.json", `sources missing '${k}'`);
+    for (const k of ["offenseLaidOnAltar", "urNothGrimRitePerRite", "neglect"])
+      if (gt.sinks?.[k] === undefined) err("tuning/godhead.json", `sinks missing '${k}'`);
+    const w = gt.waker ?? {};
+    for (const k of ["feedPct", "repeatDecay", "decayWindowDays", "floorPct", "washIfAttuned", "whisperPoolThresholds", "noWakerFallback"])
+      if (w[k] === undefined) err("tuning/godhead.json", `waker missing '${k}'`);
+    if (w.noWakerFallback && (w.noWakerFallback.highestGodDrainPct === undefined || w.noWakerFallback.fallbackWakeHpPct === undefined))
+      err("tuning/godhead.json", "waker.noWakerFallback needs highestGodDrainPct + fallbackWakeHpPct");
+  }
+}
+
+// ---- wakerWhispers shape (any god that carries them) ---------------------------
+for (const { file, obj } of entities) {
+  if (type(obj.id) !== "god" || !obj.wakerWhispers) continue;
+  const ww = obj.wakerWhispers;
+  for (const pool of ["early", "familiar", "proprietary"])
+    if (!Array.isArray(ww[pool]) || ww[pool].length < 1) err(file, `${obj.id} wakerWhispers.${pool} must be a non-empty array`);
+  if (ww.milestones)
+    for (const k of Object.keys(ww.milestones))
+      if (!/^[0-9]+$/.test(k)) err(file, `${obj.id} wakerWhispers.milestones key '${k}' must be a death-count integer`);
+}
+
 // ---- report -------------------------------------------------------------------
 for (const w of warns) console.log(`  warn  ${w}`);
 for (const e of errors) console.log(`  ERROR ${e}`);
