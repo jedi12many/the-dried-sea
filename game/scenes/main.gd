@@ -4074,6 +4074,7 @@ func _nearest_hostile(from: Vector2, within: float) -> DSEnemy:
 	return found
 
 const WARDEN_DEFEND_RADIUS := 560.0
+const RAIDER_CAP := 3   # storm days replenish raiders to this — the Taken system's supply line
 const WARDEN_GUARD_RADIUS := 130.0
 const WARDEN_DAMAGE := 13.0
 
@@ -4413,7 +4414,33 @@ func _storm_dawn() -> void:
 	for i in 3:
 		var pos := Vector2(rng.randi_range(3, WORLD.x - 3) * TILE, rng.randi_range(3, WORLD.y - 3) * TILE)
 		_spawn_one_node("item-storm-glass", pos, STORM_GLASS_IDX_BASE + i)
+	# ...and the storm washes in the desperate: raiders replenish to cap on
+	# storm days ONLY (Jeff 2026-07-18: the original 3 world-gen raiders were
+	# the entire lifetime supply — once subdued or converted, the Taken system
+	# went dark for good). Deterministic per-day rng; spawns hug the world's
+	# edge so a storm never drops a raider on the village.
+	var raiders := 0
+	for e in enemies:
+		if is_instance_valid(e) and e.creature_id == "creature-raider":
+			raiders += 1
+	var storm_raiders := 0
+	var rrng := RandomNumberGenerator.new()
+	rrng.seed = 9000 + clock.day
+	while raiders < RAIDER_CAP:
+		var raider := DSEnemy.new()
+		var edge := rrng.randi_range(0, 3)
+		var rp := Vector2(
+			[3, WORLD.x - 3, rrng.randi_range(3, WORLD.x - 3), rrng.randi_range(3, WORLD.x - 3)][edge] * TILE,
+			[rrng.randi_range(3, WORLD.y - 3), rrng.randi_range(3, WORLD.y - 3), 3, WORLD.y - 3][edge] * TILE)
+		raider.position = rp
+		raider.setup(self, "creature-raider")
+		add_child(raider)
+		enemies.append(raider)
+		raiders += 1
+		storm_raiders += 1
 	message = "THE GREAT STORM. The seabed shifts — old salvage uncovered, and storm-glass smokes on the flats.\nGather it before the sky takes it back. Maren is EVERYWHERE today: her magic costs half."
+	if storm_raiders > 0:
+		message += "\nAnd the storm drove people in ahead of it — desperate figures at the world's edge, armed and hungry.\nBeat one to its knees and [E] binds them for the yoke: the village can use hands, however they arrive."
 
 func _spawn_enemies() -> void:
 	if net_mode == "client":

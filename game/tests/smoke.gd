@@ -1064,6 +1064,20 @@ func _ready() -> void:
 	host.clock.day = 7   # %4 == 3: THE GREAT STORM
 	host.journal_interact(1, 0)
 	check("calling-the-squall-she-owes" in host._done_callings(1), "the storm arrives and the vigil completes")
+	# the storm washes in raiders: the Taken system's supply line (world-gen's
+	# 3 raiders were once the lifetime total — convert them and the yoke stood
+	# empty forever)
+	for e in host.enemies.duplicate():   # empty flats: prove the storm restocks from zero
+		if is_instance_valid(e) and e.creature_id == "creature-raider":
+			host.stats.unregister(e); host.enemies.erase(e); e.queue_free()
+	host._storm_dawn()
+	var raiders_after := host.enemies.filter(func(e: DSEnemy) -> bool:
+		return is_instance_valid(e) and e.creature_id == "creature-raider").size()
+	check(raiders_after == host.RAIDER_CAP, "a storm dawn replenishes raiders to cap (0 -> %d)" % raiders_after)
+	check(host.message.contains("the storm drove people in"), "and the dawn report says who arrived")
+	for e in host.enemies.duplicate():   # clean the field again for whatever follows
+		if is_instance_valid(e) and e.creature_id == "creature-raider":
+			host.stats.unregister(e); host.enemies.erase(e); e.queue_free()
 	host.clock.day = day0
 	# the dawn announcement rides WITH the dawn report, never over it
 	host.callings.clear(); host.callings_done.clear()
