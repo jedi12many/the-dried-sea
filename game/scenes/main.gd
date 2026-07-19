@@ -42,6 +42,7 @@ var works: WorksSystem
 var verdict: VerdictSystem
 var sanctum: SanctumSystem
 var godhead: GodheadSystem
+var beast: BeastSystem
 var respawn_bind: Dictionary = {}   # pid -> work inst_id you chose as your rest point (tent/hearth)
 var offertory_open := false
 var offertory_inst := -1        # which altar the open Offertory is looking at
@@ -82,6 +83,7 @@ const INTERACT_RANGE := 56.0
 var shrines: Array[Node2D] = []
 var survivor: DSVillager               # Anna, the first (kept for compat + tutorial)
 var villagers: Array[DSVillager] = []  # additional rescued/stranded survivors
+var beasts: Array[DSBeast] = []        # the tamed roster's bodies (VILLAGER-AND-GODHEAD-SPEC Part III)
 var village_stock: Dictionary = {}     # the shared storehouse: item_id -> qty
 var village_panel: Label
 var village_panel_open := false
@@ -215,6 +217,18 @@ func _ready() -> void:
 	verdict = VerdictSystem.new(registry)
 	sanctum = SanctumSystem.new(registry)
 	godhead = GodheadSystem.new(registry)
+	beast = BeastSystem.new(registry)
+	# announce an instinct the moment it ignites (villager Arms talents surface
+	# passively in the sheet instead — beasts get the immediate line because
+	# there's no sheet moment as satisfying as "Fang has learned: Deathgrip")
+	beast.instinct_ignited.connect(func(id: int, instinct_id: String) -> void:
+		var rec: Dictionary = beast.beasts.get(id, {})
+		if rec.is_empty():
+			return
+		for ins: Dictionary in registry.get_entity(str(rec.creature_id)).get("tame", {}).get("instincts", []):
+			if str(ins.id) == instinct_id:
+				_message_to(int(rec.owner_pid), "%s has learned: %s — %s" % [str(rec.name), str(ins.name), str(ins.text)])
+				return)
 	# the Salt Shallows test world = one biome keystone down -> cap 40% (VILLAGER-
 	# AND-GODHEAD-SPEC Part II §1). Reef Forest / the Drop arrivals raise this to
 	# 2 / 3 later (cap 70% / 100%) — presentation will call set_biomes_cleared()
@@ -432,7 +446,7 @@ func _notification(what: int) -> void:
 func save_game() -> void:
 	if net_mode == "client":
 		return  # the server owns the world
-	var s := SaveSystem.to_save(clock, devotion, village, works, verdict, godhead)
+	var s := SaveSystem.to_save(clock, devotion, village, works, verdict, godhead, beast)
 	s["game"] = {
 		"inventory": inventory.inventories.duplicate(true),
 		"player_stats": stats.actors.get(acting_pid, {}).duplicate(true),
@@ -468,6 +482,13 @@ func save_game() -> void:
 		"lantern_wreck_inspected": lantern_wreck_inspected.duplicate(),
 		"lantern_verse3_taken": lantern_verse3_taken.duplicate(),
 		"tide_bell_rang_today": tide_bell_rang_today,
+		# beast_system.to_save() (via SaveSystem above) carries the roster + trust
+		# ledgers; this is the presentation-only overlay it doesn't know about —
+		# position, the porter's own bag, and the downed timer (same law as
+		# villager companions: HP itself is NOT persisted, same precedent as the pool above).
+		"beast_pool": beasts.map(func(b: DSBeast) -> Dictionary:
+			return {"id": b.beast_id, "x": b.position.x, "y": b.position.y,
+				"bag": b._porter_bag.duplicate(), "downed": b.downed, "downed_until": b.downed_until}),
 	}
 	SaveSystem.write_file(save_path, s)
 
@@ -475,7 +496,7 @@ func load_game() -> void:
 	var s := SaveSystem.read_file(save_path)
 	if s.is_empty():
 		return
-	SaveSystem.apply(s, clock, devotion, village, works, verdict, godhead)
+	SaveSystem.apply(s, clock, devotion, village, works, verdict, godhead, beast)
 	var g: Dictionary = s.get("game", {})
 	inventory.inventories = SaveSystem._int_keys(g.get("inventory", {}))
 	if g.has("player_stats"):
@@ -580,6 +601,19 @@ func load_game() -> void:
 			if v.on_road:
 				stats.register(v, village.villager_max_hp(v.tribesman_id))
 		v.set_label_name()
+	for b: DSBeast in beasts.duplicate():
+		stats.unregister(b)
+		beasts.erase(b)
+		b.queue_free()
+	for bpd: Dictionary in g.get("beast_pool", []):
+		var bid := int(bpd.id)
+		if not beast.beasts.has(bid):
+			continue   # a wild ledger-only entry, or a save from before this beast existed
+		var b := _spawn_beast(bid, Vector2(float(bpd.x), float(bpd.y)), false)
+		b._porter_bag = (bpd.get("bag", {}) as Dictionary).duplicate()
+		b.downed = bool(bpd.get("downed", false))
+		b.downed_until = float(bpd.get("downed_until", 0.0))
+		b._refresh_label()
 	_refresh_hud()
 
 ## Where the first instance of a work stands (villager duty posts).
@@ -957,10 +991,23 @@ func intent_interact() -> bool:
 			if _carrying_remnant():
 				return intent_enshrine(god_id)
 			return intent_rite(god_id)
-	# a beaten raider on their knees — bind them for the yoke
+	# BEASTS AT HEEL (Part III): a beaten raider on their knees binds for the
+	# yoke; a beaten (kneeling) or ever-peaceful tameable beast feeds instead —
+	# two doors off the same "surrendered" state, and an ambient beast (a
+	# crab) never needed beating down at all to open its door.
 	for e in enemies:
-		if is_instance_valid(e) and e.surrendered and acting_pos().distance_to(e.position) < interact_range():
+		if not is_instance_valid(e) or acting_pos().distance_to(e.position) >= interact_range():
+			continue
+		if e.surrendered and e.subduable:
 			return intent_capture(e)
+		if (e.surrendered or e.peaceful) and not registry.get_entity(e.creature_id).get("tame", {}).is_empty():
+			return intent_feed_wild(e)
+	# YOUR OWN tamed beast: revive if downed, empty a full porter bag, else
+	# toggle the heel/stay slot — checked before the survivor/villager doors
+	# so a beast that wandered near a stranger doesn't lose your [E] to them.
+	for b: DSBeast in beasts:
+		if b.owner_pid == acting_pid and acting_pos().distance_to(b.position) < interact_range():
+			return intent_beast_interact(b)
 	if survivor != null and not survivor.rescued and acting_pos().distance_to(survivor.position) < interact_range():
 		return intent_rescue()
 	# a tent or hearth you're standing right on — bind your respawn here
@@ -1151,6 +1198,136 @@ func intent_revive_companion(v: DSVillager) -> bool:
 	v.downed = false
 	v.apply_downed_visual()
 	message = "%s comes back around." % v.display_name
+	_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+	return true
+
+## --- BEASTS AT HEEL (VILLAGER-AND-GODHEAD-SPEC Part III) ---------------------
+## The Shepherd's Way: feed a peaceful (crab) or kneeling (mercy-beaten hound)
+## tameable creature. Always consumes the [E] press with a diegetic result —
+## the UI law is "show the numbers," win or not.
+func intent_feed_wild(e: DSEnemy) -> bool:
+	if net_mode == "client":
+		# a client's enemy is a MIRROR — its nid rides as node meta (cl_world_sync),
+		# never the server-only enemy_net_ids bookkeeping _enemy_nid() assigns
+		rpc_id(1, "srv_intent", "feed_beast", [int(e.get_meta("nid", -1))])
+		return true
+	if e == null or not is_instance_valid(e):
+		return false
+	var tm: Dictionary = registry.get_entity(e.creature_id).get("tame", {})
+	if tm.is_empty():
+		return false
+	var wild := abilities.score(acting_pid, "virtue-wild")
+	var cname := str(registry.get_entity(e.creature_id).name)
+	if not beast.can_tame(wild, e.creature_id):
+		var tier := int(tm.get("tier", 1))
+		var needed_wild := int(beast.tune.get("wildTierGate", {}).get(str(tier), 999))
+		message = "%s watches you, unconvinced — you are not yet quiet enough inside. (Needs WILD %d; you have %d.)" % [cname, needed_wild, wild]
+		_refresh_hud()
+		return true
+	var craved := str(tm.get("cravedFoodItemId", ""))
+	if craved == "" or inventory.count(acting_pid, craved) <= 0:
+		var want := str(registry.get_entity(craved).get("name", "the right food")) if craved != "" else "anything it wants"
+		message = "%s noses at you, hungry — you don't have %s to offer." % [cname, want]
+		_refresh_hud()
+		return true
+	# a same sim-day repeat feed is a no-op on the sim's own trust ledger (the
+	# "no farming a full stack in one sitting" decision, beast_system.gd's own
+	# comment) — so it must not cost a meal either, or the food vanishes for
+	# nothing. Only the FIRST feed of the day pays.
+	var nid := _enemy_nid(e)
+	var already_fed_today := int(beast.wild_trust.get(nid, {}).get("last_meal_day", -999999999)) == clock.day
+	if not already_fed_today:
+		inventory.pay(acting_pid, [{"itemId": craved, "qty": 1}])
+	var ghal_rank := int(devotion.state.get(acting_pid, {}).get("god-ghal", {}).get("rank", 0))
+	var result := beast.feed_wild(nid, e.creature_id, acting_pid, clock.day, ghal_rank)
+	sfx("ui")
+	if bool(result.tamed):
+		var bid := int(result.id)
+		var pos := e.position
+		stats.unregister(e)
+		enemies.erase(e)
+		e.queue_free()
+		_spawn_beast(bid, pos, true)
+		message = "%s — TAMED. It falls in at your heel." % str(beast.beasts.get(bid, {}).get("name", "Beast"))
+	else:
+		message = "%s — trust %d/%d." % [cname, int(result.trust), int(result.needed)]
+	_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+	return true
+
+## Your own tamed beast: revive if downed; else a full porter bag empties to
+## your pack first (a second press that same visit toggles heel/stay); else
+## toggle the heel slot (cap 1; a sulking, unfed beast refuses the call home).
+func intent_beast_interact(b: DSBeast) -> bool:
+	if b != null and b.downed:
+		return intent_revive_beast(b)
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "beast_interact", [b.beast_id if b != null else -1])
+		return true
+	if b == null or not beast.beasts.has(b.beast_id):
+		return false
+	var rec: Dictionary = beast.beasts[b.beast_id]
+	# hand-feeding a TAMED beast: craved food in pack + they haven't eaten today
+	# → the day's meal, by hand. Without this a pre-kennel tame sulks forever
+	# with no recourse (the kennel is the automatic path, never the only one).
+	var craved := str(registry.get_entity(b.creature_id).get("tame", {}).get("cravedFoodItemId", ""))
+	if craved != "" and not bool(rec.fed_today) and inventory.count(acting_pid, craved) > 0:
+		inventory.pay(acting_pid, [{"itemId": craved, "qty": 1}])
+		rec.fed_today = true
+		rec.mood = "keen"
+		message = "%s eats from your hand. Whatever else the day brings, this part is settled." % b.display_name
+		_refresh_hud()
+		if net_mode == "server":
+			rpc("cl_world_sync", _world_sync())
+		return true
+	if beast_role(b.creature_id) == "porter" and not b._porter_bag.is_empty():
+		var bits: Array[String] = []
+		for item_id: String in b._porter_bag.keys():
+			inventory.add(b.owner_pid, item_id, int(b._porter_bag[item_id]))
+			bits.append("%d× %s" % [int(b._porter_bag[item_id]), str(registry.get_entity(item_id).name)])
+		b._porter_bag.clear()
+		message = "%s empties its bag into your pack: %s." % [b.display_name, ", ".join(bits)]
+		_refresh_hud()
+		if net_mode == "server":
+			rpc("cl_world_sync", _world_sync())
+		return true
+	if not b.at_heel:
+		if str(rec.mood) == "sulking":
+			message = "%s turns away. Feed your animals." % b.display_name
+			_refresh_hud()
+			return true
+		if beasts.any(func(x: DSBeast) -> bool: return x != b and x.owner_pid == b.owner_pid and x.at_heel):
+			message = "Only one beast can walk at your heel. Send the other home first."
+			_refresh_hud()
+			return true
+	b.at_heel = not b.at_heel
+	rec.at_heel = b.at_heel
+	b.kenneled = not b.at_heel and works.count_of("work-kennel") > 0
+	rec.kenneled = b.kenneled
+	message = "%s falls in at your heel." % b.display_name if b.at_heel else "%s stays." % b.display_name
+	b._refresh_label()
+	_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+	return true
+
+## Revive a downed beast at 30% HP — stand over them and press [E]. Crabs are
+## exempt by decision (they never go down at all — damage_beast() no-ops them).
+func intent_revive_beast(b: DSBeast) -> bool:
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "beast_revive", [b.beast_id if b != null else -1])
+		return true
+	if b == null or not b.downed:
+		return false
+	b.downed = false
+	b.downed_until = 0.0
+	if stats.actors.has(b):
+		stats.actors[b].hp = beast.beast_max_hp(b.beast_id) * 0.3
+	message = "%s comes back around." % b.display_name
+	b._refresh_label()
 	_refresh_hud()
 	if net_mode == "server":
 		rpc("cl_world_sync", _world_sync())
@@ -2065,6 +2242,12 @@ func intent_attack() -> bool:
 			message = "The raider drops to their knees, spent. [E] to bind them for the yoke — or walk away."
 			_refresh_hud()
 			return true
+	# a tameable beast beaten low enough KNEELS instead of dying — mercy-taming,
+	# the same door the Taken get (gated on YOUR WILD meeting its tame tier)
+	if _mercy_kneel_check(target, attack_damage(), acting_pid):
+		message = "%s kneels, spent — worn down enough to be won over. [E] with its craved food to tame it, or press on." % str(registry.get_entity(target.creature_id).name)
+		_refresh_hud()
+		return true
 	if stats.damage(target, attack_damage()):
 		_on_enemy_killed(target)
 	return true
@@ -2190,6 +2373,16 @@ func damage_player(amount: float, pid: int = -1) -> void:
 		pid = my_pid
 	if int(petrify.get(pid, 0)) > 0:
 		return  # the salt holds
+	# Tide-Shell (crab, tier 6): once a sim-day, a hit meant for the OWNER is
+	# absorbed whole — "my crab took the hit for me," never party mitigation
+	# math (Decision #10: guards the player only).
+	for b: DSBeast in beasts:
+		if b.owner_pid == pid and b.at_heel and beast_role(b.creature_id) == "porter" \
+				and not b._tide_shell_used_today and beast_has_instinct(b.beast_id, "block-hit-for-owner"):
+			b._tide_shell_used_today = true
+			b.flash_tide_shell()
+			_message_to(pid, "%s takes it on the shell." % b.display_name)
+			return
 	amount = maxf(amount - armor_defense(pid), 1.0)   # worn scale turns the worst of it
 	# The Returning: what goes out comes back — once a day, even you
 	if abilities.talent_active(pid, "talent-the-returning") and not cheat_death_used.get(pid, false) \
@@ -2297,6 +2490,10 @@ func _on_enemy_killed(enemy: DSEnemy) -> void:
 		if v.rescued and not v.is_captive and village.arms_level(v.tribesman_id) > 0 \
 				and v.position.distance_to(enemy.position) < WARDEN_DEFEND_RADIUS:
 			village.grant_xp(v.tribesman_id, "killAssist", tier)
+	# beasts, same law: being in the fight (yours or not) earns kill-assist
+	for b: DSBeast in beasts:
+		if not b.downed and b.position.distance_to(enemy.position) < WARDEN_DEFEND_RADIUS:
+			beast.grant_xp(b.beast_id, "killAssist", tier)
 	stats.unregister(enemy)
 	enemies.erase(enemy)
 	enemy.queue_free()
@@ -2722,6 +2919,17 @@ func _render_village_roster() -> void:
 	lines.append("NEEDS: %s   (!! = short, drives who does what)" % "   ".join(need_bits))
 	lines.append("Your people eat %d food a day. Danger sends them home; clear it or post a warden." % roster.size())
 	lines.append("STORES: %d kinds of goods held — [TAB] to see the full list" % _store_kinds_held())
+	if not beasts.is_empty():
+		lines.append("")
+		var beast_bits: Array[String] = []
+		for b: DSBeast in beasts:
+			var species := str(registry.get_entity(b.creature_id).get("name", "beast")).to_lower()
+			var lvl := beast.beast_level(b.beast_id) if beast.beasts.has(b.beast_id) else b.level
+			var lit := beast.instincts_ignited(b.beast_id).size() if beast.beasts.has(b.beast_id) else b.instincts_lit
+			var lit_txt := " (%d instinct%s)" % [lit, "" if lit == 1 else "s"] if lit > 0 else ""
+			var where := "DOWN — [E] to revive" if b.downed else ("at your heel" if b.at_heel else ("kenneled" if b.kenneled else "waiting"))
+			beast_bits.append("%s — %s %d%s, %s, %s" % [b.display_name, species, lvl, lit_txt, b.mood, where])
+		lines.append("BEASTS: " + "  ·  ".join(beast_bits))
 	# — the why of it: what each task scores and what gates it (debug) ————————
 	lines.append("")
 	lines.append("WHY THEY WORK OR REST:")
@@ -3514,6 +3722,7 @@ func _spawn_work_visual(inst_id: int, work_id: String, pos: Vector2, chapel_hint
 		"work-driftwood-cot": "cot_hut", "work-tent": "tent",
 		"work-salt-wheel": "salt_wheel",
 		"work-tide-bell": "tide_bell", "work-healing-bath": "healing_bath",
+		"work-kennel": "kennel",
 	}
 	var fallback := Color("6e5138") if not work.get("grim", false) else Color("5b3a6e")
 	if work_id == "work-altar-halor":
@@ -3814,6 +4023,39 @@ func _dawn_drill_training() -> Array[String]:
 		notes.append("%s drilled at the yard" % dv.display_name)
 	return notes
 
+## The Kennel's dawn feeding (VILLAGER-AND-GODHEAD-SPEC Part III): beasts fed
+## from stores, from their craved food; unfed sulks and refuses the heel
+## toggle. No kennel -> never fed_from_stores (the owner must feed by hand,
+## [E]-with-food — handled in intent_feed_wild for wild beasts; a TAMED
+## beast's hand-feeding isn't a separate verb at EA, a deliberate cut). Its
+## own step, same shape as _dawn_drill_training, so it's testable in isolation
+## from the rest of the village's labor/food economy.
+func _beast_dawn_feeding() -> Array[String]:
+	var notes: Array[String] = []
+	var kennel_stands := works.count_of("work-kennel") > 0
+	for b: DSBeast in beasts:
+		if not beast.beasts.has(b.beast_id):
+			continue
+		var craved := str(registry.get_entity(b.creature_id).get("tame", {}).get("cravedFoodItemId", ""))
+		var fed := false
+		if kennel_stands and craved != "" and int(village_stock.get(craved, 0)) > 0:
+			village_stock[craved] = int(village_stock[craved]) - 1
+			if int(village_stock[craved]) <= 0:
+				village_stock.erase(craved)
+			fed = true
+		beast.dawn(b.beast_id, kennel_stands, fed)
+		var rec: Dictionary = beast.beasts[b.beast_id]
+		b.mood = str(rec.mood)
+		b.kenneled = bool(rec.kenneled)
+		if not fed:
+			notes.append("%s went unfed and sulks" % b.display_name)
+		if beast_role(b.creature_id) == "porter" and b._carried_since_dawn:
+			beast.grant_xp(b.beast_id, "porterDay")
+		b._carried_since_dawn = false
+		b._tide_shell_used_today = false
+		b._refresh_label()
+	return notes
+
 ## Neris's Tide-Bell (CRAFT-AND-BUILD-SPEC Part 6): a rung day nudges the
 ## village's dawn output — "the village keeps time." Read by the dawn labor
 ## loop above; tide_bell_rang_today resets in _on_sim_day after this runs.
@@ -3929,6 +4171,9 @@ func _village_dawn() -> void:
 		if v.fought_defense_today:
 			village.grant_xp(v.tribesman_id, "villageDefense")
 			v.fought_defense_today = false
+	# 1d. THE KENNEL (Part III): its own step (like _dawn_drill_training), so a
+	# test can exercise it in isolation from the rest of the village economy.
+	dawn_notes.append_array(_beast_dawn_feeding())
 	# 2. EAT + MOOD: each villager eats from the stores; hunger and neglect sour them
 	var deserters: Array[DSVillager] = []
 	var discovery_notes: Array[String] = []
@@ -4156,6 +4401,8 @@ func companion_melee_strike(v: DSVillager, e: DSEnemy) -> void:
 			stats.actors[e].hp = mh * 0.25
 			e.surrender()
 			return
+	if _mercy_kneel_check(e, dmg, v.companion_pid):
+		return
 	if stats.damage(e, dmg):
 		_companion_credit_kill(v, e)
 
@@ -4172,6 +4419,8 @@ func companion_ranged_strike(v: DSVillager, e: DSEnemy) -> void:
 			stats.actors[e].hp = mh * 0.25
 			e.surrender()
 			return
+	if _mercy_kneel_check(e, dmg, v.companion_pid):
+		return
 	if stats.damage(e, dmg):
 		_companion_credit_kill(v, e)
 
@@ -4292,6 +4541,222 @@ func on_villager_needs_help(v: DSVillager) -> void:
 	else:
 		message = "%s fled danger and is running home — clear the flats, or take on a warden." % v.display_name
 	_refresh_hud()
+
+## --- BEASTS AT HEEL: AI support + damage/XP plumbing (VILLAGER-AND-GODHEAD-SPEC Part III) ---
+func beast_role(creature_id: String) -> String:
+	return str(registry.get_entity(creature_id).get("tame", {}).get("behavior", {}).get("role", ""))
+
+func beast_behavior(creature_id: String) -> Dictionary:
+	return registry.get_entity(creature_id).get("tame", {}).get("behavior", {})
+
+## +primaryPerLevelPct% (villagers.json — the shared curve's own per-level
+## knob) to a beast's primaries per level past 1. Same shape as
+## village_system.arms_primary_mult; beast_system itself stays untouched
+## (this reads its public `vtune` + `beast_level`, no new sim API needed).
+func beast_level_mult(bid: int) -> float:
+	var level := beast.beast_level(bid)
+	if level <= 1:
+		return 1.0
+	var pct: float = float(beast.vtune.get("primaryPerLevelPct", 2))
+	return 1.0 + pct / 100.0 * float(level - 1)
+
+func beast_instinct_add(bid: int, effect_type: String, base: float = 0.0) -> float:
+	var total := base
+	for ins: Dictionary in beast.instincts_ignited(bid):
+		for eff: Dictionary in ins.get("effects", []):
+			if str(eff.get("type", "")) == effect_type:
+				total += float(eff.get("magnitude", 0.0))
+	return total
+
+func beast_instinct_mult(bid: int, effect_type: String, base: float = 1.0) -> float:
+	var total := base
+	for ins: Dictionary in beast.instincts_ignited(bid):
+		for eff: Dictionary in ins.get("effects", []):
+			if str(eff.get("type", "")) == effect_type:
+				total *= float(eff.get("magnitude", 1.0))
+	return total
+
+func beast_has_instinct(bid: int, effect_type: String) -> bool:
+	for ins: Dictionary in beast.instincts_ignited(bid):
+		for eff: Dictionary in ins.get("effects", []):
+			if str(eff.get("type", "")) == effect_type:
+				return true
+	return false
+
+func beast_instinct_duration(bid: int, effect_type: String) -> float:
+	for ins: Dictionary in beast.instincts_ignited(bid):
+		for eff: Dictionary in ins.get("effects", []):
+			if str(eff.get("type", "")) == effect_type:
+				return float(eff.get("duration", 0.0))
+	return 0.0
+
+## Deep Pockets (+2, crab) folded onto the species' base carrySlots.
+func beast_carry_capacity(bid: int) -> int:
+	var rec: Dictionary = beast.beasts.get(bid, {})
+	var base := int(registry.get_entity(str(rec.get("creature_id", ""))).get("tame", {}).get("behavior", {}).get("carrySlots", 0))
+	return base + int(beast_instinct_add(bid, "carry-slots-add"))
+
+## Old Barnacle: any Barnacle-lit crab (at heel or waiting) within its radius
+## calms every hostile hound nearby, not just its owner's fight — "walking
+## calm" is ambient, not a personal buff. 1.0 (no effect) if none stand near.
+func old_barnacle_mult(pos: Vector2) -> float:
+	for b: DSBeast in beasts:
+		if beast_role(b.creature_id) != "porter":
+			continue
+		if not beast_has_instinct(b.beast_id, "hound-aggro-mult"):
+			continue
+		if pos.distance_to(b.position) <= 190.0:
+			return beast_instinct_mult(b.beast_id, "hound-aggro-mult")
+	return 1.0
+
+## Beat a tameable beast below 25% HP: it KNEELS instead of dying, the same
+## mercy door a raider gets (surrender pattern), gated on the ATTACKER's WILD
+## meeting the creature's tame tier. wild_pid is whose Tally gates it — the
+## player for a direct swing, the recruiting/owning player for a companion's
+## or beast's own strike. NOT wired into warden_strike (wardens defend the
+## whole village, not tied to one player's Tally) — a deliberate scope cut.
+func _mercy_kneel_check(target: DSEnemy, dmg: float, wild_pid: int) -> bool:
+	if target.surrendered or target.tameable_tier <= 0:
+		return false
+	var mh := float(registry.get_entity(target.creature_id).get("stats", {}).get("hp", 60))
+	if stats.hp(target) - dmg > mh * 0.25:
+		return false
+	if not beast.can_tame(abilities.score(wild_pid, "virtue-wild"), target.creature_id):
+		return false
+	stats.actors[target].hp = mh * 0.25
+	target.surrender()
+	return true
+
+## A hound's own swing: base creature damage x Fangs (if lit) x its own level
+## mult (the same "one growth system, three wearers" shape villagers use).
+## Deathgrip pins on a hit that doesn't finish the target.
+func beast_strike(b: DSBeast, e: DSEnemy) -> void:
+	var base_dmg := float(registry.get_entity(b.creature_id).get("stats", {}).get("damage", 5))
+	var dmg := base_dmg * beast_instinct_mult(b.beast_id, "damage-mult") * beast_level_mult(b.beast_id)
+	_flash_swing(e.position)
+	sfx("hit", e.position)
+	e.on_hit()
+	if _mercy_kneel_check(e, dmg, b.owner_pid):
+		return
+	if stats.damage(e, dmg):
+		_beast_credit_kill(b, e)
+	else:
+		var pin := beast_instinct_duration(b.beast_id, "pin-on-hit")
+		if pin > 0.0:
+			e.stun(pin)
+
+## A beast's kill briefly wears its OWNER's identity (loot, ledger) — same
+## trick as _companion_credit_kill; _on_enemy_killed already hands out
+## killAssist to every beast (and villager) standing close enough to help.
+func _beast_credit_kill(b: DSBeast, e: DSEnemy) -> void:
+	var prev := acting_pid
+	if b.owner_pid > 0:
+		acting_pid = b.owner_pid
+	_on_enemy_killed(e)
+	acting_pid = prev
+
+## Blood-Scent lite: a hostile within growl range (that isn't already obvious
+## up close) gets a bearing line — for the OWNER'S peer alone, throttled.
+func beast_growl_tick(b: DSBeast) -> void:
+	var mult := beast_instinct_mult(b.beast_id, "growl-range-mult")
+	var near := _nearest_hostile(b.position, DSBeast.GROWL_BASE_RADIUS * mult)
+	if near == null or b.position.distance_to(near.position) < DSBeast.GROWL_VISIBLE_CLOSE:
+		return
+	b._growl_cd = DSBeast.GROWL_COOLDOWN
+	_message_to(b.owner_pid, "%s growls — something %s." % [b.display_name, _bearing_from(b.position, near.position)])
+
+## Send a line to a SPECIFIC player's own screen — the targeted-peer twin of
+## the broadcast `message` field (same pattern as _net_push_state).
+func _message_to(pid: int, text: String) -> void:
+	if net_mode == "server":
+		for peer_id: Variant in peers:
+			if int(peers[peer_id]) == pid:
+				rpc_id(int(peer_id), "cl_message", text)
+				return
+		return
+	message = text
+	_refresh_hud()
+
+## Damage intake for a beast — the enemy-target mirror of damage_villager.
+## Crabs are IMMORTAL at heel (decision #8: the game's one guaranteed-safe
+## love) — a full, unconditional no-op, not just "hard to kill." Hounds go
+## down (not die) for downedSeconds, revivable with [E].
+func damage_beast(b: DSBeast, amount: float) -> void:
+	if beast_role(b.creature_id) == "porter":
+		return
+	if not stats.actors.has(b) or b.downed:
+		return
+	sfx("grunt", b.position)
+	if stats.damage(b, amount):
+		var downed_secs := float(village.vtune.get("downedSeconds", 30))
+		b.downed = true
+		b.downed_until = Time.get_unix_time_from_system() + downed_secs
+		b._refresh_label()
+		message = "%s goes down! [E] them within %ds to revive." % [b.display_name, int(downed_secs)]
+		_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+
+## The downed clock ran out: permadeath. No gear, no village grief (the
+## village never knew it) — a keepsake drops where they fell, an item Ghal's
+## altar craves (beast_system.beast_death resolves it from creatures.json).
+func beast_die(b: DSBeast) -> void:
+	var keepsake := beast.beast_death(b.beast_id)
+	if keepsake != "":
+		_spawn_equipment_drop(keepsake, b.position)
+	message = "%s does not wake. The flats keep what a heel cannot carry home." % b.display_name
+	stats.unregister(b)
+	beasts.erase(b)
+	b.queue_free()
+	_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+
+## Build (or rebuild, on load) a DSBeast body for an already-tamed roster id.
+## respect_room: at tame-time, bump a second beast to kenneled/waiting if the
+## owner's heel slot is already taken; at load-time, trust the saved flags as-is.
+func _spawn_beast(bid: int, pos: Vector2, respect_room: bool) -> DSBeast:
+	var rec: Dictionary = beast.beasts.get(bid, {})
+	var b := DSBeast.new()
+	b.host = self
+	b.beast_id = bid
+	b.creature_id = str(rec.get("creature_id", ""))
+	b.display_name = str(rec.get("name", "Beast"))
+	b.owner_pid = int(rec.get("owner_pid", 1))
+	b.position = pos
+	b.at_heel = bool(rec.get("at_heel", false))
+	b.kenneled = bool(rec.get("kenneled", false))
+	b.mood = str(rec.get("mood", "keen"))
+	if respect_room and b.at_heel and beasts.any(func(x: DSBeast) -> bool: return x.owner_pid == b.owner_pid and x.at_heel):
+		b.at_heel = false
+		b.kenneled = works.count_of("work-kennel") > 0
+		rec.at_heel = false
+		rec.kenneled = b.kenneled
+	add_child(b)
+	beasts.append(b)
+	stats.register(b, beast.beast_max_hp(bid))
+	b._refresh_label()
+	return b
+
+## test hook (net_smoke.gd) — see srv_intent's "test_seed_beast" comment.
+func _test_seed_beast(pid: int) -> void:
+	var id := beast._next_id
+	beast._next_id += 1
+	beast.beasts[id] = {"name": "Wiretest", "creature_id": "creature-scuttle-crab", "xp": 0.0,
+		"owner_pid": pid, "at_heel": true, "kenneled": false, "fed_today": true, "mood": "keen"}
+	_spawn_beast(id, avatars.get(pid, player.position), true)
+
+func _enemy_by_nid(nid: int) -> DSEnemy:
+	for e in enemies:
+		if is_instance_valid(e) and _enemy_nid(e) == nid:
+			return e
+	return null
+
+func _beast_by_id(bid: int) -> DSBeast:
+	for b: DSBeast in beasts:
+		if b.beast_id == bid:
+			return b
+	return null
 
 func _on_sim_day(_day: int) -> void:
 	# Godhead (Part II §3): had-worship-today snapshot, taken BEFORE _village_dawn()
@@ -4845,7 +5310,13 @@ func _nearest_raider() -> DSEnemy:
 	return best
 
 func _bearing(to: Vector2) -> String:
-	var d := to - player.position
+	return _bearing_from(player.position, to)
+
+## The same compass math, off an arbitrary origin — a beast's growl points
+## from ITS position, not the local player's (main.gd's own message channel
+## is per-recipient-peer already; see _message_to).
+func _bearing_from(from: Vector2, to: Vector2) -> String:
+	var d := to - from
 	const DIRS := ["E", "SE", "S", "SW", "W", "NW", "N", "NE"]
 	var idx := wrapi(roundi(d.angle() / (PI / 4.0)), 0, 8)
 	return "%s, %d paces" % [DIRS[idx], int(d.length() / 32.0)]
@@ -5028,6 +5499,9 @@ func srv_intent(kind: String, args: Array) -> void:
 		"recruit": _net_villager_intent(int(args[0]), "recruit")
 		"dismiss": _net_villager_intent(int(args[0]), "dismiss")
 		"revive": _net_villager_intent(int(args[0]), "revive")
+		"feed_beast": intent_feed_wild(_enemy_by_nid(int(args[0])))
+		"beast_interact": intent_beast_interact(_beast_by_id(int(args[0])))
+		"beast_revive": intent_revive_beast(_beast_by_id(int(args[0])))
 		# test hook (net_smoke.gd): a deterministic way to trigger a REAL,
 		# server-authoritative player death over the wire — real hound combat
 		# has no deterministic timing to assert against; this calls the exact
@@ -5039,6 +5513,18 @@ func srv_intent(kind: String, args: Array) -> void:
 		# (journal intent -> _step_met -> advance/nudge) is entirely real.
 		"test_calling": _active_callings(acting_pid).append(
 			{"id": str(args[0]), "step": str(args[1]), "since_day": clock.day})
+		# test hook (net_smoke.gd): a client has no real way to harvest/craft its
+		# way to a specific craved food across the wire deterministically — this
+		# grants it straight into the sender's pack, the same "seed state, then
+		# exercise the real runtime path" shape as test_calling above.
+		"test_grant_item": inventory.add(acting_pid, str(args[0]), int(args[1]))
+		# test hook (net_smoke.gd): taming a beast for real takes several sim-days
+		# of feeding, which no test should sit through in real wall-clock time —
+		# this seeds an ALREADY-TAMED beast straight onto the roster so the wire
+		# test can verify the thing that's actually novel over the network (the
+		# world_sync -> cl_world_sync mirror), the same "seed state, then exercise
+		# the real path" shape as test_calling.
+		"test_seed_beast": _test_seed_beast(acting_pid)
 	rpc_id(peer_id, "cl_player_state", _player_state(acting_pid))
 	rpc("cl_world_sync", _world_sync())
 
@@ -5120,6 +5606,13 @@ func _world_sync() -> Dictionary:
 				"origin": str(rec.get("origin", "rescued")), "patron": str(rec.get("patron_god_id", "")),
 				"disc": rec.get("discovered", [])}),
 		"stock": village_stock,
+		"beasts": beasts.map(func(b: DSBeast) -> Dictionary:
+			return {"id": b.beast_id, "creature": b.creature_id, "name": b.display_name,
+				"x": b.position.x, "y": b.position.y, "owner": b.owner_pid,
+				"at_heel": b.at_heel, "kenneled": b.kenneled,
+				"mood": str(beast.beasts.get(b.beast_id, {}).get("mood", "keen")),
+				"downed": b.downed, "level": beast.beast_level(b.beast_id),
+				"instincts": beast.instincts_ignited(b.beast_id).size()}),
 		"node_left": _node_left_dict(),
 		"sanctum": sanctum.to_save(),
 		# Godhead (Part II §7): world-level, so a light mirror — value + consumed
@@ -5349,6 +5842,35 @@ func cl_world_sync(w: Dictionary) -> void:
 		if not seen.has(int(v.get_meta("nid", -1))):
 			villagers.erase(v)
 			v.queue_free()
+	# beasts at heel (Part III): mirrored by their stable roster id — no
+	# separate net-id counter needed, beast_system's own id is already stable
+	# across host and every client.
+	var seen_beasts := {}
+	for bd: Dictionary in w.get("beasts", []):
+		var bid := int(bd.id)
+		seen_beasts[bid] = true
+		var bnode := _beast_by_id(bid)
+		if bnode == null:
+			bnode = DSBeast.new()
+			bnode.host = self
+			bnode.beast_id = bid
+			bnode.creature_id = str(bd.creature)
+			bnode.display_name = str(bd.name)
+			bnode.owner_pid = int(bd.owner)
+			add_child(bnode)
+			beasts.append(bnode)
+		bnode.position = bnode.position.lerp(Vector2(float(bd.x), float(bd.y)), 0.5)
+		bnode.at_heel = bool(bd.at_heel)
+		bnode.kenneled = bool(bd.kenneled)
+		bnode.mood = str(bd.get("mood", "keen"))
+		bnode.downed = bool(bd.get("downed", false))
+		bnode.level = int(bd.get("level", 0))
+		bnode.instincts_lit = int(bd.get("instincts", 0))
+		bnode._refresh_label()
+	for b: DSBeast in beasts.duplicate():
+		if not seen_beasts.has(b.beast_id):
+			beasts.erase(b)
+			b.queue_free()
 	if village_panel_open:
 		_toggle_village(true)
 	# the altars: client mirrors the sanctum state; refresh the open Offertory

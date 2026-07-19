@@ -17,6 +17,7 @@ var peaceful := false   # ambient archetypes never chase or bite
 var mirror := false     # NET client: a visual echo — the server owns the brain
 var is_boss := false
 var subduable := false  # raiders: at low HP they surrender instead of dying
+var tameable_tier := 0  # a tame-blocked, non-peaceful creature (a hound): mercy-kneel gate (Part III)
 var surrendered := false
 var spawn_pos := Vector2.ZERO   # bosses guard their ground and leash back to it
 var _cooldown := 0.0
@@ -60,6 +61,10 @@ func setup(game_host: GameHost, id: String) -> void:
 	peaceful = creature.get("archetype", "") == "ambient"
 	is_boss = creature.get("archetype", "") == "boss"
 	subduable = creature.get("archetype", "") == "raider-human"
+	# a beast with a tame block that ISN'T peaceful (a hound, not a crab —
+	# crabs are fed straight, never beaten down) can be mercy-kneeled (Part III §2)
+	var tm: Dictionary = creature.get("tame", {})
+	tameable_tier = int(tm.get("tier", 0)) if not tm.is_empty() and not peaceful else 0
 	spawn_pos = position
 	host.stats.register(self, float(stats.get("hp", 20)))
 
@@ -92,6 +97,7 @@ func _physics_process(delta: float) -> void:
 	var threat := host.nearest_threat(position)
 	var target_pid := int(threat.pid)
 	var companion: DSVillager = threat.get("companion", null)   # a road companion can out-draw the player's own threat
+	var beast_target: DSBeast = threat.get("beast", null)       # a fighter beast at heel can too
 	if (threat.pos as Vector2) == Vector2.INF:
 		velocity = Vector2.ZERO
 		return   # an empty world (server with no players yet)
@@ -101,6 +107,8 @@ func _physics_process(delta: float) -> void:
 	if creature_id == "creature-salt-hound" and target_pid > 0:
 		aggro *= host.abilities.mod_mult(target_pid, "hound-aggro-mult")  # Soft-Step
 		aggro *= host.equipped_mod_mult(target_pid, "hound-aggro-mult")   # the Lighthouse-Keeper's Lantern
+	if creature_id == "creature-salt-hound":
+		aggro *= host.old_barnacle_mult(position)   # a Barnacle-lit crab nearby: walking calm
 	if is_boss:
 		aggro = 240.0   # he guards his hoard; he does not hunt
 		run_speed = speed
@@ -124,6 +132,8 @@ func _physics_process(delta: float) -> void:
 				_cooldown *= host.abilities.mod_mult(target_pid, "hound-cooldown-mult")  # Herd-Sense
 			if companion != null:
 				host.damage_villager(companion, attack_damage)
+			elif beast_target != null:
+				host.damage_beast(beast_target, attack_damage)
 			else:
 				host.damage_player(attack_damage, target_pid)
 	elif dist <= aggro:

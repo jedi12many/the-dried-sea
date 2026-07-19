@@ -1,11 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "work.schema.json",
-  "$comment": "v3 — a buildable. Every work belongs to a god (or 'neutral'). Spells drain; works feed. Adds sanctum (the Sanctum altar, WORLD-SPEC) and houses (villager sleeping capacity).",
+  "$comment": "v4 — adds top-level $comment (documenting invented numbers) and beastHouses (Ghal's Kennel: beast sleeping/feeding capacity, the beast-side mirror of houses).",
   "type": "object",
   "required": ["id", "name", "godId", "category", "buildCost", "text"],
   "additionalProperties": false,
   "properties": {
+    "$comment": { "type": "string" },
     "id": { "type": "string", "pattern": "^work-[a-z0-9-]+$" },
     "name": { "type": "string" },
     "workingName": { "type": "boolean" },
@@ -41,6 +42,7 @@
       "additionalProperties": false
     },
     "houses": { "type": "integer", "minimum": 1, "description": "villager sleeping capacity — at night they go inside for rest and safety" },
+    "beastHouses": { "type": "integer", "minimum": 1, "description": "tamed-beast capacity (Ghal's Kennel and its B2/B3 growth) — beasts kenneled here get fed from stores at dawn" },
     "respawn": { "type": "boolean", "description": "a personal shelter — pitched anywhere, no village or ring required (the tent)" },
     "restPoint": { "type": "boolean", "description": "you can bind your respawn here with [E] (tents, the hearth); on death you wake at your chosen one" },
     "purpose": { "type": "string", "description": "plain one-line function shown in menus (what it DOES), distinct from flavor text" },

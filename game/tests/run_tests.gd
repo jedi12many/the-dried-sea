@@ -25,6 +25,7 @@ func _init() -> void:
 	_test_stats()
 	_test_sanctum()
 	_test_godhead()
+	_test_beasts()
 	_test_golden_run()
 	print("\n%d checks, %d failure(s)" % [checks, failures.size()])
 	quit(1 if failures.size() > 0 else 0)
@@ -754,6 +755,133 @@ func _test_godhead() -> void:
 		total_fed += float(gh5.player_death(99, 1, false).fed)
 	var undecayed := 10.0 * float(reg.tuning.godhead.get("waker", {}).get("feedPct", 0.4))
 	check(total_fed < undecayed * 0.35, "decay+floor meaningfully suppresses same-day farming (%.3f%% vs %.3f%% undecayed)" % [total_fed, undecayed])
+
+func _test_beasts() -> void:
+	var reg := Registry.new()
+	reg.load_all()
+	check(reg.tuning.has("beasts"), "beasts tuning loaded")
+	var bs := BeastSystem.new(reg)
+
+	# --- WILD gating: the ladder from creatures.json tame.tier vs virtue score ---
+	check(not bs.can_tame(2, "creature-scuttle-crab"), "WILD 2 can't tame a tier-1 small beast (needs 3)")
+	check(bs.can_tame(3, "creature-scuttle-crab"), "WILD 3 (Soft-Step) unlocks small beasts")
+	check(not bs.can_tame(5, "creature-salt-hound"), "WILD 5 can't tame a tier-2 pack-hunter (needs 6)")
+	check(bs.can_tame(6, "creature-salt-hound"), "WILD 6 (Crab-Friend) unlocks pack-hunters")
+	check(not bs.can_tame(9, "creature-raider"), "a creature with no tame block can never be tamed, any WILD score")
+
+	# --- meal counts: mealsByTier minus the Ghal discount, floored at minMeals ---
+	check(int(bs.feed_wild(9001, "creature-scuttle-crab", 1, 1, 0).needed) == 2, "crab (tier1): 2 meals at Ghal rank 0")
+	check(int(bs.feed_wild(9002, "creature-scuttle-crab", 1, 1, 1).needed) == 1, "Ghal rank 1 discounts a meal: crab needs 1")
+	check(int(bs.feed_wild(9003, "creature-scuttle-crab", 1, 1, 5).needed) == 1, "an over-large discount floors at minMeals (1), never 0")
+	check(int(bs.feed_wild(9004, "creature-salt-hound", 1, 1, 0).needed) == 3, "hound (tier2): 3 meals at Ghal rank 0")
+	check(int(bs.feed_wild(9005, "creature-salt-hound", 1, 1, 2).needed) == 1, "Ghal rank 2 discounts the hound to its floor (3-2=1)")
+
+	# --- trust fills -> tamed, named deterministically off the wild nid's seed ---
+	var r1 := bs.feed_wild(501, "creature-scuttle-crab", 7, 1)
+	check(int(r1.trust) == 1 and int(r1.needed) == 2 and not bool(r1.tamed), "first meal: trust 1/2, not yet tamed")
+	var r2 := bs.feed_wild(501, "creature-scuttle-crab", 7, 2)
+	check(bool(r2.tamed) and int(r2.id) > 0, "second meal fills trust -> tamed, roster id assigned")
+	var crab_id: int = int(r2.id)
+	var crab_pool: Array = reg.get_entity("creature-scuttle-crab").get("tame", {}).get("namePool", [])
+	check(str(bs.beasts[crab_id].name) in crab_pool, "the tamed name is drawn from the species' namePool")
+	check(str(bs.beasts[crab_id].creature_id) == "creature-scuttle-crab" and int(bs.beasts[crab_id].owner_pid) == 7, "roster entry records species + owner")
+	var bs_b := BeastSystem.new(reg)
+	bs_b.feed_wild(501, "creature-scuttle-crab", 7, 1)
+	var rb := bs_b.feed_wild(501, "creature-scuttle-crab", 7, 2)
+	check(str(bs_b.beasts[int(rb.id)].name) == str(bs.beasts[crab_id].name), "the name draw is deterministic — same nid seeds the same name")
+
+	# --- one meal per DAY per beast (design decision: meals don't stack same-day) ---
+	var same_day_1 := bs.feed_wild(9006, "creature-scuttle-crab", 1, 10)
+	var same_day_2 := bs.feed_wild(9006, "creature-scuttle-crab", 1, 10)
+	check(int(same_day_1.trust) == 1 and int(same_day_2.trust) == 1, "a second feed on the SAME sim-day doesn't advance trust further")
+	var same_day_3 := bs.feed_wild(9006, "creature-scuttle-crab", 1, 11)
+	check(bool(same_day_3.tamed), "the next day's feed still counts, completing trust normally")
+
+	# --- trust decay: trustDecayDays (3) with no meal resets to 0; the boundary itself does not decay ---
+	bs.feed_wild(9007, "creature-salt-hound", 1, 1)          # trust 1
+	var boundary := bs.feed_wild(9007, "creature-salt-hound", 1, 4)   # gap of exactly 3 days: no decay
+	check(int(boundary.trust) == 2, "a gap of exactly trustDecayDays does not decay (2/3)")
+	var decayed := bs.feed_wild(9007, "creature-salt-hound", 1, 8)   # gap of 4 days: decays, then this meal counts
+	check(int(decayed.trust) == 1, "a gap PAST trustDecayDays resets trust to 0 before this meal counts (1/3)")
+
+	# --- leveling on the shared curve (villagers.json xp), instincts at 3/6/9 ---
+	var leveled: Array = []
+	var ignitions: Array = []
+	bs.beast_leveled.connect(func(_i: int, l: int) -> void: leveled.append(l))
+	bs.instinct_ignited.connect(func(_i: int, t: String) -> void: ignitions.append(t))
+	bs.beasts[crab_id].xp = 224.0   # one short of level 3 (25*3^2 = 225)
+	check(bs.beast_level(crab_id) == 2, "224 xp sits one short of level 3")
+	check(bs.instincts_ignited(crab_id).size() == 0, "level 2: nothing ignited yet")
+	bs.porter_day(crab_id)   # crab is a porter: +porterDayXp (6) -> 230, crosses 225
+	check(bs.beast_level(crab_id) == 3 and leveled == [3], "a porter day tips level 3")
+	check("instinct-deep-pockets" in ignitions and bs.instincts_ignited(crab_id).size() == 1, "Deep Pockets ignites at 3")
+	check(absf(bs.beast_max_hp(crab_id) - 15.0 * 1.16) < 0.001, "L3 hp = base x1.16 (+8 pct/level, crab base hp 15)")
+	bs.beasts[crab_id].xp = 899.0   # one short of level 6 (25*6^2 = 900)
+	bs.grant_xp(crab_id, "expeditionReturn")   # +40 -> 939, crosses 900
+	check(bs.beast_level(crab_id) == 6, "expeditionReturn tips level 6")
+	check("instinct-tide-shell" in ignitions and bs.instincts_ignited(crab_id).size() == 2, "Tide-Shell ignites at 6")
+	bs.beasts[crab_id].xp = 2024.0   # one short of level 9 (25*9^2 = 2025)
+	bs.grant_xp(crab_id, "killAssist", 2)   # tier-2 kill assist (25, villagers.json xpSources) -> 2049, crosses 2025
+	check(bs.beast_level(crab_id) == 9, "a tier-2 kill assist tips level 9")
+	check("instinct-old-barnacle" in ignitions and bs.instincts_ignited(crab_id).size() == 3, "Old Barnacle ignites at 9, all three lit")
+	check(absf(bs.beast_max_hp(crab_id) - 15.0 * 1.64) < 0.001, "L9 hp = base x1.64 (+8 pct/level)")
+	check(bs.beast_level(999999) == 0, "an unknown beast id levels as 0, no crash")
+
+	# --- the kennel day: unfed -> sulking, fed -> keen ---
+	bs.dawn(crab_id, true, false)
+	check(str(bs.beasts[crab_id].mood) == "sulking" and not bool(bs.beasts[crab_id].fed_today), "an unfed beast's mood drops to sulking")
+	bs.dawn(crab_id, true, true)
+	check(str(bs.beasts[crab_id].mood) == "keen" and bool(bs.beasts[crab_id].fed_today), "a fed beast is keen")
+
+	# --- porter_day grants the trickle; it's a no-op for fighter-role beasts ---
+	var hound_r1 := bs.feed_wild(502, "creature-salt-hound", 1, 20)
+	bs.feed_wild(502, "creature-salt-hound", 1, 21)
+	var hound_r3 := bs.feed_wild(502, "creature-salt-hound", 1, 22)
+	check(bool(hound_r3.tamed), "the hound tames after its 3 meals")
+	var hound_id: int = int(hound_r3.id)
+	var hound_xp_before: float = float(bs.beasts[hound_id].xp)
+	bs.porter_day(hound_id)
+	check(float(bs.beasts[hound_id].xp) == hound_xp_before, "porter_day is a no-op for a fighter-role beast (the hound)")
+	var crab_xp_before: float = float(bs.beasts[crab_id].xp)
+	bs.porter_day(crab_id)
+	check(absf(float(bs.beasts[crab_id].xp) - (crab_xp_before + 6.0)) < 0.001, "porter_day grants the crab its porterDayXp (6)")
+
+	# --- death: keepsake drops, roster clears; crabs never die at heel in PLAY but the method must exist ---
+	check(bs.beast_death(999999) == "", "death of an unknown beast id is a safe no-op, empty keepsake")
+	var hound_keepsake := bs.beast_death(hound_id)
+	check(hound_keepsake == "item-hound-fang" and not bs.beasts.has(hound_id), "a dead hound drops its keepsake and leaves the roster")
+	var crab_keepsake := bs.beast_death(crab_id)
+	check(crab_keepsake == "item-shell-plate" and not bs.beasts.has(crab_id), "the crab's own keepsake resolves too (the method exists even though crabs are immortal at heel in play)")
+
+	# --- save round-trip: roster AND in-progress trust ledgers survive ---
+	var bs_save := BeastSystem.new(reg)
+	var save_t1 := bs_save.feed_wild(801, "creature-scuttle-crab", 3, 1)
+	var save_t2 := bs_save.feed_wild(801, "creature-scuttle-crab", 3, 2)
+	var saved_crab_id: int = int(save_t2.id)
+	bs_save.feed_wild(802, "creature-salt-hound", 3, 1)   # left in-progress: trust 1/3, never tamed
+	var dump := bs_save.to_save()
+	var bs2 := BeastSystem.new(reg)
+	bs2.apply(dump)
+	check(bs2.beasts.has(saved_crab_id) and str(bs2.beasts[saved_crab_id].name) == str(bs_save.beasts[saved_crab_id].name), "the tamed roster survives the round trip")
+	check(bs2.wild_trust.has(802) and int(bs2.wild_trust[802].trust) == 1, "an in-progress (untamed) trust ledger survives the round trip too")
+	check(bs2._next_id == bs_save._next_id, "the id counter is restored — no collisions on the next tame")
+
+	# --- SaveSystem wiring: additive, old-save-compatible, godhead's own pattern ---
+	var clock := SimClock.new()
+	var dev := DevotionSystem.new(reg)
+	var vil := VillageSystem.new(reg)
+	var works := WorksSystem.new(reg, dev)
+	var ver := VerdictSystem.new(reg)
+	var bsave := SaveSystem.to_save(clock, dev, vil, works, ver, null, bs_save)
+	check(bsave.has("beast"), "SaveSystem.to_save includes beast when given a BeastSystem")
+	var bs3 := BeastSystem.new(reg)
+	SaveSystem.apply(bsave, SimClock.new(), DevotionSystem.new(reg), VillageSystem.new(reg), WorksSystem.new(reg, DevotionSystem.new(reg)), VerdictSystem.new(reg), null, bs3)
+	check(bs3.beasts.has(saved_crab_id), "SaveSystem.apply restores the beast roster through the wiring")
+	var old_save: Dictionary = bsave.duplicate(true)
+	old_save.erase("beast")
+	var bs4 := BeastSystem.new(reg)
+	SaveSystem.apply(old_save, SimClock.new(), DevotionSystem.new(reg), VillageSystem.new(reg), WorksSystem.new(reg, DevotionSystem.new(reg)), VerdictSystem.new(reg), null, bs4)
+	check(bs4.beasts.is_empty(), "a save with no beast key at all (pre-Part-III) loads clean")
 
 func _test_golden_run() -> void:
 	## 30 sim-days, all systems ticking together, mid-game setup.

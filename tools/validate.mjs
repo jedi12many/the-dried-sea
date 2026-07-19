@@ -130,6 +130,41 @@ for (const { file, obj } of entities) {
     for (const d of obj.drops ?? []) ref(file, obj.id, d.itemId, "drops");
     if (obj.remnantItemId) ref(file, obj.id, obj.remnantItemId, "remnant");
     if (obj.archetype === "boss" && !obj.bossNotes) warn(file, `${obj.id} boss without bossNotes`);
+
+    // ---- tame block (VILLAGER-AND-GODHEAD-SPEC Part III, Beasts at Heel) ----
+    if (obj.tame) {
+      const tm = obj.tame;
+      ref(file, obj.id, tm.cravedFoodItemId, "tame.cravedFoodItemId");
+      ref(file, obj.id, tm.keepsakeItemId, "tame.keepsakeItemId");
+      if (!Array.isArray(tm.namePool) || tm.namePool.length < 1)
+        err(file, `${obj.id} tame.namePool must be a non-empty array`);
+      const instincts = tm.instincts ?? [];
+      const tiers = instincts.map((i) => i.tier);
+      if (JSON.stringify(tiers) !== JSON.stringify([3, 6, 9]))
+        err(file, `${obj.id} tame.instincts must be exactly the 3/6/9 ignition trio (got [${tiers}])`);
+      for (const ins of instincts) {
+        for (const k of ["id", "name", "text"]) if (ins[k] === undefined) err(file, `${obj.id} tame instinct missing '${k}'`);
+        if (!ins.effects?.length) err(file, `${obj.id}/${ins.id} instinct with no effects — sheet candy is not an instinct`);
+        checkEffects(file, obj.id, ins.effects, ins.id ?? "?");
+      }
+      const b = tm.behavior ?? {};
+      if (b.role === "porter") {
+        if (b.carrySlots === undefined) err(file, `${obj.id} tame.behavior role=porter needs carrySlots`);
+        if (b.engageRange !== undefined || b.breakHpPct !== undefined)
+          err(file, `${obj.id} tame.behavior role=porter shouldn't carry fighter keys (engageRange/breakHpPct)`);
+      } else if (b.role === "fighter") {
+        if (b.engageRange === undefined || b.breakHpPct === undefined)
+          err(file, `${obj.id} tame.behavior role=fighter needs engageRange + breakHpPct`);
+        if (b.carrySlots !== undefined) err(file, `${obj.id} tame.behavior role=fighter shouldn't carry carrySlots`);
+        if (typeof b.breakHpPct === "number" && (b.breakHpPct < 0 || b.breakHpPct > 1))
+          err(file, `${obj.id} tame.behavior.breakHpPct must be a 0..1 fraction`);
+      } else {
+        err(file, `${obj.id} tame.behavior.role must be 'porter' or 'fighter' (got '${b.role}')`);
+      }
+      const bt = docs.find(({ file: f }) => f.endsWith("tuning/beasts.json"))?.data;
+      if (bt && !Object.keys(bt.wildTierGate ?? {}).map(Number).includes(tm.tier))
+        err(file, `${obj.id} tame.tier ${tm.tier} has no matching tuning/beasts.json wildTierGate entry`);
+    }
   }
   if (t === "biome") {
     for (const k of ["resourceItemIds", "creatureIds", "peopleIds"]) for (const id of obj[k] ?? []) ref(file, obj.id, id, k);
@@ -305,6 +340,21 @@ if (gods.length && gods.length !== 7) warn("pantheon", `expected 7 gods (6 + the
     if (w.noWakerFallback && (w.noWakerFallback.highestGodDrainPct === undefined || w.noWakerFallback.fallbackWakeHpPct === undefined))
       err("tuning/godhead.json", "waker.noWakerFallback needs highestGodDrainPct + fallbackWakeHpPct");
   }
+}
+
+// ---- Beasts at Heel (VILLAGER-AND-GODHEAD-SPEC Part III) -----------------------
+{
+  const bt = docs.find(({ file }) => file.endsWith("tuning/beasts.json"))?.data;
+  if (!bt) err("tuning/beasts.json", "missing — beast taming is tuning-driven");
+  else {
+    for (const k of ["mealsByTier", "ghalRankMealDiscount", "minMeals", "wildTierGate",
+      "unfedMoodDays", "porterDayXp", "trustDecayDays", "xp"])
+      if (bt[k] === undefined) err("tuning/beasts.json", `missing required key '${k}'`);
+    if (bt.mealsByTier && !Array.isArray(bt.mealsByTier)) err("tuning/beasts.json", "mealsByTier must be an array indexed by tier");
+  }
+  // one Ghal home, not two (CRAFT-AND-BUILD-SPEC Part 0 audit item 2 / Part 3)
+  if (!exists("work-kennel")) err("works", "missing Part-III work 'work-kennel'");
+  if (exists("work-beast-pen")) err("works", "work-beast-pen should not exist — it was renamed to work-kennel");
 }
 
 // ---- wakerWhispers shape (any god that carries them) ---------------------------

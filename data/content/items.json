@@ -108,6 +108,24 @@
   "text": "Brinefolk-distilled. The best worship offering there is — mind how you came by it."
  },
  {
+  "$comment": "offeringValue 8 is invented (VILLAGER-AND-GODHEAD-SPEC Part III names beast keepsakes as things 'Ghal's altar craves' but gives no worship-rate number) — set below storm-glass's 12 since a keepsake is a grief-token, not a gathered treasure.",
+  "id": "item-shell-plate",
+  "name": "Shell-Plate",
+  "category": "offering",
+  "tier": 1,
+  "offeringValue": 8,
+  "text": "What's left when the shell outlasts what wore it. Old Ghal takes it gently, the way you'd take a photograph from a stranger's wallet."
+ },
+ {
+  "$comment": "offeringValue 8 is invented, same reasoning as item-shell-plate.",
+  "id": "item-hound-fang",
+  "name": "Hound-Fang",
+  "category": "offering",
+  "tier": 1,
+  "offeringValue": 8,
+  "text": "It never bit you. That was the whole point of it. You bury your dog by giving this to the god who kept it."
+ },
+ {
   "id": "item-crab-meat",
   "name": "Crab Meat",
   "category": "food",

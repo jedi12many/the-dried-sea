@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "item.schema.json",
- "$comment": "v4 — adds tool (B2+ gather-gate tier; inert until the M3 node-gating pass reads it)",
+ "$comment": "v5 — adds top-level $comment (documenting invented numbers on individual items, e.g. beast keepsakes)",
  "type": "object",
  "required": [
   "id",
@@ -11,6 +11,9 @@
  ],
  "additionalProperties": false,
  "properties": {
+  "$comment": {
+   "type": "string"
+  },
   "id": {
    "type": "string",
    "pattern": "^item-[a-z0-9-]+$"

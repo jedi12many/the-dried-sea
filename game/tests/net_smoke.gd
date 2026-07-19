@@ -189,4 +189,49 @@ func _ready() -> void:
 	var adv: Array = host.callings.get(host.my_pid, [])
 	check(not adv.is_empty() and str((adv[0] as Dictionary).get("step", "")) == "s3", "goods in hand, the step advances and the new step mirrors home")
 
+	# 10. BEASTS AT HEEL (VILLAGER-AND-GODHEAD-SPEC Part III) over the wire.
+	# Taming for real takes several sim-days of feeding — no wire test should
+	# sit through that in real time — so a tamed beast is seeded directly
+	# (test_seed_beast) and this just proves the thing that's actually novel
+	# over the network: it mirrors to the client, with its name, via the same
+	# world_sync/cl_world_sync path everything else above already rides.
+	host.rpc_id(1, "srv_intent", "test_seed_beast", [])
+	waited = 0.0
+	while host.beasts.is_empty() and waited < 6.0:
+		await get_tree().create_timer(0.2).timeout
+		waited += 0.2
+	check(not host.beasts.is_empty() and host.beasts[0].display_name == "Wiretest",
+		"a beast mirrors to a client with its name")
+	check(host.beasts[0].creature_id == "creature-scuttle-crab" and host.beasts[0].at_heel,
+		"...and its species + heel state")
+
+	# a client feeds a WILD crab over the wire: allocate WILD 3, grant the
+	# craved food (test_grant_item — the client has no real way to harvest its
+	# way to a specific item deterministically), then the real feed_wild path.
+	for i in 3:
+		host.rpc_id(1, "srv_intent", "allocate", ["virtue-wild"])
+		await get_tree().create_timer(0.15).timeout
+	check(host.abilities.score(host.my_pid, "virtue-wild") == 3, "WILD 3 allocated across the wire")
+	host.rpc_id(1, "srv_intent", "test_grant_item", ["item-smoked-crab", 2])
+	waited = 0.0
+	while host.inventory.count(host.my_pid, "item-smoked-crab") == 0 and waited < 6.0:
+		await get_tree().create_timer(0.2).timeout
+		waited += 0.2
+	check(host.inventory.count(host.my_pid, "item-smoked-crab") > 0, "the craved food arrives in the client's pack")
+	var wild_crab: DSEnemy = null
+	for e in host.enemies:
+		if is_instance_valid(e) and e.creature_id == "creature-scuttle-crab":
+			wild_crab = e
+			break
+	check(wild_crab != null, "an untamed crab is mirrored here too")
+	if wild_crab != null:
+		host.player.position = wild_crab.position
+		await get_tree().create_timer(0.6).timeout   # let the position stream reach the server
+		host.intent_feed_wild(wild_crab)              # relays to the server over the wire
+		waited = 0.0
+		while not host.message.contains("trust") and waited < 6.0:
+			await get_tree().create_timer(0.2).timeout
+			waited += 0.2
+		check(host.message.contains("trust 1/2"), "a client feeds a crab over the wire — the trust numbers come home (%s)" % host.message)
+
 	_finish()

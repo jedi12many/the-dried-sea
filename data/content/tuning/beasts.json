@@ -1,0 +1,13 @@
+{
+  "$comment": "v0 tuning — beast_system.gd (VILLAGER-AND-GODHEAD-SPEC Part III, Beasts at Heel). All numbers here are given directly by the implementation brief (not independently invented): mealsByTier/ghalRankMealDiscount/minMeals/wildTierGate/unfedMoodDays/porterDayXp/trustDecayDays are the brief's own first guesses. trustDecayDays: a half-fed wild beast forgets you after 3 days without a meal. wildTierGate keys are WILD virtue scores (talent-soft-step/crab-friend/herd-sense thresholds in virtues.json), matched to tame.tier (1/2/3) in creatures.json — presentation passes the player's WILD score into can_tame(); the sim never reads AbilitiesSystem directly (systems stay decoupled, per CLAUDE.md).",
+  "mealsByTier": [0, 2, 3, 4],
+  "ghalRankMealDiscount": 1,
+  "minMeals": 1,
+  "wildTierGate": { "1": 3, "2": 6, "3": 9 },
+  "unfedMoodDays": 1,
+  "porterDayXp": 6,
+  "trustDecayDays": 3,
+  "xp": {
+    "$comment": "the curve is villagers.json xp — one growth system, three wearers (player virtues / villager Arms / beast levels). beast_system.gd reads tuning/villagers.json's xp.curveConstant + xp.maxLevel directly; nothing is duplicated here."
+  }
+}

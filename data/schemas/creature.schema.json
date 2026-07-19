@@ -1,11 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "creature.schema.json",
-  "$comment": "v1",
+  "$comment": "v2 — the bare `tamable` flag graduates into a full `tame` block (VILLAGER-AND-GODHEAD-SPEC Part III, Beasts at Heel). $comment allowed throughout for first-guess numbers invented beyond the spec.",
   "type": "object",
   "required": ["id", "name", "biomeId", "archetype", "stats", "text"],
   "additionalProperties": false,
   "properties": {
+    "$comment": { "type": "string" },
     "id": { "type": "string", "pattern": "^creature-[a-z0-9-]+$" },
     "name": { "type": "string" },
     "workingName": { "type": "boolean" },
@@ -15,8 +16,53 @@
     "stats": { "type": "object", "additionalProperties": { "type": "number" } },
     "drops": { "$ref": "common.schema.json#/$defs/cost" },
     "remnantItemId": { "type": "string", "description": "bosses: the god-remnant they yield (enshrine/trade/consume)" },
-    "tamable": { "type": "boolean", "default": false },
     "bossNotes": { "type": "string", "description": "arena, weak point, preparation grammar" },
+    "tame": {
+      "type": "object",
+      "description": "this creature is tameable (Part III, Beasts at Heel) — the WILD ladder gates it, Ghal sweetens it, beast_system.gd runs it",
+      "required": ["tier", "cravedFoodItemId", "meals", "behavior", "instincts", "namePool", "keepsakeItemId"],
+      "additionalProperties": false,
+      "properties": {
+        "$comment": { "type": "string" },
+        "tier": { "enum": [1, 2, 3], "description": "WILD talent tier that unlocks taming this species (3/6/9 -> small/pack-hunter/apex)" },
+        "cravedFoodItemId": { "type": "string", "description": "item-* the species eats to build trust" },
+        "meals": { "type": "integer", "minimum": 1, "description": "trust meals needed at Ghal rank 0 (tuning/beasts.json discounts per rank, floored at minMeals)" },
+        "behavior": {
+          "type": "object",
+          "description": "heel-slot AI parameters, same shape as arms-class.schema.json's behavior block — role decides which other keys apply",
+          "required": ["role"],
+          "additionalProperties": false,
+          "properties": {
+            "$comment": { "type": "string" },
+            "role": { "enum": ["porter", "fighter"] },
+            "engageRange": { "type": "number", "description": "fighter only: meters at which the beast engages aggro" },
+            "breakHpPct": { "type": "number", "minimum": 0, "maximum": 1, "description": "fighter only: HP fraction at which it breaks and runs to the owner" },
+            "carrySlots": { "type": "integer", "minimum": 1, "description": "porter only: extra inventory slots granted at heel" }
+          }
+        },
+        "instincts": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "exactly the 3/6/9 ignition trio, same rhythm as arms-class talents",
+          "items": {
+            "type": "object",
+            "required": ["tier", "id", "name", "text", "effects"],
+            "additionalProperties": false,
+            "properties": {
+              "$comment": { "type": "string" },
+              "tier": { "enum": [3, 6, 9] },
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "text": { "type": "string" },
+              "effects": { "$ref": "common.schema.json#/$defs/effectList" }
+            }
+          }
+        },
+        "namePool": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "deterministic-draw names offered at taming (numbered-pool rename at the kennel, no free text at EA)" },
+        "keepsakeItemId": { "type": "string", "description": "item-* dropped on beast_death; Ghal's altar craves it" }
+      }
+    },
     "text": { "type": "string" }
   }
 }

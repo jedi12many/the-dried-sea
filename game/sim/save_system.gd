@@ -9,9 +9,10 @@ const SAVE_VERSION := 1
 ## Pure funcs (Dictionary) -> Dictionary. NEVER edit a shipped migration.
 static var MIGRATIONS: Array[Callable] = []
 
-## `godhead` is optional (default null) so existing call sites keep compiling
-## unchanged — additive, the way sanctum's state is bolted on by the caller.
-static func to_save(clock: SimClock, devotion: DevotionSystem, village: VillageSystem, works: WorksSystem, verdict: VerdictSystem, godhead: GodheadSystem = null) -> Dictionary:
+## `godhead`/`beast` are optional (default null) so existing call sites keep
+## compiling unchanged — additive, the way sanctum's state is bolted on by
+## the caller. `beast` follows the exact same pattern godhead established.
+static func to_save(clock: SimClock, devotion: DevotionSystem, village: VillageSystem, works: WorksSystem, verdict: VerdictSystem, godhead: GodheadSystem = null, beast: BeastSystem = null) -> Dictionary:
 	var out := {
 		"saveVersion": SAVE_VERSION,
 		"clock": {"day": clock.day, "minute_of_day": clock.minute_of_day},
@@ -31,6 +32,8 @@ static func to_save(clock: SimClock, devotion: DevotionSystem, village: VillageS
 	}
 	if godhead != null:
 		out["godhead"] = godhead.to_save()
+	if beast != null:
+		out["beast"] = beast.to_save()
 	return out
 
 static func migrate(save: Dictionary) -> Dictionary:
@@ -41,7 +44,7 @@ static func migrate(save: Dictionary) -> Dictionary:
 		save["saveVersion"] = v
 	return save
 
-static func apply(save_in: Dictionary, clock: SimClock, devotion: DevotionSystem, village: VillageSystem, works: WorksSystem, verdict: VerdictSystem, godhead: GodheadSystem = null) -> void:
+static func apply(save_in: Dictionary, clock: SimClock, devotion: DevotionSystem, village: VillageSystem, works: WorksSystem, verdict: VerdictSystem, godhead: GodheadSystem = null, beast: BeastSystem = null) -> void:
 	var save := migrate(save_in)
 	clock.day = int(save.clock.day)
 	clock.minute_of_day = int(save.clock.minute_of_day)
@@ -60,6 +63,8 @@ static func apply(save_in: Dictionary, clock: SimClock, devotion: DevotionSystem
 	# simply ignored now; godhead_system.apply() below is the one true source.
 	if godhead != null and save.has("godhead"):   # additive since Godhead (Part II); old saves have no key, godhead keeps its _init defaults
 		godhead.apply(save.godhead)
+	if beast != null and save.has("beast"):   # additive since Beasts at Heel (Part III); old saves have no key, beast keeps its _init defaults
+		beast.apply(save.beast)
 
 static func write_file(path: String, save: Dictionary) -> bool:
 	var f := FileAccess.open(path, FileAccess.WRITE)

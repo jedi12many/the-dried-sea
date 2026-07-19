@@ -96,7 +96,9 @@
  "affinityLegendIds": [],
  "offerings": {
   "craves": [
-   "item-crab-meat"
+   "item-crab-meat",
+   "item-shell-plate",
+   "item-hound-fang"
   ],
   "accepts": [
    "item-smoked-crab"

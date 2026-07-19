@@ -317,8 +317,9 @@
   "purpose": "A travel marker. Feeds Vessa favor. (effects: coming soon)"
  },
  {
-  "id": "work-beast-pen",
-  "name": "Beast Pen",
+  "$comment": "renamed from work-beast-pen (CRAFT-AND-BUILD-SPEC Part 0 audit item 2 / Part 3: 'one Ghal home, not two'; id change is safe — never buildable in play, no save migration needed). buildCost carried over unchanged from the old beast-pen entry as the spec's 'modest B1 costs'. beastHouses:2 and favorTier 0 are the spec's own numbers (Part 3 table).",
+  "id": "work-kennel",
+  "name": "Kennel",
   "godId": "god-ghal",
   "category": "station",
   "buildCost": [
@@ -333,8 +334,9 @@
   ],
   "useDetection": "animal-kept",
   "favorTrickle": 1,
+  "beastHouses": 2,
   "text": "Old Ghal's first commandment: keep what keeps you.",
-  "purpose": "Keeps tamed beasts. Feeds Old Ghal. (taming: coming soon)"
+  "purpose": "Houses beasts, feeds them from stores at dawn. An unfed beast won't walk that day."
  },
  {
   "id": "work-salt-wheel",

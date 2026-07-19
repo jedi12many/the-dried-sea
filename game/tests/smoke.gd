@@ -1476,6 +1476,232 @@ func _ready() -> void:
 		"...and the hidden notice progress for a trait not yet discovered")
 	host6.queue_free()
 
+	# --- BEASTS AT HEEL (VILLAGER-AND-GODHEAD-SPEC Part III): taming, heel, kennel ---
+	host.abilities.earn(1, 20)               # plenty of Temper for the WILD ladder
+	host.inventory.inventories[1] = {}        # a clean pack — no stray food from earlier tests
+
+	# WILD gate: a crab (tier 1, needs WILD 3) refuses an unqualified player
+	var wcrab := DSEnemy.new()
+	wcrab.position = Vector2(5000, 5000)
+	wcrab.setup(host, "creature-scuttle-crab")
+	host.add_child(wcrab); host.enemies.append(wcrab)
+	host.player.position = wcrab.position
+	host.inventory.add(1, "item-smoked-crab", 4)
+	check(host.abilities.score(1, "virtue-wild") == 0, "no WILD spent yet")
+	check(host.intent_feed_wild(wcrab), "the [E]-feed verb always resolves — the UI law is show the numbers")
+	check(host.message.contains("Needs WILD 3") and host.inventory.count(1, "item-smoked-crab") == 4,
+		"an under-WILD player is refused, diegetically, food untouched (%s)" % host.message)
+
+	# allocate WILD 3 (Soft-Step) — the gate opens
+	for i in 3:
+		host.abilities.allocate(1, "virtue-wild")
+	check(host.abilities.score(1, "virtue-wild") == 3, "WILD 3 allocated")
+	check(host.intent_feed_wild(wcrab), "now the crab eats")
+	check(host.message.contains("trust 1/2"), "the numbers show, Shepherd's-Way style (%s)" % host.message)
+	check(host.inventory.count(1, "item-smoked-crab") == 3, "one meal consumed")
+
+	# same sim-day repeat: a no-op on trust, and must not waste the food either
+	check(host.intent_feed_wild(wcrab), "a same-day repeat feed still resolves")
+	check(host.message.contains("trust 1/2") and host.inventory.count(1, "item-smoked-crab") == 3,
+		"...no trust gained and no meal wasted on a same-day repeat (%s)" % host.message)
+
+	# the next day's feed fills trust -> TAMED
+	host.clock.day += 1
+	check(host.intent_feed_wild(wcrab), "the next day's feed")
+	check(host.message.contains("TAMED"), "trust fills — tamed (%s)" % host.message)
+	check(host.beasts.size() == 1, "a DSBeast body spawns in the world")
+	var skitter: DSBeast = host.beasts[0]
+	check(skitter.creature_id == "creature-scuttle-crab" and skitter.owner_pid == 1, "the tamed body knows its species and owner")
+	check(skitter.at_heel, "a free heel slot: the new tame falls in at heel immediately")
+
+	# heel toggle + follow
+	host.player.position = Vector2(5500, 5000)
+	for i in 150:
+		await get_tree().physics_frame
+	check(skitter.position.distance_to(host.player.position) < 300.0, "a beast at heel closes distance toward its owner")
+	host.player.position = skitter.position
+	check(host.intent_beast_interact(skitter), "[E] toggles your beast off heel")
+	check(not skitter.at_heel, "...sent home")
+	check(host.intent_beast_interact(skitter), "[E] again brings it back")
+	check(skitter.at_heel, "...heel restored")
+
+	# crab hoovers a ground drop within reach + [E] empties the bag to your pack
+	host.player.position = Vector2(5500, 5500)
+	skitter.position = host.player.position
+	host._spawn_equipment_drop("item-crab-meat", host.player.position + Vector2(20, 0))
+	for i in 20:
+		await get_tree().physics_frame
+	check(skitter.bag_total() > 0, "the porter hoovers a nearby ground drop into its own bag")
+	var meat_before := host.inventory.count(1, "item-crab-meat")
+	check(host.intent_beast_interact(skitter), "[E] on a full-bagged crab empties it")
+	check(host.inventory.count(1, "item-crab-meat") > meat_before, "...into the owner's pack")
+	check(skitter.bag_total() == 0, "the bag is empty again")
+
+	# hound mercy-kneel: WITHOUT enough WILD, a beaten hound just dies (today's law holds)
+	host.player.position = Vector2(6000, 5000)
+	var weak_hound := DSEnemy.new()
+	weak_hound.position = host.player.position + Vector2(30, 0)
+	weak_hound.setup(host, "creature-salt-hound")
+	host.add_child(weak_hound); host.enemies.append(weak_hound)
+	host.stats.actors[weak_hound].hp = 5.0
+	check(host.abilities.score(1, "virtue-wild") < 6, "WILD 3 doesn't meet the hound's tier-2 gate")
+	check(host.intent_attack(), "the swing lands")
+	check(not host.enemies.has(weak_hound), "without WILD 6, a beaten hound simply dies — the food loop survives untouched")
+
+	# allocate WILD 6 (Crab-Friend) — now the same beating KNEELS the hound instead
+	for i in 3:
+		host.abilities.allocate(1, "virtue-wild")
+	check(host.abilities.score(1, "virtue-wild") == 6, "WILD 6 allocated")
+	var kneel_hound := DSEnemy.new()
+	kneel_hound.position = host.player.position + Vector2(30, 0)
+	kneel_hound.setup(host, "creature-salt-hound")
+	host.add_child(kneel_hound); host.enemies.append(kneel_hound)
+	host.stats.actors[kneel_hound].hp = 5.0
+	check(host.intent_attack(), "the swing lands")
+	check(kneel_hound.surrendered and host.enemies.has(kneel_hound), "at WILD 6, the same lethal hit KNEELS the hound instead")
+	var hound_max_hp := float(host.registry.get_entity("creature-salt-hound").get("stats", {}).get("hp", 40))
+	check(absf(host.stats.hp(kneel_hound) - hound_max_hp * 0.25) < 0.01, "clamped to exactly the 25% mercy floor")
+
+	# feed-tame the kneeling hound (3 meals, tier 2) across 3 sim-days
+	host.inventory.add(1, "item-crab-meat", 5)
+	check(host.intent_feed_wild(kneel_hound), "a kneeling hound can be fed toward taming")
+	for i in 2:
+		host.clock.day += 1
+		host.intent_feed_wild(kneel_hound)
+	check(host.message.contains("TAMED"), "three meals tames the hound (%s)" % host.message)
+	check(host.beasts.size() == 2, "a second DSBeast body joins the roster")
+	var fang: DSBeast = host.beasts[1]
+	check(fang.creature_id == "creature-salt-hound", "the new tame is the hound")
+	check(not fang.at_heel, "the heel slot is already Skitter's — the new tame waits/kennels instead (cap 1)")
+
+	# free the heel slot, hand it to the hound, watch it fight
+	check(host.intent_beast_interact(skitter), "send Skitter home, freeing the heel slot")
+	check(host.intent_beast_interact(fang), "the hound takes the heel slot")
+	check(fang.at_heel, "the hound now walks at heel")
+	host.player.position = Vector2(6500, 5000)
+	fang.position = host.player.position
+	var foe2 := DSEnemy.new()
+	foe2.position = fang.position + Vector2(20, 0)
+	foe2.setup(host, "creature-salt-hound")
+	host.add_child(foe2); host.enemies.append(foe2)
+	var foe2_hp := host.stats.hp(foe2)
+	for i in 90:
+		await get_tree().physics_frame
+	if is_instance_valid(foe2) and foe2 in host.enemies:
+		check(host.stats.hp(foe2) < foe2_hp, "a hound at heel fights nearby hostiles on its own stat line")
+		host.stats.unregister(foe2); host.enemies.erase(foe2); foe2.queue_free()
+	else:
+		check(true, "a hound at heel fights nearby hostiles (foe already fell to it)")
+
+	# growl radar: a deterministic direct check (real-time physics racing the fight itself isn't).
+	# The field must be clear of anything closer than GROWL_VISIBLE_CLOSE first —
+	# foe2 above is cleaned up either way (killed by the fight, or by hand here).
+	var far_hostile := DSEnemy.new()
+	far_hostile.position = fang.position + Vector2(280, 0)
+	far_hostile.setup(host, "creature-salt-hound")
+	host.add_child(far_hostile); host.enemies.append(far_hostile)
+	host.message = ""
+	host.beast_growl_tick(fang)
+	check(host.message.contains("growls") and host.message.contains(fang.display_name),
+		"the growl-radar names the beast and gives a bearing (%s)" % host.message)
+	host.stats.unregister(far_hostile); host.enemies.erase(far_hostile); far_hostile.queue_free()
+
+	# Tide-Shell: level Skitter to 6 (test setup), bring it back to heel, absorb one owner hit per day
+	host.beast.beasts[skitter.beast_id].xp = 900.0   # exactly level 6 (25*6^2)
+	check(host.beast.beast_level(skitter.beast_id) == 6, "Skitter reaches level 6 (test setup)")
+	check(host.beast_has_instinct(skitter.beast_id, "block-hit-for-owner"), "Tide-Shell ignites at 6")
+	check(host.intent_beast_interact(fang), "send the hound home")
+	check(host.intent_beast_interact(skitter), "Skitter takes the heel slot back")
+	host.stats.actors[1].hp = 50.0
+	host.damage_player(10.0, 1)
+	check(host.stats.hp(1) == 50.0, "Tide-Shell absorbs a hit meant for the owner")
+	check(skitter._tide_shell_used_today, "...and marks itself used for today")
+	var hp_before2 := host.stats.hp(1)
+	host.damage_player(10.0, 1)
+	check(host.stats.hp(1) < hp_before2, "a second hit the same day is NOT absorbed — once a day only")
+
+	# hound downed -> revive
+	host.stats.actors[fang].hp = 1.0
+	host.damage_beast(fang, 999.0)
+	check(fang.downed, "0 HP downs a hound — not death")
+	host.player.position = fang.position
+	check(host.intent_beast_interact(fang), "[E] revives a downed beast")
+	check(not fang.downed and host.stats.hp(fang) > 0.0, "revived at partial HP")
+
+	# downed timeout -> permadeath, a keepsake drops where it fell
+	host.stats.actors[fang].hp = 1.0
+	host.damage_beast(fang, 999.0)
+	check(fang.downed, "downed again for the timeout test")
+	fang.downed_until = Time.get_unix_time_from_system() - 1.0   # already expired
+	var fang_bid := fang.beast_id
+	var node_count_before2 := host.resource_nodes.size()
+	for i in 5:
+		await get_tree().physics_frame
+	# fang is a freed instance by now (queue_free() completed) — compare by id,
+	# never touch the dangling reference itself (Array.has() on a typed array
+	# validates the object and errors on an already-freed one)
+	var fang_still_present := false
+	for b: DSBeast in host.beasts:
+		if b.beast_id == fang_bid:
+			fang_still_present = true
+	check(not fang_still_present, "the downed clock running out is permadeath — gone from the roster")
+	check(not host.beast.beasts.has(fang_bid), "...the sim roster forgets it too")
+	check(host.resource_nodes.size() > node_count_before2, "a keepsake drops where it fell")
+
+	# the kennel + dawn: fed from stores (mood keen) vs unfed (mood sulks, refuses the heel call)
+	host.inventory.add(1, "item-wreck-timber", 15)
+	host.inventory.add(1, "item-rope", 8)
+	host.player.position = host.camp_center + Vector2(-50, -50)
+	check(host.intent_build("work-kennel"), "the Kennel raises — Old Ghal's first work")
+	# called directly (not via the full _village_dawn) — same reason
+	# _dawn_drill_training is: the shared village's own food/labor economy
+	# (many villagers, some food-tasked) would otherwise restock smoked-crab
+	# out from under this check before it ever runs.
+	host.village_stock["item-smoked-crab"] = 3   # Skitter's craved food, on the shelf
+	host._beast_dawn_feeding()
+	check(str(host.beast.beasts[skitter.beast_id].mood) == "keen", "the kennel feeds a beast from stores at dawn — mood keen")
+	host.village_stock.erase("item-smoked-crab")   # bare shelves
+	host._beast_dawn_feeding()
+	check(str(host.beast.beasts[skitter.beast_id].mood) == "sulking", "an unfed beast's mood drops to sulking")
+	var crab_held := host.inventory.count(1, "item-smoked-crab")
+	if crab_held > 0:   # a full pack would hand-feed on the next press — empty it so the refusal is provable
+		host.inventory.pay(1, [{"itemId": "item-smoked-crab", "qty": crab_held}])
+	check(host.intent_beast_interact(skitter), "send Skitter home first so the refusal below is meaningful")
+	host.message = ""
+	check(host.intent_beast_interact(skitter), "the [E] press always resolves")
+	check(host.message.contains("turns away") and not skitter.at_heel, "a sulking beast refuses the heel call (%s)" % host.message)
+	# hand-feeding: the kennel is the automatic path, never the only one —
+	# craved food in the pack + [E] feeds a sulking beast by hand
+	host.inventory.add(1, "item-smoked-crab", 1)
+	check(host.intent_beast_interact(skitter), "[E] with craved food in the pack")
+	check(bool(host.beast.beasts[skitter.beast_id].fed_today) and str(host.beast.beasts[skitter.beast_id].mood) == "keen",
+		"a sulking beast eats from your hand — fed and keen")
+	check(host.inventory.count(1, "item-smoked-crab") == 0, "and the meal came out of your pack")
+	check(host.intent_beast_interact(skitter) and skitter.at_heel, "fed, they answer the heel call again")
+	host.intent_beast_interact(skitter)   # send home again for the checks below
+
+	# [V] panel: the roster carries a BEASTS line
+	host._toggle_village(true)
+	check(host.village_panel.text.contains("BEASTS:") and host.village_panel.text.contains(skitter.display_name), "the [V] panel shows the beast block")
+	host._toggle_village(false)
+
+	# save/load round-trips a tamed beast + its level
+	host.village_stock["item-smoked-crab"] = 3
+	host._beast_dawn_feeding()   # keen again, so the toggle below succeeds
+	host.intent_beast_interact(skitter)   # back to heel
+	host.save_game()
+	var host7: GameHost = load("res://scenes/main.tscn").instantiate()
+	host7.skip_autoload = true
+	host7.save_path = host.save_path
+	add_child(host7)
+	await get_tree().physics_frame
+	host7.load_game()
+	check(host7.beast.beasts.has(skitter.beast_id), "save/load round-trips the tamed beast's sim record")
+	check(host7.beast.beast_level(skitter.beast_id) == 6, "...and its level")
+	check(host7.beasts.size() == 1, "...and its world body rebuilds")
+	check(host7.beasts[0].at_heel, "...at_heel/kenneled restored from the roster")
+	host7.queue_free()
+
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)
 
