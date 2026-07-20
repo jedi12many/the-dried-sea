@@ -66,9 +66,16 @@ func can_tame(wild_points: int, creature_id: String) -> bool:
 ## reads consistently either way) — tested below.
 ## Trust decays to 0 if `trustDecayDays` pass with no meal (day-stamped); the
 ## decaying meal itself still counts (a half-fed beast can always be re-won).
+## `meal_boost` (M3.b, CRAFT-AND-BUILD-SPEC Part 3: "Taming-Post T1 — trust
+## meals count double at the post") is how many trust points THIS meal is worth
+## — presentation computes the "within ~150px of a Taming-Post" geometry (this
+## system never reads `works`, same decoupling as ghal_rank reading virtues)
+## and passes 2 instead of the default 1. Still capped by the same one-meal-
+## per-sim-day rule below: a repeat feed the same day is still a no-op, boosted
+## or not.
 ## Returns {trust, needed, tamed, id} — id is the new roster id when tamed>0,
 ## else -1.
-func feed_wild(nid: int, creature_id: String, pid: int, today: int, ghal_rank: int = 0) -> Dictionary:
+func feed_wild(nid: int, creature_id: String, pid: int, today: int, ghal_rank: int = 0, meal_boost: int = 1) -> Dictionary:
 	var tm: Dictionary = registry.get_entity(creature_id).get("tame", {})
 	if tm.is_empty():
 		return {"trust": 0, "needed": 0, "tamed": false, "id": -1}
@@ -85,7 +92,7 @@ func feed_wild(nid: int, creature_id: String, pid: int, today: int, ghal_rank: i
 		rec.trust = 0
 
 	if int(rec.last_meal_day) != today:
-		rec.trust = int(rec.trust) + 1
+		rec.trust = int(rec.trust) + maxi(meal_boost, 1)
 		rec.last_meal_day = today
 	wild_trust[nid] = rec
 

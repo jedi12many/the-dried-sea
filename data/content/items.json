@@ -158,6 +158,15 @@
   "text": "It never bit you. That was the whole point of it. You bury your dog by giving this to the god who kept it."
  },
  {
+  "$comment": "M3.b: the eel-wolf's keepsake, same reasoning + offeringValue band as item-hound-fang/item-shell-plate.",
+  "id": "item-eel-fang",
+  "name": "Eel-Fang",
+  "category": "offering",
+  "tier": 1,
+  "offeringValue": 8,
+  "text": "Curved for tearing, not holding. Old Ghal takes it the way he takes every fang — like it cost you something to bring it."
+ },
+ {
   "id": "item-crab-meat",
   "name": "Crab Meat",
   "category": "food",

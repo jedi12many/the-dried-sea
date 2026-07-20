@@ -107,6 +107,11 @@ var drill_step := "villager"    # "villager" | "class"
 var drill_villager_id := -1
 var drill_items: Array = []     # numbered choices for the current step
 
+# M3.b: the rename modal (kennel), house-modal style (_make_modal)
+var rename_open := false
+var rename_beast_id := -1
+var rename_items: Array = []   # numbered choices: current name, then the species' namePool
+
 # CALLINGS — the per-player quest journal
 var callings: Dictionary = {}        # pid -> Array of {id, step}
 var callings_done: Dictionary = {}   # pid -> Array of calling ids
@@ -123,23 +128,39 @@ const JOBS := {
 	"class-warden": ["work-yoke-post", "", 0, false],
 }
 # the self-managing labor pool: needs, what each task yields, and who's suited
-const NEED_TARGETS := {"food": 12, "wood": 14, "salt": 14, "bronze": 10}
-const TASK_ITEM := {"food": "item-smoked-crab", "wood": "item-driftwood", "salt": "item-salt", "bronze": "item-bronze-salvage"}
-const TASK_STATION := {"food": "work-smokehouse", "wood": "", "salt": "work-workbench", "bronze": "work-workbench"}
-const TASK_FORAGE_ITEM := {"wood": "item-driftwood", "salt": "item-salt", "bronze": "item-bronze-salvage"}   # tasks that gather from world nodes
+# M3.b (REEF-FOREST-SPEC §3, CRAFT-AND-BUILD-SPEC Part 5): coralwood + reef-iron
+# join as villager tasks — modest targets (6 each, below B1's 10-14) since
+# they're a B2 want, not survival. "haul" is Vessa's Porter's Post (T2): a
+# station-gated task with no forage node at all (same shape as "food", which
+# also has no TASK_FORAGE_ITEM entry) — the post itself produces the bonus.
+const NEED_TARGETS := {"food": 12, "wood": 14, "salt": 14, "bronze": 10, "coralwood": 6, "reef-iron": 6, "haul": 10}
+const TASK_ITEM := {"food": "item-smoked-crab", "wood": "item-driftwood", "salt": "item-salt", "bronze": "item-bronze-salvage",
+	"coralwood": "item-coralwood", "reef-iron": "item-reef-iron", "haul": "item-rope"}
+const TASK_STATION := {"food": "work-smokehouse", "wood": "", "salt": "work-workbench", "bronze": "work-workbench",
+	"coralwood": "", "reef-iron": "", "haul": "work-porters-post"}
+const TASK_FORAGE_ITEM := {"wood": "item-driftwood", "salt": "item-salt", "bronze": "item-bronze-salvage",
+	"coralwood": "item-coralwood", "reef-iron": "item-reef-iron"}   # tasks that gather from world nodes
 # RISK: how far a villager ventures scales with how badly the village needs it.
 # Full stores — work only what's near home (surplus, safe, feeds the gods).
 # Empty stores — range far out into the flats, past warden cover, and chance it.
 const FORAGE_LEASH_NEAR := 360.0
 const FORAGE_LEASH_FAR := 1100.0
+# M3.b: the reef band sits south of the scarp, ~1150-3000px from a north-built
+# hearth — well past B1's 1100 max leash. A separate, much longer ceiling for
+# reef tasks ONLY (see _task_leash) means the risk-leash still starts at the
+# SAME near-360 comfort floor (a well-stocked village never sends anyone near
+# the Stair), and only true desperation stretches it far enough to cross —
+# "the leash was always the reef's tutorial" (REEF-FOREST-SPEC §3, verbatim).
+const REEF_LEASH_FAR := 5200.0   # generous — exceeds the world's own diagonal (~5120px), so desperation always finds SOME reef node from anywhere in the village
+const REEF_TASKS := ["coralwood", "reef-iron"]
 const SURPLUS_PRIORITY := 0.12   # idle hands feed no gods: near nodes get worked even when full
 const TASK_BASE := 2.0
 const CLASS_SUIT := {
-	"class-reef-runner": {"food": 0.9, "wood": 1.6, "salt": 0.7, "bronze": 0.4},
-	"class-salvager": {"food": 0.5, "wood": 0.9, "salt": 1.6, "bronze": 1.1},
-	"class-smith": {"food": 0.4, "wood": 0.5, "salt": 1.0, "bronze": 1.6},
-	"class-brinewife": {"food": 1.6, "wood": 0.5, "salt": 0.7, "bronze": 0.3},
-	"class-warden": {"food": 0.6, "wood": 0.6, "salt": 0.6, "bronze": 0.5},
+	"class-reef-runner": {"food": 0.9, "wood": 1.6, "salt": 0.7, "bronze": 0.4, "coralwood": 1.2, "reef-iron": 0.9, "haul": 1.3},
+	"class-salvager": {"food": 0.5, "wood": 0.9, "salt": 1.6, "bronze": 1.1, "coralwood": 0.6, "reef-iron": 0.9, "haul": 0.6},
+	"class-smith": {"food": 0.4, "wood": 0.5, "salt": 1.0, "bronze": 1.6, "coralwood": 0.5, "reef-iron": 1.3, "haul": 0.4},
+	"class-brinewife": {"food": 1.6, "wood": 0.5, "salt": 0.7, "bronze": 0.3, "coralwood": 0.4, "reef-iron": 0.3, "haul": 0.5},
+	"class-warden": {"food": 0.6, "wood": 0.6, "salt": 0.6, "bronze": 0.5, "coralwood": 0.5, "reef-iron": 0.5, "haul": 0.5},
 }
 const NAME_POOL := ["Bex", "Corin", "Del", "Enna", "Fisk", "Goro", "Hale", "Isa",
 	"Joss", "Kael", "Lorn", "Mira", "Nils", "Orla", "Perr", "Renn", "Sable", "Tovin"]
@@ -187,6 +208,21 @@ var lantern_wreck_inspected: Dictionary = {}   # pid -> bool
 var lantern_verse3_taken: Dictionary = {}      # pid -> bool
 var tide_bell_rang_today := false              # Neris's Tide-Bell: rang at 06:00 or 18:00 today
 
+# M3.b: Ghal's Blood-Scent — same server-truth/client-display-mirror shape as
+# `petrify`/`petrify_frames` above (frame-counted, ticked in _physics_process,
+# mirrored per-player via _player_state/cl_player_state).
+var blood_scent: Dictionary = {}   # pid -> frames remaining
+var blood_scent_frames := 0        # mirrors MY pid for display (HUD bearing line)
+# a caster's facing direction, for a remote (server-side) acting_pid that has
+# no local `player` Node to read .facing off — tracked from the position
+# stream's own deltas (srv_pos). The LOCAL player's own facing is read straight
+# off player.facing instead (see _acting_facing()); this dict only matters in
+# co-op, for a client OTHER than the one this instance renders.
+var _pid_facing: Dictionary = {}   # pid -> Vector2 (last-seen movement direction)
+var _effect_note := ""             # _apply_effect's out-of-band extra line (intent_cast's
+                                    # own message overwrite happens after every effect
+                                    # runs — this survives it; see intent_cast)
+
 # CALLINGS — the anchor registry (WORLD-SPEC "Callings", step params vocabulary):
 # stable names a goto/escort/talk step's params can name, resolved to a world
 # position at query time (some are fixed, some track dynamic state). The three
@@ -222,6 +258,16 @@ const SOUTH_URCHIN_BACK_COUNT := 6
 const DROWNED_RUIN_1_POS := Vector2(TILE * 14, TILE * 84)
 const DROWNED_RUIN_2_POS := Vector2(TILE * 74, TILE * 96)
 const DROWNED_RUIN_3_POS := Vector2(TILE * 40, TILE * 118)
+
+# M3.b (REEF-FOREST-SPEC §5): Vessa's and Ghal's fallen shrines, deterministic
+# constants like every other shrine (NOT seeded-random — no spawn-count change).
+# Both south of SCARP_Y, well apart from each other and from the Stair of Hulls
+# (WORLD.x*TILE/2, SCARP_Y): Vessa west and shallow (~1600px from the Stair, the
+# roads-and-currents god closer to the gate she watches travelers use), Ghal
+# east and deep (~2050px from the Stair, the wild proper — his country is the
+# far end of the band). Distance between the two: ~2640px.
+const VESSA_SHRINE_POS := Vector2(TILE * 8, NORTH_H * TILE + TILE * 30)
+const GHAL_SHRINE_POS := Vector2(WORLD.x * TILE - TILE * 8, NORTH_H * TILE + TILE * 50)
 
 # STYLE-BIBLE salt-shallows palette (placeholder blocks, right colors)
 const ITEM_COLORS := {
@@ -706,12 +752,17 @@ func _physics_process(delta: float) -> void:
 		for pid: Variant in petrify.keys():
 			if int(petrify[pid]) > 0:
 				petrify[pid] = int(petrify[pid]) - 1
+		for pid: Variant in blood_scent.keys():   # Ghal's Blood-Scent (M3.b), same shape as petrify above
+			if int(blood_scent[pid]) > 0:
+				blood_scent[pid] = int(blood_scent[pid]) - 1
 	if petrify_frames > 0:
 		petrify_frames -= 1
 		if petrify_frames == 0:
 			player.modulate = Color.WHITE
 			message = "The salt lets you go. Halor's strength is spent — worship gives it back."
 			_refresh_hud()
+	if blood_scent_frames > 0:
+		blood_scent_frames -= 1
 	if storm_flash > 0.0:
 		storm_flash = maxf(storm_flash - delta * 2.0, 0.0)
 		daynight.color = daynight.color.lerp(Color(1.6, 1.6, 1.7), storm_flash)
@@ -978,6 +1029,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			_toggle_drill(false)
 			return
 		return   # the yard holds your attention; other keys wait
+	if rename_open and event is InputEventKey and event.pressed:
+		var rkey := (event as InputEventKey).physical_keycode
+		if rkey >= KEY_1 and rkey <= KEY_9:
+			var ridx := int(rkey - KEY_1)
+			if ridx < rename_items.size():
+				intent_rename_beast(rename_beast_id, ridx)
+				_toggle_rename(false)
+			return
+		if rkey == KEY_ESCAPE or rkey == KEY_M:
+			sfx("ui")
+			_toggle_rename(false)
+			return
+		return   # the naming holds your attention; other keys wait
 	if event.is_action_pressed("interact"):
 		# standing at an altar, E opens the Offertory (the god's inventory);
 		# a pending chapel rite that's closer keeps its claim on E
@@ -1010,6 +1074,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		intent_cast("inv-slack-tide")
 	elif event.is_action_pressed("cast_4"):
 		intent_cast("inv-returning-wave")
+	elif event.is_action_pressed("cast_5"):
+		intent_cast("inv-rip-current")
+	elif event.is_action_pressed("cast_6"):
+		intent_cast("inv-undertow")
+	elif event.is_action_pressed("cast_7"):
+		intent_cast("inv-shepherds-voice")
+	elif event.is_action_pressed("cast_8"):
+		intent_cast("inv-blood-scent")
+	elif event.is_action_pressed("rename_beast"):
+		_kennel_rename_takes_key()
 	elif event.is_action_pressed("consume"):
 		intent_consume_remnant()
 	elif event.is_action_pressed("sheet"):
@@ -1308,7 +1382,8 @@ func intent_feed_wild(e: DSEnemy) -> bool:
 	if not already_fed_today:
 		inventory.pay(acting_pid, [{"itemId": craved, "qty": 1}])
 	var ghal_rank := int(devotion.state.get(acting_pid, {}).get("god-ghal", {}).get("rank", 0))
-	var result := beast.feed_wild(nid, e.creature_id, acting_pid, clock.day, ghal_rank)
+	var post_boost := 2 if _near_taming_post(acting_pos()) else 1   # M3.b: the Taming-Post doubles this meal's trust
+	var result := beast.feed_wild(nid, e.creature_id, acting_pid, clock.day, ghal_rank, post_boost)
 	sfx("ui")
 	if bool(result.tamed):
 		var bid := int(result.id)
@@ -1395,6 +1470,91 @@ func intent_revive_beast(b: DSBeast) -> bool:
 		stats.actors[b].hp = beast.beast_max_hp(b.beast_id) * 0.3
 	message = "%s comes back around." % b.display_name
 	b._refresh_label()
+	_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+	return true
+
+## --- the rename modal (M3.b, at the kennel) ----------------------------------------
+## [M] on a KENNELED beast opens a numbered pick: the current name, then the
+## species' namePool (REEF-FOREST-SPEC §5). This finds/opens PURELY client-side,
+## same as _drill_takes_e/_toggle_drill — the beast roster (position, kenneled,
+## owner) already mirrors to every client via cl_world_sync, so no server round
+## trip is needed just to open the menu; only the actual rename is an intent.
+func _kennel_rename_takes_key() -> void:
+	var target: DSBeast = null
+	var best := interact_range()
+	for b: DSBeast in beasts:
+		if b.owner_pid == acting_pid and b.kenneled:
+			var d := acting_pos().distance_to(b.position)
+			if d < best:
+				best = d
+				target = b
+	if target == null:
+		message = "No kenneled beast stands close enough to rename."
+		_refresh_hud()
+		return
+	sfx("ui")
+	_toggle_rename(true, target.beast_id)
+
+func _toggle_rename(open: bool, beast_id: int = -1) -> void:
+	rename_open = open
+	rename_beast_id = beast_id if open else -1
+	var m: Dictionary = modals.get("rename", {})
+	if m.is_empty():
+		return
+	(m.root as Control).visible = open
+	if not open:
+		return
+	_render_rename()
+
+## The offer list is deterministic off the beast's CURRENT display_name + its
+## species' namePool — same list built again, unmutated, when the pick lands in
+## intent_rename_beast (server-authoritative: the client's render is a preview,
+## not the source of truth).
+func _rename_offer(b: DSBeast) -> Array:
+	var offer: Array = [b.display_name]
+	for n: Variant in registry.get_entity(b.creature_id).get("tame", {}).get("namePool", []):
+		if str(n) != b.display_name:
+			offer.append(str(n))
+	return offer
+
+func _render_rename() -> void:
+	var m: Dictionary = modals.get("rename", {})
+	if m.is_empty() or not rename_open:
+		return
+	var b := _beast_by_id(rename_beast_id)
+	if b == null:
+		_toggle_rename(false)
+		return
+	rename_items = _rename_offer(b)
+	var lines: Array[String] = ["Rename %s:" % b.display_name, ""]
+	for i in rename_items.size():
+		lines.append("  %d. %s%s" % [i + 1, str(rename_items[i]), "  (keep it)" if i == 0 else ""])
+	(m.body as Label).text = "\n".join(lines)
+	(m.footer as Label).text = "[1-%d] choose a name   ·   [M] close" % rename_items.size()
+
+## Server-authoritative intent: recomputes the SAME deterministic offer list off
+## the beast's current name (not whatever the client's stale render showed) and
+## applies the pick to both the sim roster (beast_system.beasts[id].name — what
+## world_sync mirrors) and the presentation body (display_name).
+func intent_rename_beast(beast_id: int, idx: int) -> bool:
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "rename_beast", [beast_id, idx])
+		return true
+	if not beast.beasts.has(beast_id):
+		return false
+	var b := _beast_by_id(beast_id)
+	if b == null:
+		return false
+	var offer := _rename_offer(b)
+	if idx < 0 or idx >= offer.size():
+		return false
+	var new_name := str(offer[idx])
+	beast.beasts[beast_id].name = new_name
+	b.display_name = new_name
+	b._refresh_label()
+	message = "%s it is." % new_name
 	_refresh_hud()
 	if net_mode == "server":
 		rpc("cl_world_sync", _world_sync())
@@ -1692,6 +1852,8 @@ const KNEEL_HINTS := {
 	"god-halor": "[Q] Pillar of Salt, when the pinch comes.",
 	"god-maren": "[R] Call the Squall, when they crowd you.",
 	"god-neris": "[Z] Slack Tide, when they crowd you. [N] The Returning Wave, to mend.",
+	"god-vessa": "[H] Rip-Current, to run through them. [K] Undertow, to pull one close.",
+	"god-ghal": "[U] The Shepherd's Voice, to calm and feed a beast. [L] Blood-Scent, to track.",
 }
 
 func intent_kneel(god_id: String) -> bool:
@@ -1750,6 +1912,7 @@ func intent_cast(invocation_id: String = "inv-pillar-of-salt") -> bool:
 	# Godhead (Part II §2, the one formula): effective = base_magnitude x
 	# blessing_dim(vigor, already gated above by can_cast) x godhead.
 	var gh_mult := godhead.effective_mult(found0.god_id)
+	_effect_note = ""
 	for effect: Dictionary in inv.get("effects", []):
 		_apply_effect(_godhead_scale_effect(effect, gh_mult))
 	# cost relief: storms make Maren generous; Squall-Born makes her yours
@@ -1765,6 +1928,8 @@ func intent_cast(invocation_id: String = "inv-pillar-of-salt") -> bool:
 				float(found2.inv.vigorCost) * devotion.max_vigor("god-maren") * minf(relief, 0.9))
 	# UI law (Part II §2): the cast bar always shows live-computed strength.
 	message = "%s  (%d%% strength)" % [str(inv.text), int(gh_mult * 100.0)]
+	if _effect_note != "":
+		message += "\n" + _effect_note
 	_refresh_hud()
 	return true
 
@@ -1834,8 +1999,102 @@ func _apply_effect(effect: Dictionary) -> void:
 			# slowly, the way tides do." Regen on the caster via the stats system
 			# (StatsSystem.apply_hot), not an instant chunk.
 			stats.apply_hot(acting_pid, float(effect.get("magnitude", 0)), float(effect.get("duration", 1)))
+		"dash-through":
+			# Vessa's Rip-Current: "the old current takes you — through them,
+			# past them, gone." A straight position teleport (not a move_and_slide
+			# glide), so there is no frame where the caster is standing inside an
+			# enemy's attack range long enough for its cooldown to fire — that IS
+			# "no collision damage taken during it." magnitude is TILES.
+			var dash_tiles := float(effect.get("magnitude", 12))
+			var dir := _acting_facing()
+			var origin := acting_pos()
+			var dest := origin + dir * dash_tiles * TILE
+			dest.x = clampf(dest.x, TILE, float(WORLD.x - 1) * TILE)
+			dest.y = clampf(dest.y, TILE, float(WORLD.y - 1) * TILE)
+			sfx("cast_dash", origin)
+			# warp_player carries the caster's own body too: a remote caster's
+			# client is snapped by RPC, or their next position packet would
+			# quietly undo the dash.
+			warp_player(acting_pid, dest)
+			if bool(effect.get("params", {}).get("carriesAllies", false)):
+				for v: DSVillager in all_villagers():
+					if v.on_road and v.companion_pid == acting_pid and origin.distance_to(v.position) <= DASH_CARRY_RADIUS:
+						v.position = dest + v._slot_offset()
+				for b: DSBeast in beasts:
+					if b.owner_pid == acting_pid and b.at_heel and origin.distance_to(b.position) <= DASH_CARRY_RADIUS:
+						b.position = dest + b._heel_offset()
+		"forced-pull":
+			# Vessa's Undertow: "the sea used to decide where things stood. For a
+			# moment, so do you." DECISION (data's "to-or-from-caster" left it
+			# open; keeping it simple per the brief): always TOWARD the caster,
+			# never away. magnitude is tiles of pull, clamped so the target can't
+			# overshoot past the caster's feet.
+			var puller_pos := acting_pos()
+			var pulled := _nearest_hostile(puller_pos, UNDERTOW_PULL_RADIUS)
+			if pulled != null:
+				var pull_dist := float(effect.get("magnitude", 10)) * TILE
+				var to_caster: Vector2 = puller_pos - pulled.position
+				var travel := minf(pull_dist, maxf(to_caster.length() - 20.0, 0.0))
+				pulled.position += to_caster.normalized() * travel
+				sfx("cast_pull", pulled.position)
+		"pacify-beast":
+			# Ghal's Shepherd's Voice: "one word in the old tongue of the deep
+			# pastures." Nearest hostile within SHEPHERDS_VOICE_RADIUS stops being
+			# hostile for `duration` seconds — reuses the surrendered visual tint
+			# WITHOUT setting the permanent `surrendered` flag (DSEnemy.pacify(),
+			# not DSEnemy.surrender()); it un-pacifies on its own when the timer runs out.
+			var calmed := _nearest_hostile(acting_pos(), SHEPHERDS_VOICE_RADIUS)
+			if calmed != null:
+				calmed.pacify(float(effect.get("duration", 20)))
+				sfx("cast_pacify", calmed.position)
+				# CRITICAL INTEGRATION (REEF-FOREST-SPEC §5): "calm a beast
+				# instantly AND feed_wild counts it as a meal." On a TAMEABLE
+				# species this calls the SAME feed_wild path a hand-feed uses —
+				# the invocation itself is the offering, so no food is spent from
+				# the pack. beast_system's own same-day cap ("only the FIRST feed
+				# of a sim-day advances trust") is what guards double-feeding;
+				# nothing extra is needed here to respect it.
+				var tm: Dictionary = registry.get_entity(calmed.creature_id).get("tame", {})
+				if not tm.is_empty():
+					var nid := _enemy_nid(calmed)
+					var ghal_rank := int(devotion.state.get(acting_pid, {}).get("god-ghal", {}).get("rank", 0))
+					var post_boost := 2 if _near_taming_post(calmed.position) else 1
+					var result := beast.feed_wild(nid, calmed.creature_id, acting_pid, clock.day, ghal_rank, post_boost)
+					if bool(result.tamed):
+						var bid := int(result.id)
+						var pos := calmed.position
+						stats.unregister(calmed)
+						enemies.erase(calmed)
+						calmed.queue_free()
+						_spawn_beast(bid, pos, true)
+						_effect_note = "%s falls calm — TAMED. It falls in at your heel." % str(beast.beasts.get(bid, {}).get("name", "Beast"))
+					else:
+						_effect_note = "%s falls calm. The Voice counts as a meal — trust %d/%d." % [
+							str(registry.get_entity(calmed.creature_id).name), int(result.trust), int(result.needed)]
+				else:
+					_effect_note = "%s falls calm. Whatever it meant to do, it forgets to." % str(registry.get_entity(calmed.creature_id).name)
+		"track-target":
+			# Ghal's Blood-Scent: "the dried sea keeps no secrets from a nose it
+			# made." Implemented as a personal HUD bearing line (same grammar as
+			# _direction_hints' shrine/raider lines) naming the nearest hostile of
+			# ANY kind, for `duration` real seconds — frame-counted exactly like
+			# `petrify` (server truth in `blood_scent`, client display mirror in
+			# `blood_scent_frames`, synced via _player_state/cl_player_state).
+			blood_scent[acting_pid] = int(float(effect.get("duration", 300)) * 60.0)
+			if acting_pid == my_pid:
+				blood_scent_frames = int(blood_scent[acting_pid])
 		_:
 			pass  # unimplemented effect types are silently inert at this stage
+
+## The local player's own facing (WASD-driven) when acting for themselves;
+## a remote co-op caster has no local Node to read .facing off, so this falls
+## back to their last-seen movement direction from the position stream (see
+## `_pid_facing`, updated in srv_pos). Defaults to "south" (Vector2.DOWN),
+## the same default player.gd itself starts with.
+func _acting_facing() -> Vector2:
+	if acting_pid == my_pid and player != null:
+		return player.facing
+	return _pid_facing.get(acting_pid, Vector2.DOWN)
 
 func _flash_bolt(at: Vector2) -> void:
 	var bolt := ColorRect.new()
@@ -1856,6 +2115,25 @@ func _active_player_positions() -> Dictionary:
 const HEALING_BATH_RADIUS := 90.0
 const HEALING_BATH_HP_PER_SEC := 2.0
 const HEALING_BATH_STAMINA_MULT := 1.5
+
+# M3.b invocation numbers (first-guess, invented — none of these ride the
+# data files, since they're targeting/AOE ranges, the same convention as
+# aoe-knockdown/lightning-strikes' own radius defaults above):
+const DASH_CARRY_RADIUS := 120.0     # Rip-Current: a road companion/beast this close to the CASTER'S START rides along
+const UNDERTOW_PULL_RADIUS := 280.0  # Undertow: "a sensible radius" per the brief — roughly aoe-knockdown's 8-tile reach, +2
+const SHEPHERDS_VOICE_RADIUS := 250.0  # Shepherd's Voice: has to out-reach a melee swing to be worth casting
+const TAMING_POST_RADIUS := 150.0      # work-taming-post's own $comment: "within ~150px" — CRAFT-AND-BUILD-SPEC Part 3
+
+## Ghal's Taming-Post (M3.b): is `pos` within earshot of any placed Taming-Post?
+## Presentation-side geometry, same reasoning as ghal_rank — beast_system never
+## reads `works` directly.
+func _near_taming_post(pos: Vector2) -> bool:
+	for inst_id: Variant in works.placed:
+		if str(works.placed[inst_id].work_id) == "work-taming-post":
+			var inst: Dictionary = works.placed[inst_id]
+			if pos.distance_to(Vector2(float(inst.get("x", 0)), float(inst.get("y", 0)))) < TAMING_POST_RADIUS:
+				return true
+	return false
 
 ## Neris's Healing Bath: stand within ~90px and mend — +2 HP/sec, stamina
 ## regen x1.5 (StatsSystem.bath_mult, alongside the virtue-driven regen_mult).
@@ -2086,11 +2364,23 @@ func _apply_node_left(d: Dictionary) -> void:
 			var hits := maxi(int(node.get_meta("hits", 1)), 1)
 			node.scale = Vector2.ONE * (0.55 + 0.45 * float(left) / float(hits))
 
+const BOARD_ROAD_LEASH_MULT := 1.25   # Vessa's Board-Road: CRAFT-AND-BUILD-SPEC Part 3, "villager leash +25% along roads" — verbatim
+
 ## The risk dial: how far this task's workers will range right now. Desperation
 ## stretches the leash; comfort shortens it to the home fields.
 func _task_leash(task: String) -> float:
 	var need := clampf(float(_need_priority().get(task, 0.0)), 0.0, 1.0)
-	return lerpf(FORAGE_LEASH_NEAR, FORAGE_LEASH_FAR, need)
+	var far := REEF_LEASH_FAR if task in REEF_TASKS else FORAGE_LEASH_FAR
+	var leash := lerpf(FORAGE_LEASH_NEAR, far, need)
+	# M3.b: a Board-Road standing anywhere in the village extends every task's
+	# reach by 25% — SIMPLIFICATION (the spec's own words: "villager leash +25%
+	# along roads"): this multiplies the whole computed leash rather than
+	# modeling per-tile pathing along an actual road network. A real road-graph
+	# (villagers routing tile-by-tile along placed Board-Roads specifically) is
+	# a later refinement; "any road stands" is the honest v0.
+	if works.count_of("work-board-road") > 0:
+		leash *= BOARD_ROAD_LEASH_MULT
+	return leash
 
 ## The nearest live node bearing this item within `leash` of `from` — how a
 ## villager decides whether the wood is worth the walk.
@@ -2517,10 +2807,7 @@ func damage_player(amount: float, pid: int = -1) -> void:
 		# you wake where you're sheltered: your own tent, else the hearth, else
 		# the middle of the flats. (Death penalty otherwise stays pride-only.)
 		var wake := _respawn_point(pid)
-		if net_mode == "server":
-			avatars[pid] = wake
-		elif pid == my_pid:
-			player.position = wake
+		warp_player(pid, wake)   # remote players must actually WAKE there, not just on paper
 		stats.heal_full(pid)
 		if pid == my_pid:
 			_refresh_hud()
@@ -2551,6 +2838,31 @@ func _net_push_state(pid: int) -> void:
 		if int(peers[peer_id]) == pid:
 			rpc_id(int(peer_id), "cl_player_state", _player_state(pid))
 			return
+
+## Move a player's BODY authoritatively — the one thing cl_positions can't do.
+## Clients own their own position (cl_positions skips pid == my_pid), so a
+## server-side relocation of a REMOTE player is silently undone by their next
+## position packet. Any server code that relocates someone must call this:
+## respawn (the Waker — remote players never actually woke at their rest point
+## before this) and Rip-Current's dash both do.
+func warp_player(pid: int, pos: Vector2) -> void:
+	if net_mode == "server":
+		avatars[pid] = pos
+	if pid == my_pid and player != null:
+		player.position = pos
+	if net_mode != "server":
+		return
+	for peer_id: Variant in peers:
+		if int(peers[peer_id]) == pid:
+			rpc_id(int(peer_id), "cl_warp", pos.x, pos.y)
+			return
+
+## The client's own body, snapped by the server. Authoritative and reliable:
+## dropping this packet would leave a player standing where they died.
+@rpc("authority", "reliable")
+func cl_warp(x: float, y: float) -> void:
+	if player != null:
+		player.position = Vector2(x, y)
 
 func _on_enemy_killed(enemy: DSEnemy) -> void:
 	sfx("kill", enemy.position)
@@ -3819,6 +4131,11 @@ func _spawn_work_visual(inst_id: int, work_id: String, pos: Vector2, chapel_hint
 		"work-salt-wheel": "salt_wheel",
 		"work-tide-bell": "tide_bell", "work-healing-bath": "healing_bath",
 		"work-kennel": "kennel", "work-reef-forge": "reef_forge",
+		# M3.b: target sprite names for the art pass — no PNGs exist yet, so
+		# SpriteKit.sprite falls back to its ColorRect placeholder automatically
+		# (same as every other work above did before its art shipped).
+		"work-taming-post": "taming_post", "work-stable": "stable",
+		"work-board-road": "board_road", "work-porters-post": "porters_post",
 	}
 	var fallback := Color("6e5138") if not work.get("grim", false) else Color("5b3a6e")
 	if work_id == "work-reef-forge":
@@ -4099,6 +4416,11 @@ func _spawn_shrines() -> void:
 	_spawn_one_shrine("god-halor", Vector2(WORLD.x * TILE / 2.0, TILE * 5.0), Color.WHITE)
 	_spawn_one_shrine("god-maren", Vector2(WORLD.x * TILE - TILE * 4.0, NORTH_H * TILE / 2.0), Color(0.82, 0.88, 1.0))
 	_spawn_one_shrine("god-neris", Vector2(WORLD.x * TILE / 2.0, NORTH_H * TILE - TILE * 5.0), Color(0.75, 0.9, 0.95))
+	# M3.b: Vessa and Ghal, fallen in the Reef Forest band (south of the scarp) —
+	# the generic kneel -> attune flow (intent_kneel/intent_interact) needs no
+	# per-god code, same as Neris before them (verified: it just iterates `shrines`).
+	_spawn_one_shrine("god-vessa", VESSA_SHRINE_POS, Color(0.68, 0.86, 0.82))
+	_spawn_one_shrine("god-ghal", GHAL_SHRINE_POS, Color(0.62, 0.56, 0.5))
 
 func _spawn_one_shrine(god_id: String, pos: Vector2, tint: Color) -> void:
 	var s := Node2D.new()
@@ -4250,7 +4572,10 @@ func _dawn_drill_training() -> Array[String]:
 ## from the rest of the village's labor/food economy.
 func _beast_dawn_feeding() -> Array[String]:
 	var notes: Array[String] = []
-	var kennel_stands := works.count_of("work-kennel") > 0
+	# a Stable is the Kennel's B2 growth (CRAFT-AND-BUILD-SPEC Part 3) — either
+	# one enables dawn feeding from stores.
+	var stable_stands := works.count_of("work-stable") > 0
+	var kennel_stands := works.count_of("work-kennel") > 0 or stable_stands
 	for b: DSBeast in beasts:
 		if not beast.beasts.has(b.beast_id):
 			continue
@@ -4263,10 +4588,19 @@ func _beast_dawn_feeding() -> Array[String]:
 			fed = true
 		beast.dawn(b.beast_id, kennel_stands, fed)
 		var rec: Dictionary = beast.beasts[b.beast_id]
+		# MOOD-FLOOR DECISION (work-stable's own $comment in works.json, spec left
+		# the exact shape open): a Stable prevents SULKING from hunger alone but
+		# does NOT feed on its own — held at "content", never "keen" (keen still
+		# costs a real meal). Presentation-side, same as everywhere else here
+		# reads/overrides rec.mood after beast_system.dawn() runs; the sim call
+		# itself is unchanged.
+		if not fed and stable_stands and str(rec.mood) == "sulking":
+			rec.mood = "content"
 		b.mood = str(rec.mood)
 		b.kenneled = bool(rec.kenneled)
 		if not fed:
-			notes.append("%s went unfed and sulks" % b.display_name)
+			notes.append(("%s holds steady at the Stable, unfed" % b.display_name) if stable_stands
+				else ("%s went unfed and sulks" % b.display_name))
 		if beast_role(b.creature_id) == "porter" and b._carried_since_dawn:
 			beast.grant_xp(b.beast_id, "porterDay")
 		b._carried_since_dawn = false
@@ -4529,7 +4863,7 @@ func _nearest_hostile(from: Vector2, within: float) -> DSEnemy:
 	var best := within
 	var found: DSEnemy = null
 	for e in enemies:
-		if is_instance_valid(e) and not e.peaceful and not e.surrendered and not e.is_boss:
+		if is_instance_valid(e) and not e.peaceful and not e.surrendered and not e.is_boss and not e.is_pacified():
 			var d := from.distance_to(e.position)
 			if d < best:
 				best = d
@@ -5464,6 +5798,7 @@ func _build_hud() -> void:
 	offertory_title = m_offertory.title
 
 	_make_modal(layer, "drill", Vector2(640, 520), "THE DRILL-YARD")
+	_make_modal(layer, "rename", Vector2(480, 380), "NAME THE BEAST")   # M3.b, kennel rename modal ([M])
 
 func _refresh_bars() -> void:
 	if hp_bar == null:
@@ -5508,7 +5843,9 @@ func _refresh_hud() -> void:
 		"  |  fed ×%d" % fed if fed > 0 else "", _direction_hints(),
 		inv if inv != "" else "(empty hands)",
 		("  [Q] Pillar of Salt" if "god-halor" in attuned_for(my_pid) else "") + ("  [R] Call the Squall" if "god-maren" in attuned_for(my_pid) else "") \
-			+ ("  [Z] Slack Tide  [N] Returning Wave" if "god-neris" in attuned_for(my_pid) else ""), message]
+			+ ("  [Z] Slack Tide  [N] Returning Wave" if "god-neris" in attuned_for(my_pid) else "") \
+			+ ("  [H] Rip-Current  [K] Undertow" if "god-vessa" in attuned_for(my_pid) else "") \
+			+ ("  [U] Shepherd's Voice  [L] Blood-Scent" if "god-ghal" in attuned_for(my_pid) else ""), message]
 
 ## Where the unfinished business is: unvisited shrines, the stranded woman.
 func _direction_hints() -> String:
@@ -5523,6 +5860,12 @@ func _direction_hints() -> String:
 	var raider := _nearest_raider()
 	if raider != null:
 		bits.append("a raider prowls %s" % _bearing(raider.position))
+	# Ghal's Blood-Scent (M3.b): while it's lit, the nearest hostile of any
+	# kind gets a bearing line — same grammar as the shrine/raider lines above.
+	if blood_scent_frames > 0:
+		var scented := _nearest_hostile(player.position, INF)
+		if scented != null:
+			bits.append("blood-scent: %s %s" % [str(registry.get_entity(scented.creature_id).name), _bearing(scented.position)])
 	var verses := inventory.count(acting_pid, "item-harpoon-verse")
 	if verses > 0 and verses < 3:
 		bits.append("the harpoon-song: %d/3 verses" % verses)
@@ -5589,6 +5932,14 @@ static func _setup_input() -> void:
 		# nearest unclaimed keys to the existing Q/R cast pattern — checked
 		# against every bound action above (T/C/B/V/J/I/F/G/Q/R/X/SPACE/F5 taken).
 		"cast_3": [KEY_Z], "cast_4": [KEY_N],
+		# Vessa's + Ghal's invocations (M3.b, REEF-FOREST-SPEC §5): H/K/U/L are
+		# the next unclaimed letters — checked against every bound action above
+		# PLUS Z/N (Neris). M is the rename-modal key (a menu key at the kennel,
+		# per the spec's own "or a menu key" alternative — [E] on a kenneled
+		# beast already means "call to heel", so renaming gets its own key
+		# rather than overloading it).
+		"cast_5": [KEY_H], "cast_6": [KEY_K], "cast_7": [KEY_U], "cast_8": [KEY_L],
+		"rename_beast": [KEY_M],
 	}
 	for action: String in keys:
 		if InputMap.has_action(action):
@@ -5758,6 +6109,7 @@ func srv_intent(kind: String, args: Array) -> void:
 		"feed_beast": intent_feed_wild(_enemy_by_nid(int(args[0])))
 		"beast_interact": intent_beast_interact(_beast_by_id(int(args[0])))
 		"beast_revive": intent_revive_beast(_beast_by_id(int(args[0])))
+		"rename_beast": intent_rename_beast(int(args[0]), int(args[1]))
 		# test hook (net_smoke.gd): a deterministic way to trigger a REAL,
 		# server-authoritative player death over the wire — real hound combat
 		# has no deterministic timing to assert against; this calls the exact
@@ -5781,6 +6133,11 @@ func srv_intent(kind: String, args: Array) -> void:
 		# world_sync -> cl_world_sync mirror), the same "seed state, then exercise
 		# the real path" shape as test_calling.
 		"test_seed_beast": _test_seed_beast(acting_pid)
+		# test hook (net_smoke.gd, M3.b): attunement for real is a walk to a
+		# fallen shrine — this calls the SAME devotion.attune() a real kneel
+		# does, so a wire test can reach rank 2 (Undertow) without modeling a
+		# cross-map walk to Vessa's/Ghal's shrine over the wire.
+		"test_attune": devotion.attune(acting_pid, str(args[0]))
 	rpc_id(peer_id, "cl_player_state", _player_state(acting_pid))
 	rpc("cl_world_sync", _world_sync())
 
@@ -5790,7 +6147,14 @@ func srv_pos(x: float, y: float) -> void:
 		return
 	var pid: int = peers.get(multiplayer.get_remote_sender_id(), -1)
 	if pid > 0:
-		avatars[pid] = Vector2(x, y)
+		var new_pos := Vector2(x, y)
+		# dash-through needs a remote caster's facing (_acting_facing) — derive
+		# it from the position stream's own deltas, same "the stream already
+		# reports it — hook it here" reasoning as the scarp check below.
+		var moved: Vector2 = new_pos - avatars.get(pid, new_pos)
+		if moved.length() > 0.5:
+			_pid_facing[pid] = moved.normalized()
+		avatars[pid] = new_pos
 		_check_scarp_crossing(pid, y)   # the position stream already reports — hook it here, not input
 
 ## REEF-FOREST-SPEC §1: the FIRST time any player crosses south of the scarp,
@@ -5829,6 +6193,7 @@ func _player_state(pid: int) -> Dictionary:
 		"equipped": equipped.get(pid, {}),
 		"callings": _active_callings(pid),
 		"petrify": int(petrify.get(pid, 0)),
+		"blood_scent": int(blood_scent.get(pid, 0)),
 		"respawn_bind": int(respawn_bind.get(pid, -1)),
 		"message": message,
 	}
@@ -5938,6 +6303,7 @@ func cl_player_state(p: Dictionary) -> void:
 	equipped[my_pid] = p.get("equipped", {})
 	callings[my_pid] = p.get("callings", [])
 	petrify_frames = int(p.get("petrify", 0))
+	blood_scent_frames = int(p.get("blood_scent", 0))
 	respawn_bind[my_pid] = int(p.get("respawn_bind", -1))   # for the "[E] Rest here" prompt
 	if journal_open:
 		_toggle_journal(true)
@@ -6137,6 +6503,7 @@ func cl_world_sync(w: Dictionary) -> void:
 			add_child(bnode)
 			beasts.append(bnode)
 		bnode.position = bnode.position.lerp(Vector2(float(bd.x), float(bd.y)), 0.5)
+		bnode.display_name = str(bd.get("name", bnode.display_name))   # M3.b: the rename modal changes this after spawn — must ride every sync, not just the first
 		bnode.at_heel = bool(bd.at_heel)
 		bnode.kenneled = bool(bd.kenneled)
 		bnode.mood = str(bd.get("mood", "keen"))

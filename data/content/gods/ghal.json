@@ -98,7 +98,8 @@
   "craves": [
    "item-crab-meat",
    "item-shell-plate",
-   "item-hound-fang"
+   "item-hound-fang",
+   "item-eel-fang"
   ],
   "accepts": [
    "item-smoked-crab"

@@ -28,6 +28,18 @@ var _stun := 0.0
 var _chasing := false
 var _visual: Node2D
 var _hp_bar: ColorRect
+# Ghal's Shepherd's Voice (M3.b, REEF-FOREST-SPEC §5): a TEMPORARY deaggro,
+# unlike `surrendered` (permanent, mercy-kneel/raider-subdue only). Reuses the
+# same dimmed tint language as surrender() but reverts on its own timer.
+var _pacify_seconds := 0.0
+
+func pacify(seconds: float) -> void:
+	_pacify_seconds = maxf(_pacify_seconds, seconds)
+	if _visual != null:
+		_visual.modulate = Color(0.7, 0.66, 0.6)   # calmed, same dim tint as a kneeling surrender
+
+func is_pacified() -> bool:
+	return _pacify_seconds > 0.0
 
 func stun(seconds: float) -> void:
 	_stun = maxf(_stun, seconds)
@@ -94,6 +106,13 @@ func _physics_process(delta: float) -> void:
 		return   # mirrors move by the server's word alone
 	if peaceful or surrendered:
 		return   # crabs have nowhere to be; a surrendered raider waits
+	if _pacify_seconds > 0.0:
+		_pacify_seconds = maxf(_pacify_seconds - delta, 0.0)
+		velocity = Vector2.ZERO
+		move_and_slide()
+		if _pacify_seconds == 0.0 and _visual != null:
+			_visual.modulate = Color.WHITE   # the calm passes; back to itself
+		return   # Ghal's Shepherd's Voice: calmed, not chasing, for its duration
 	if ambient_armored and not provoked:
 		return   # the urchin-back: harmless until struck (REEF-FOREST-SPEC §4)
 	if _stun > 0.0:

@@ -1840,6 +1840,219 @@ func _ready() -> void:
 	check(_node_of(host8, "item-coralwood") != null, "...and the south band stands too — both halves, one load")
 	host8.queue_free()
 
+	# ============================================================
+	# M3.b — the Gods of the Road and the Wild (REEF-FOREST-SPEC §5)
+	# ============================================================
+
+	# --- both shrines stand south of the scarp, deterministic, well apart ---
+	var vessa_shrine: Node2D = null
+	var ghal_shrine: Node2D = null
+	for s in host.shrines:
+		if str(s.get_meta("god_id", "")) == "god-vessa":
+			vessa_shrine = s
+		elif str(s.get_meta("god_id", "")) == "god-ghal":
+			ghal_shrine = s
+	check(vessa_shrine != null and vessa_shrine.position == GameHost.VESSA_SHRINE_POS, "Vessa's fallen shrine stands at her deterministic spot")
+	check(ghal_shrine != null and ghal_shrine.position == GameHost.GHAL_SHRINE_POS, "Ghal's fallen shrine stands at his")
+	check(vessa_shrine.position.y > float(GameHost.SCARP_Y) and ghal_shrine.position.y > float(GameHost.SCARP_Y), "both south of the scarp")
+	check(vessa_shrine.position.distance_to(ghal_shrine.position) > 1500.0, "well apart from each other")
+	check(vessa_shrine.position.distance_to(GameHost.STAIR_OF_HULLS_POS) > 800.0 and ghal_shrine.position.distance_to(GameHost.STAIR_OF_HULLS_POS) > 800.0,
+		"and well clear of the Stair of Hulls itself")
+
+	# --- gating: neither god's altar leaks into the menu, nor casts, pre-attunement ---
+	check("work-altar-vessa" not in host.menu_works(), "Vessa's altar waits until she's kneeled to")
+	check("work-altar-ghal" not in host.menu_works(), "and so does Ghal's")
+	check(not host.intent_cast("inv-rip-current"), "no current without the Current-Runner")
+	check(not host.intent_cast("inv-shepherds-voice"), "no calm without the Shepherd")
+
+	# the file's own earlier tests have already spent the devotion budget on
+	# direct rank writes (Neris bumped to rank 2 outside the real attune() path,
+	# same trick this file uses below) — bump the ceiling here so the REAL
+	# attune() flow below has room to actually run (this is the thing under
+	# test: "verify it needs no per-god code" for a fifth and sixth god).
+	host.devotion.econ["devotion"]["ranksBudgetAtEA"] = 20
+
+	# --- kneel -> attune: the generic flow (VILLAGER-AND-GODHEAD-SPEC), zero per-god code ---
+	host.player.position = vessa_shrine.position
+	check(host.intent_interact(), "kneel at Vessa's fallen shrine")
+	check("god-vessa" in host.attuned_for(1), "Vessa is with you")
+	check("work-altar-vessa" in host.menu_works(), "her altar opens on the build menu")
+	host.player.position = ghal_shrine.position
+	check(host.intent_interact(), "kneel at Ghal's fallen shrine")
+	check("god-ghal" in host.attuned_for(1), "Ghal is with you")
+	check("work-altar-ghal" in host.menu_works(), "and so does his")
+
+	# force both to full Godhead strength for deterministic magnitude checks below
+	host.godhead.state["god-vessa"] = {"value": 100.0, "consumed": false}
+	host.godhead.state["god-ghal"] = {"value": 100.0, "consumed": false}
+
+	# --- Rip-Current: dash through, carrying a road companion/beast at heel ---
+	host.player.position = Vector2(GameHost.WORLD.x * GameHost.TILE / 2.0, float(GameHost.NORTH_H) * GameHost.TILE + GameHost.TILE * 30.0)
+	host.player.facing = Vector2.RIGHT
+	var dash_origin := host.player.position
+	host.beast.beasts[9101] = {"name": "Ridealong", "creature_id": "creature-scuttle-crab", "xp": 0.0,
+		"owner_pid": 1, "at_heel": true, "kenneled": false, "fed_today": true, "mood": "keen"}
+	var carried_beast := host._spawn_beast(9101, dash_origin + Vector2(20, 0), false)
+	check(host.intent_cast("inv-rip-current"), "Rip-Current: the old current takes you")
+	check(host.player.position.x > dash_origin.x + 300.0, "the caster lunges ~12 tiles east at full strength (dx=%.0f)" % (host.player.position.x - dash_origin.x))
+	check(carried_beast.position.distance_to(host.player.position) < 200.0, "a beast at heel within reach rides the current too")
+
+	# --- Undertow: yank the nearest hostile toward the caster ---
+	host.player.position = Vector2(GameHost.WORLD.x * GameHost.TILE / 2.0, float(GameHost.NORTH_H) * GameHost.TILE + GameHost.TILE * 60.0)
+	host.devotion.state[1]["god-vessa"].rank = 2
+	host.devotion.state[1]["god-vessa"].vigor = host.devotion.max_vigor("god-vessa")
+	var pull_target := DSEnemy.new()
+	pull_target.position = host.player.position + Vector2(200, 0)
+	pull_target.setup(host, "creature-eel-wolf")
+	host.add_child(pull_target); host.enemies.append(pull_target)
+	var pull_d0 := host.player.position.distance_to(pull_target.position)
+	check(host.intent_cast("inv-undertow"), "Undertow: for a moment, so do you")
+	check(host.player.position.distance_to(pull_target.position) < pull_d0, "the enemy is pulled closer to the caster (%.0f -> %.0f)" % [pull_d0, host.player.position.distance_to(pull_target.position)])
+
+	# --- Shepherd's Voice: pacify a hostile, AND it counts as a meal on a tameable ---
+	host.player.position = Vector2(GameHost.WORLD.x * GameHost.TILE / 2.0, float(GameHost.NORTH_H) * GameHost.TILE + GameHost.TILE * 90.0)
+	var voice_target := DSEnemy.new()
+	voice_target.position = host.player.position + Vector2(60, 0)
+	voice_target.setup(host, "creature-salt-hound")
+	host.add_child(voice_target); host.enemies.append(voice_target)
+	check(not voice_target.is_pacified(), "not yet calmed")
+	check(host.intent_cast("inv-shepherds-voice"), "The Shepherd's Voice: the beast remembers being kept")
+	check(voice_target.is_pacified(), "the hound stops being hostile — deaggro without the permanent surrender flag")
+	check(not voice_target.surrendered, "...and it is NOT a permanent surrender (a different door than mercy-kneel)")
+	check(host.message.contains("trust") or host.message.contains("calm"), "the Voice counted as a meal on a tameable species (%s)" % host.message)
+
+	# --- Blood-Scent: a HUD bearing line for the nearest hostile of any kind ---
+	host.devotion.state[1]["god-ghal"].rank = 2
+	host.devotion.state[1]["god-ghal"].vigor = host.devotion.max_vigor("god-ghal")
+	check(host.intent_cast("inv-blood-scent"), "Blood-Scent: the dried sea keeps no secrets from a nose it made")
+	check(host.blood_scent_frames > 0, "the trail is lit")
+	check(host._direction_hints().contains("blood-scent"), "...and the HUD carries a bearing line for it (%s)" % host._direction_hints())
+
+	# --- Ghal's rank reduces meals needed: rank 1 -> a hound needs 2, not 3 ---
+	host.devotion.state[1]["god-ghal"].rank = 1
+	var rank_hound := DSEnemy.new()
+	rank_hound.position = Vector2(7000, 7000)
+	rank_hound.setup(host, "creature-salt-hound")
+	host.add_child(rank_hound); host.enemies.append(rank_hound)
+	host.player.position = rank_hound.position
+	host.inventory.add(1, "item-crab-meat", 3)
+	check(host.intent_feed_wild(rank_hound), "feed toward taming with Ghal rank 1")
+	check(host.message.contains("trust 1/2"), "Ghal rank 1 discounts the hound's meals: needs 2, not 3 (%s)" % host.message)
+
+	# --- the Taming-Post doubles a meal's trust ---
+	host.devotion.state[1]["god-ghal"].rank = 0
+	host.camp_center = Vector2(7200, 7200)
+	host.player.position = host.camp_center
+	host.inventory.add(1, "item-coralwood", 10)
+	host.inventory.add(1, "item-rope", 10)
+	check(host.intent_build("work-taming-post"), "the Taming-Post stands")
+	var post_hound := DSEnemy.new()
+	post_hound.position = host.player.position + Vector2(40, 0)
+	post_hound.setup(host, "creature-salt-hound")
+	host.add_child(post_hound); host.enemies.append(post_hound)
+	host.inventory.add(1, "item-crab-meat", 3)
+	check(host.intent_feed_wild(post_hound), "feed within earshot of the Taming-Post (Ghal rank 0: a hound needs 3)")
+	check(host.message.contains("trust 2/3"), "the post doubles THIS meal's trust — 2, not 1, on the first feed (%s)" % host.message)
+
+	# --- the Stable: houses 4, and holds a beast at "content" instead of "sulking" ---
+	host.inventory.add(1, "item-coralwood", 20)
+	host.inventory.add(1, "item-reef-iron", 10)
+	host.inventory.add(1, "item-rope", 20)
+	check(host.intent_build("work-stable"), "the Stable stands")
+	check(int(host.registry.get_entity("work-stable").get("beastHouses", 0)) == 4, "houses 4 beasts, per CRAFT-AND-BUILD-SPEC Part 3's table")
+	host.village_stock.erase("item-crab-meat")   # make sure the stabled hound genuinely goes unfed
+	var stable_bid := host.beast._next_id
+	host.beast._next_id += 1
+	host.beast.beasts[stable_bid] = {"name": "Stabletest", "creature_id": "creature-salt-hound", "xp": 0.0,
+		"owner_pid": 1, "at_heel": false, "kenneled": true, "fed_today": false, "mood": "keen"}
+	host._spawn_beast(stable_bid, host.player.position, false)
+	var stable_notes := host._beast_dawn_feeding()
+	check(str(host.beast.beasts[stable_bid].mood) == "content", "a Stable prevents sulking from hunger alone (the mood floor) — held at 'content', not 'keen' (still unfed)")
+	check(stable_notes.any(func(n: String) -> bool: return n.contains("Stabletest")), "the dawn note reflects it (%s)" % ", ".join(stable_notes))
+
+	# --- Board-Road: extends the risk-leash by exactly 25% ---
+	var leash_before_road := host._task_leash("wood")
+	check(host.works.count_of("work-board-road") == 0, "no road stands yet")
+	host.inventory.add(1, "item-coralwood", 10)
+	host.inventory.add(1, "item-rope", 10)
+	check(host.intent_build("work-board-road"), "a Board-Road is laid")
+	var leash_after_road := host._task_leash("wood")
+	check(is_equal_approx(leash_after_road, leash_before_road * 1.25), "a standing road extends the leash by exactly 25%% (%.0f -> %.0f)" % [leash_before_road, leash_after_road])
+
+	# --- Porter's Post: a real villager task, joins the tables, produces at dawn ---
+	host.inventory.add(1, "item-coralwood", 10)
+	host.inventory.add(1, "item-reef-iron", 5)
+	host.inventory.add(1, "item-rope", 10)
+	check(host.intent_build("work-porters-post"), "the Porter's Post stands")
+	check("haul" in GameHost.NEED_TARGETS and GameHost.TASK_STATION.get("haul", "") == "work-porters-post", "the haul task joins NEED_TARGETS/TASK_STATION")
+	host.village_stock["item-smoked-crab"] = 50
+	host.village_stock["item-driftwood"] = 50
+	host.village_stock["item-salt"] = 50
+	host.village_stock["item-bronze-salvage"] = 50
+	host.village_stock["item-coralwood"] = 50
+	host.village_stock["item-reef-iron"] = 50
+	host.village_stock.erase("item-rope")
+	var haulers := host.villagers.filter(func(v: DSVillager) -> bool: return v.rescued and not v.is_captive and v.tribesman_id >= 0)
+	check(haulers.size() > 0, "a free villager stands ready to test the haul task")
+	if haulers.size() > 0:
+		var hauler: DSVillager = haulers[0]
+		hauler.def_class = "class-reef-runner"
+		host._assign_village_tasks()
+		check(hauler.task == "haul", "with rope at zero and every other need full, the Porter's Post task wins out (%s)" % hauler.task)
+		hauler.position = host.village_heart()
+		var rope_before := int(host.village_stock.get("item-rope", 0))
+		host._on_sim_day(host.clock.day + 1)
+		check(int(host.village_stock.get("item-rope", 0)) > rope_before, "the assigned porter hauls a modest stores bonus at dawn (SIMPLIFICATION: no real cache-to-village network, just a direct dawn bonus)")
+
+	# --- reef tasks: appear in the tables, and get picked when reef stores are empty ---
+	check("coralwood" in GameHost.NEED_TARGETS and "reef-iron" in GameHost.NEED_TARGETS, "coralwood + reef-iron joined the village task tables")
+	host.village_stock["item-rope"] = 50
+	host.village_stock.erase("item-coralwood")
+	host.village_stock.erase("item-reef-iron")
+	var reefers := host.villagers.filter(func(v: DSVillager) -> bool: return v.rescued and not v.is_captive and v.tribesman_id >= 0)
+	check(reefers.size() > 0, "a free villager to test reef tasking")
+	if reefers.size() > 0:
+		var reefer: DSVillager = reefers[0]
+		reefer.def_class = "class-reef-runner"
+		host._assign_village_tasks()
+		check(reefer.task == "coralwood" or reefer.task == "reef-iron", "with reef stores at zero and everything else full, a reef task wins out (%s)" % reefer.task)
+		check(host._task_leash(reefer.task) > GameHost.FORAGE_LEASH_FAR, "the reef leash reaches further than any B1 task ever could (%.0f)" % host._task_leash(reefer.task))
+
+	# --- eel-wolf: tameable tier 2 (WILD 6) — mercy-kneels + tames through the SAME path as the hound ---
+	check(host.abilities.score(1, "virtue-wild") >= 6, "WILD 6 already stands from the earlier hound taming above")
+	var weak_wolf := DSEnemy.new()
+	weak_wolf.position = Vector2(7500, 7500)
+	weak_wolf.setup(host, "creature-eel-wolf")
+	host.add_child(weak_wolf); host.enemies.append(weak_wolf)
+	host.stats.actors[weak_wolf].hp = 5.0
+	host.player.position = weak_wolf.position
+	check(host.intent_attack(), "the swing lands")
+	check(weak_wolf.surrendered and host.enemies.has(weak_wolf), "at WILD 6, the eel-wolf kneels instead of dying — its tame tier keys off the SAME mercy-kneel path as the hound")
+	host.inventory.add(1, "item-urchin-meat", 5)
+	check(host.intent_feed_wild(weak_wolf), "feed the kneeling eel-wolf toward taming")
+	for i in 2:   # Ghal rank 0 here (see the Taming-Post test above): tier 2 needs exactly 3 meals total — 1 + 2
+		host.clock.day += 1
+		host.intent_feed_wild(weak_wolf)
+	check(host.message.contains("TAMED"), "the eel-wolf tames (%s)" % host.message)
+	var new_wolf_beast: DSBeast = null
+	for b: DSBeast in host.beasts:
+		if b.creature_id == "creature-eel-wolf":
+			new_wolf_beast = b
+	check(new_wolf_beast != null, "a new eel-wolf beast joins the roster")
+
+	# --- the rename modal: at the kennel, a numbered pick renames the beast ---
+	if new_wolf_beast != null:
+		new_wolf_beast.kenneled = true
+		new_wolf_beast.at_heel = false
+		host.player.position = new_wolf_beast.position
+		host._kennel_rename_takes_key()
+		check(host.rename_open, "the rename modal opens on a kenneled beast nearby")
+		check(host.rename_items.size() >= 2, "the current name + at least one namePool option are offered")
+		var old_wolf_name := new_wolf_beast.display_name
+		check(host.intent_rename_beast(host.rename_beast_id, 1), "pick a new name from the pool")
+		check(new_wolf_beast.display_name != old_wolf_name and new_wolf_beast.display_name == str(host.rename_items[1]),
+			"the beast answers to its new name (%s -> %s)" % [old_wolf_name, new_wolf_beast.display_name])
+
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)
 

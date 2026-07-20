@@ -139,12 +139,25 @@ func _ready() -> void:
 	# main.gd srv_intent) — it calls the exact damage_player() path an enemy
 	# hit does, self-targeted, and the ledger line rides home on the EXISTING
 	# player_state/message channel (cl_player_state), same as any other event.
+	var death_pos: Vector2 = host.player.position
 	host.rpc_id(1, "srv_intent", "test_die", [])
 	waited = 0.0
 	while not host.message.contains("DARK TAKES YOU") and waited < 6.0:
 		await get_tree().create_timer(0.2).timeout
 		waited += 0.2
 	check(host.message.contains("DARK TAKES YOU") and host.message.contains("UR-NOTH"), "a client's own death gets the Waker's ledger line over the wire")
+
+	# ...and the client's BODY actually moves to the rest point. Clients own
+	# their own position (cl_positions skips my_pid), so before cl_warp the
+	# server relocated a remote player only on paper and their next position
+	# packet quietly undid it — a remote player never really woke anywhere.
+	var died_at := death_pos
+	waited = 0.0
+	while host.player.position.distance_to(died_at) < 8.0 and waited < 4.0:
+		await get_tree().create_timer(0.2).timeout
+		waited += 0.2
+	check(host.player.position.distance_to(died_at) >= 8.0,
+		"...and the Waker actually MOVES a remote body (was %.0f,%.0f now %.0f,%.0f)" % [died_at.x, died_at.y, host.player.position.x, host.player.position.y])
 
 	# 9. CALLINGS step params over the wire: a client's collect step gates
 	# server-side (the authoritative pack is light), then advances once the
@@ -233,5 +246,54 @@ func _ready() -> void:
 			await get_tree().create_timer(0.2).timeout
 			waited += 0.2
 		check(host.message.contains("trust 1/2"), "a client feeds a crab over the wire — the trust numbers come home (%s)" % host.message)
+
+	# 11. M3.b (REEF-FOREST-SPEC §5) over the wire: a client casts a NEW
+	# invocation (Vessa's Undertow) and the effect mirrors home. Attunement for
+	# real is a walk to a fallen shrine — test_attune calls the SAME
+	# devotion.attune() a real kneel does, twice, to reach rank 2 without
+	# modeling that whole walk over the wire (same "seed state, exercise the
+	# real path" shape as test_seed_beast above).
+	host.rpc_id(1, "srv_intent", "test_attune", ["god-vessa"])
+	await get_tree().create_timer(0.2).timeout
+	host.rpc_id(1, "srv_intent", "test_attune", ["god-vessa"])
+	waited = 0.0
+	while int(host.devotion.state.get(host.my_pid, {}).get("god-vessa", {}).get("rank", 0)) < 2 and waited < 6.0:
+		await get_tree().create_timer(0.2).timeout
+		waited += 0.2
+	check(int(host.devotion.state.get(host.my_pid, {}).get("god-vessa", {}).get("rank", 0)) == 2, "attuned to Vessa rank 2 across the wire")
+	var pull_prey: DSEnemy = null
+	for e in host.enemies:
+		if is_instance_valid(e) and not e.peaceful and not e.surrendered:
+			pull_prey = e
+			break
+	check(pull_prey != null, "a hostile is mirrored here to pull")
+	if pull_prey != null:
+		# outside AGGRO_RADIUS (170px, daytime) but inside Undertow's own pull
+		# radius (280px) — so any distance the target closes is the SPELL's
+		# doing, not ordinary chase AI catching up on its own.
+		host.player.position = pull_prey.position + Vector2(220, 0)
+		await get_tree().create_timer(0.6).timeout   # let the position stream reach the server
+		var pull_d0 := host.player.position.distance_to(pull_prey.position)
+		host.intent_cast("inv-undertow")               # relays to the server
+		waited = 0.0
+		while host.player.position.distance_to(pull_prey.position) >= pull_d0 and waited < 6.0:
+			await get_tree().create_timer(0.2).timeout
+			waited += 0.2
+		check(host.player.position.distance_to(pull_prey.position) < pull_d0,
+			"Undertow pulls the target closer — the effect mirrors home over the wire (%.0f -> %.0f)" % [pull_d0, host.player.position.distance_to(pull_prey.position)])
+
+	# 12. M3.b: a client renames a beast — server-authoritative, syncs to the
+	# client's own mirror (the fix: cl_world_sync now re-applies `name` on
+	# EVERY sync, not just when the mirror node is first created).
+	if not host.beasts.is_empty():
+		var seeded: DSBeast = host.beasts[0]   # "Wiretest", seeded by test_seed_beast above
+		var old_beast_name := seeded.display_name
+		check(host.intent_rename_beast(seeded.beast_id, 1), "the rename intent relays to the server")
+		waited = 0.0
+		while host.beasts[0].display_name == old_beast_name and waited < 6.0:
+			await get_tree().create_timer(0.2).timeout
+			waited += 0.2
+		check(host.beasts[0].display_name != old_beast_name,
+			"the client's own beast mirror shows the new name (%s -> %s)" % [old_beast_name, host.beasts[0].display_name])
 
 	_finish()

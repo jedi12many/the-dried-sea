@@ -633,5 +633,102 @@
   },
   "text": "A shelf, kept exactly like the others, in a room that dims itself politely when it's finished listening. He asks what you're willing to not need again.",
   "purpose": "GRIM: Ur-Noth's altar (B3 set-piece — the Reliquary, WORLD-SPEC). Relics displayed and offerings laid here strengthen his rites, and the room remembers you for it. Data-complete, unreachable until his fallen shrine is found in the Drop."
+ },
+ {
+  "$comment": "M3.b (REEF-FOREST-SPEC §5 / CRAFT-AND-BUILD-SPEC Part 3): Ghal's B2 growth, T1. favorTierRequired 1 follows the same data convention as salt-cellar/healing-bath/rendering-vat (favor_tier is computed but NOT yet enforced at build time anywhere in the codebase — a pre-existing gap, not introduced here). buildCost is a modest B2-material post, well under the Kennel's timber-and-rope cost. The double-meal effect is read in main.gd's intent_feed_wild/intent_beast_interact (within TAMING_POST_RADIUS of a placed instance).",
+  "id": "work-taming-post",
+  "name": "Taming-Post",
+  "godId": "god-ghal",
+  "category": "structure",
+  "favorTierRequired": 1,
+  "buildCost": [
+   {
+    "itemId": "item-coralwood",
+    "qty": 6
+   },
+   {
+    "itemId": "item-rope",
+    "qty": 4
+   }
+  ],
+  "useDetection": "taming-active",
+  "favorTrickle": 1,
+  "text": "A weathered stump, ringed with old tooth-marks that were never meant to hurt. Ghal doesn't need a cage. He needs a place you keep showing up.",
+  "purpose": "Trust meals count DOUBLE for a beast fed within earshot of the post."
+ },
+ {
+  "$comment": "M3.b: Ghal's B2 growth, T2, per CRAFT-AND-BUILD-SPEC Part 3's table row verbatim ('houses 4 beasts, mood floor'). MOOD-FLOOR DECISION (spec left it open): a Stable prevents SULKING but does not feed on its own — an unfed beast at a Stable holds at 'content', never drops to 'sulking', but never reaches 'keen' either (that still costs a real meal). Implemented in main.gd's _beast_dawn_feeding, read after beast_system.dawn() runs (the sim call is unchanged; presentation applies the floor the same way it already reads/overrides rec.mood for display).",
+  "id": "work-stable",
+  "name": "Stable",
+  "godId": "god-ghal",
+  "category": "structure",
+  "favorTierRequired": 2,
+  "buildCost": [
+   {
+    "itemId": "item-coralwood",
+    "qty": 10
+   },
+   {
+    "itemId": "item-reef-iron",
+    "qty": 4
+   },
+   {
+    "itemId": "item-rope",
+    "qty": 6
+   }
+  ],
+  "useDetection": "animal-kept",
+  "favorTrickle": 1.5,
+  "beastHouses": 4,
+  "text": "Real walls, a real roof — the Kennel's promise, kept properly. Nothing in here goes hungry unnoticed, even on the days you can't get to them.",
+  "purpose": "Houses 4 beasts. A stabled beast never sulks from hunger alone (mood floor) — it still needs a real meal to turn keen."
+ },
+ {
+  "$comment": "M3.b (CRAFT-AND-BUILD-SPEC Part 3): Vessa's B2 growth, T1. A placeable road piece — REEF-FOREST-SPEC §3/§5 wires it straight into the risk-leash (_task_leash multiplies by 1.25 while any board-road stands in the village; per-tile pathing along an actual road network is a later refinement, not this pass). favorTrickle mirrors way-beacon's own honest 'coming soon' note — useDetection names the condition, nothing sets in_use yet (same gap way-beacon already carries).",
+  "id": "work-board-road",
+  "name": "Board-Road",
+  "godId": "god-vessa",
+  "category": "infrastructure",
+  "favorTierRequired": 1,
+  "buildCost": [
+   {
+    "itemId": "item-coralwood",
+    "qty": 5
+   },
+   {
+    "itemId": "item-rope",
+    "qty": 3
+   }
+  ],
+  "useDetection": "traveler-passes",
+  "favorTrickle": 0.5,
+  "text": "Planking laid over the soft reef floor, lashed down against the tide that isn't there anymore. Vessa's shortcuts start as somebody's honest labor.",
+  "purpose": "While a Board-Road stands, villagers range 25% further on their tasks (the risk-leash extends)."
+ },
+ {
+  "$comment": "M3.b (CRAFT-AND-BUILD-SPEC Part 3): Vessa's B2 growth, T2. SIMPLIFICATION (kept honest, per the brief): a real cache-to-village hauling network is out of scope this pass — a villager assigned the 'porter' task at the post instead generates a small, direct stores bonus each dawn, representing the day's hauling in the abstract (the same 'labor becomes stores' shape every other village task already uses, TASK_ITEM/NEED_TARGETS just gains a fifth lane). See main.gd _village_dawn's porter step + NEED_TARGETS/TASK_ITEM/TASK_STATION/CLASS_SUIT.",
+  "id": "work-porters-post",
+  "name": "Porter's Post",
+  "godId": "god-vessa",
+  "category": "station",
+  "favorTierRequired": 2,
+  "buildCost": [
+   {
+    "itemId": "item-coralwood",
+    "qty": 8
+   },
+   {
+    "itemId": "item-reef-iron",
+    "qty": 3
+   },
+   {
+    "itemId": "item-rope",
+    "qty": 5
+   }
+  ],
+  "useDetection": "porter-active",
+  "favorTrickle": 1.5,
+  "text": "A sling-rack and a chalked tally of who owes whom a load. Vessa's favorite kind of worship: getting something there faster than it had any right to arrive.",
+  "purpose": "A villager assigned here hauls: a modest stores bonus each dawn, no matter the task board's usual needs."
  }
 ]
