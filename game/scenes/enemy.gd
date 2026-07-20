@@ -8,7 +8,12 @@ const ATTACK_RANGE := 30.0
 const ATTACK_COOLDOWN := 1.1
 
 const CREATURE_SPRITES := {"creature-salt-hound": "hound", "creature-scuttle-crab": "crab", "creature-old-shellback": "shellback",
-	"creature-eel-wolf": "eel_wolf", "creature-urchin-back": "urchin_back"}
+	"creature-eel-wolf": "eel_wolf", "creature-urchin-back": "urchin_back",
+	# M3.c (REEF-FOREST-SPEC §2/§4): target sprite names for the art pass —
+	# SpriteKit falls back to a tinted ColorRect for any of these until the
+	# real PNGs land, same as every other creature above did at first.
+	"creature-the-drowned": "drowned", "creature-angler-stalker": "angler_stalker",
+	"creature-anglermother": "anglermother"}
 
 var host: GameHost
 var creature_id: String
@@ -22,6 +27,16 @@ var is_boss := false
 var subduable := false  # raiders: at low HP they surrender instead of dying
 var tameable_tier := 0  # a tame-blocked, non-peaceful creature (a hound): mercy-kneel gate (Part III)
 var surrendered := false
+# M3.c (REEF-FOREST-SPEC §2/§4): data-driven off creature.nightOnly. Non-boss
+# nightOnly creatures (the Drowned, angler-stalkers) are spawned/despawned
+# wholesale by main.gd's clock tick (_sync_night_creatures) — they simply
+# don't exist by day, so this flag never needs to gate their own behavior.
+# A BOSS with nightOnly (the Anglermother) can't be despawned that cleanly
+# (her ring/keystone anchor wants a stable world position) — Q17 decided
+# DORMANT-and-unattackable by day instead (see _physics_process/is_attackable
+# below), reads better than a boss winking in and out of existence.
+var night_only := false
+var is_lure := false    # archetype "lure" (angler-stalker): main.gd spawns a false-glow decoy near it (_spawn_angler_lure)
 var spawn_pos := Vector2.ZERO   # bosses guard their ground and leash back to it
 var _cooldown := 0.0
 var _stun := 0.0
@@ -79,6 +94,8 @@ func setup(game_host: GameHost, id: String) -> void:
 	ambient_armored = creature.get("archetype", "") == "ambient-armored"
 	is_boss = creature.get("archetype", "") == "boss"
 	subduable = creature.get("archetype", "") == "raider-human"
+	night_only = bool(creature.get("nightOnly", false))
+	is_lure = creature.get("archetype", "") == "lure"
 	# a beast with a tame block that ISN'T peaceful (a hound, not a crab —
 	# crabs are fed straight, never beaten down) can be mercy-kneeled (Part III §2)
 	var tm: Dictionary = creature.get("tame", {})
@@ -87,7 +104,11 @@ func setup(game_host: GameHost, id: String) -> void:
 	host.stats.register(self, float(stats.get("hp", 20)))
 
 func _ready() -> void:
-	var size := Vector2(44, 32) if creature_id == "creature-old-shellback" else Vector2(20, 16)
+	var size := Vector2(20, 16)
+	if creature_id == "creature-old-shellback":
+		size = Vector2(44, 32)
+	elif creature_id == "creature-anglermother":
+		size = Vector2(50, 38)   # the reef's other great beast — first guess, smaller than Shellback's hull but still huge
 	_visual = SpriteKit.sprite(CREATURE_SPRITES.get(creature_id, "hound"), size, Color("cfc9ba"))
 	add_child(_visual)
 	var shape := CollisionShape2D.new()
@@ -101,9 +122,20 @@ func surrender() -> void:
 	if _visual != null:
 		_visual.modulate = Color(0.7, 0.66, 0.6)   # beaten, kneeling
 
+## REEF-FOREST-SPEC §4/Q17: a nightOnly BOSS (the Anglermother) by day — no
+## aggro, no leash-walk, no combat. Not despawned (her ring is a fixed world
+## anchor other systems name: the keystone kneel-spot, the arena-darkness
+## override) — just dormant. main.gd's intent_attack skips her via this too.
+func is_attackable() -> bool:
+	return not (night_only and is_boss and host != null and not host.clock.is_night())
+
 func _physics_process(delta: float) -> void:
 	if host == null or host.player == null or mirror:
 		return   # mirrors move by the server's word alone
+	if night_only and is_boss and not host.clock.is_night():
+		velocity = Vector2.ZERO
+		move_and_slide()
+		return   # dormant by day — her lure is the arena's only light; that IS the fight
 	if peaceful or surrendered:
 		return   # crabs have nowhere to be; a surrendered raider waits
 	if _pacify_seconds > 0.0:

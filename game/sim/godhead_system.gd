@@ -138,6 +138,16 @@ func villager_trickle_day(god_id: String, devout_count: int) -> float:
 func enshrine_remnant(god_id: String) -> float:
 	return feed(god_id, "enshrine", float(tune.get("sources", {}).get("enshrinedRemnant", 2.0)))
 
+## The keystone moment (VILLAGER-AND-GODHEAD-SPEC Part II §3, REEF-FOREST-SPEC
+## §6): a boss's death yields a keystone, kneel-dedicated to ONE attuned,
+## living god for +8% one-time, clamped to cap like any other feed. The exact
+## spec number lives in tuning (sources.keystone) rather than hardcoded here —
+## the caller (main.gd intent_dedicate_keystone) reads the RETURNED delta
+## (which may be less than 8 if the pick was already near the cap) to print
+## the UI law's exact numbers.
+func keystone_dedicate(god_id: String) -> float:
+	return feed(god_id, "keystone", float(tune.get("sources", {}).get("keystone", 8.0)))
+
 ## --- sinks: bleeding a god (§3) ----------------------------------------------------
 ## Generic entry point: amount is a UNIT COUNT (e.g. one offense, one grim
 ## rite); the per-unit rate comes from tuning. Casting is never a sink here —

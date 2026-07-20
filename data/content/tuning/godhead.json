@@ -17,7 +17,8 @@
     "dawnTithePerCravedItem": 0.05,
     "devoutVillagerTricklePerDay": 0.01,
     "enshrinedRemnant": 2.0,
-    "$comment": "dawnTithePerCravedItem and devoutVillagerTricklePerDay are the spec's exact +0.05%/item and +0.01%/day-each. enshrinedRemnant is NOT itemized by name in §3's source table (§3 only tables shrine-restore/keystone-dedication/deep-callings/rite/tithe/trickle/player-death) — used here as the nearest spec analog: the design intent stated for godhead_system.consumed() is 'enshrine feeds instead per the spec's source table', and the closest one-time small-exploration-style feed on that table is 'Restore a fallen shrine of theirs (world POI) | +2% one-time'. First guess pending Jeff's confirmation; shrine-restore POIs themselves are M3, out of scope here."
+    "keystone": 8.0,
+    "$comment": "dawnTithePerCravedItem and devoutVillagerTricklePerDay are the spec's exact +0.05%/item and +0.01%/day-each. enshrinedRemnant is NOT itemized by name in §3's source table (§3 only tables shrine-restore/keystone-dedication/deep-callings/rite/tithe/trickle/player-death) — used here as the nearest spec analog: the design intent stated for godhead_system.consumed() is 'enshrine feeds instead per the spec's source table', and the closest one-time small-exploration-style feed on that table is 'Restore a fallen shrine of theirs (world POI) | +2% one-time'. First guess pending Jeff's confirmation; shrine-restore POIs themselves are M3, out of scope here. keystone IS itemized exactly by §3/§6: 'Boss keystone dedicated to one god | +8% one-time' — godhead_system.keystone_dedicate() reads this rather than hardcoding the 8, per M3.c's own instruction."
   },
   "sinks": {
     "offenseLaidOnAltar": 0.1,

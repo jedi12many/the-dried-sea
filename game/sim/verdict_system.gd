@@ -69,3 +69,14 @@ func remnant_trade(player_id: int, god_id: String) -> void:
 
 func remnant_consume(player_id: int, god_id: String) -> void:
 	record(player_id, "remnants", -12.0, "CONSUMED a remnant of %s" % god_id)
+
+## --- the keystone moment (REEF-FOREST-SPEC §6) ---------------------------------
+## Dedicating a boss's keystone to one god is a public act of favor — worship
+## given, not taken — so it lands on the "gods" ledger (Vigor taken vs worship
+## returned), not "remnants" (which already tracks the boss's OWN remnant
+## separately via enshrine/consume above). +5.0 is not spec'd by name (§3's
+## ledger table lists inputs, not per-deed weights) — a first-guess positive
+## note, modest next to remnant_enshrine's +10, since the god-fed part of the
+## deed is godhead_system's job; this is only the ledger's memory of the choice.
+func keystone_dedicated(player_id: int, god_id: String) -> void:
+	record(player_id, "gods", 5.0, "dedicated a keystone to %s" % god_id)

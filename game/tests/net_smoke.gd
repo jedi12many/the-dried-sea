@@ -296,4 +296,34 @@ func _ready() -> void:
 		check(host.beasts[0].display_name != old_beast_name,
 			"the client's own beast mirror shows the new name (%s -> %s)" % [old_beast_name, host.beasts[0].display_name])
 
+	# 13. M3.c (REEF-FOREST-SPEC §2/§4) over the wire: force night server-side
+	# and confirm a night-only creature mirrors to the client through the SAME
+	# generic enemy_list/cl_world_sync path every other enemy already rides —
+	# no special-casing needed, "just works" the way the eel-wolf tame did.
+	host.rpc_id(1, "srv_intent", "test_force_night", [])
+	waited = 0.0
+	while waited < 6.0 and not host.enemies.any(func(e: DSEnemy) -> bool: return e.creature_id in ["creature-the-drowned", "creature-angler-stalker"]):
+		await get_tree().create_timer(0.2).timeout
+		waited += 0.2
+	check(host.enemies.any(func(e: DSEnemy) -> bool: return e.creature_id in ["creature-the-drowned", "creature-angler-stalker"]),
+		"a client sees the reef's night-only creatures mirrored after the server forces night")
+
+	# 14. M3.c: a client claims a keystone and the godhead change mirrors home.
+	# god-vessa already reached devotion rank 2 (test 11 above), but
+	# attunement bookkeeping is separate from devotion rank — grant it
+	# directly so she's the (only) ELIGIBLE pick. test_kill_boss seeds a dead
+	# boss without re-proving melee combat over the wire (already proven
+	# single-player in smoke.gd).
+	host.rpc_id(1, "srv_intent", "test_grant_attunement", ["god-vessa"])
+	host.rpc_id(1, "srv_intent", "test_kill_boss", ["creature-old-shellback"])
+	await get_tree().create_timer(0.3).timeout
+	var vessa_godhead0 := host.godhead.godhead("god-vessa")
+	check(host.intent_dedicate_keystone("creature-old-shellback", 0), "the dedicate-keystone intent relays to the server")
+	waited = 0.0
+	while host.godhead.godhead("god-vessa") <= vessa_godhead0 + 0.01 and waited < 6.0:
+		await get_tree().create_timer(0.2).timeout
+		waited += 0.2
+	check(host.godhead.godhead("god-vessa") > vessa_godhead0 + 7.0,
+		"a client's keystone dedication mirrors home: Vessa's Godhead rose ~8%% (%.1f%% -> %.1f%%)" % [vessa_godhead0, host.godhead.godhead("god-vessa")])
+
 	_finish()

@@ -1255,7 +1255,12 @@ func _ready() -> void:
 
 	# --- THE ROAD: recruit, follow, fight, downed/revive, permadeath ---------
 	for e in host.enemies.duplicate():   # a clean field, so companion movement/combat is deterministic
-		if is_instance_valid(e) and not e.peaceful:
+		# M3.c: a world boss (the Anglermother, dormant-by-day at her fixed
+		# reef ring) is never "roaming fauna" — this cleanup never meant to
+		# sweep bosses even before her; it just never mattered while Old
+		# Shellback (the only other persistent boss) was already long dead
+		# by this point in the file's own narrative.
+		if is_instance_valid(e) and not e.peaceful and not e.is_boss:
 			host.stats.unregister(e)
 			host.enemies.erase(e)
 			e.queue_free()
@@ -2052,6 +2057,201 @@ func _ready() -> void:
 		check(host.intent_rename_beast(host.rename_beast_id, 1), "pick a new name from the pool")
 		check(new_wolf_beast.display_name != old_wolf_name and new_wolf_beast.display_name == str(host.rename_items[1]),
 			"the beast answers to its new name (%s -> %s)" % [old_wolf_name, new_wolf_beast.display_name])
+
+	# ============================================================
+	# M3.c — the Dark and the Mother (REEF-FOREST-SPEC §2/§4/§6)
+	# ============================================================
+	var m3c_day0 := host.clock.day
+	var m3c_minute0 := host.clock.minute_of_day
+
+	# --- the dark: nightOnly creatures don't exist at all by day -----------------
+	host.clock.minute_of_day = 12 * 60   # noon
+	host.clock.advance(1.0)
+	check(not host._night_creatures_active, "by day, the reef's night creatures are not active")
+	check(host.enemies.filter(func(e: DSEnemy) -> bool: return e.creature_id in ["creature-the-drowned", "creature-angler-stalker"]).is_empty(),
+		"no Drowned or angler-stalkers stand by day")
+
+	# --- dusk: both nightOnly species spawn, south of the scarp ------------------
+	host.clock.minute_of_day = 22 * 60
+	host.clock.advance(1.0)
+	check(host._night_creatures_active, "night falls, and the reef's dark wakes")
+	var drowned_list := host.enemies.filter(func(e: DSEnemy) -> bool: return e.creature_id == "creature-the-drowned")
+	var stalker_list := host.enemies.filter(func(e: DSEnemy) -> bool: return e.creature_id == "creature-angler-stalker")
+	check(drowned_list.size() > 0, "the Drowned walk up out of the low places at night (%d)" % drowned_list.size())
+	check(stalker_list.size() > 0, "angler-stalkers ambush at night (%d)" % stalker_list.size())
+	check(drowned_list.all(func(e: DSEnemy) -> bool: return e.position.y > float(GameHost.SCARP_Y)), "the Drowned stand south of the scarp")
+	check(stalker_list.all(func(e: DSEnemy) -> bool: return e.position.y > float(GameHost.SCARP_Y)), "angler-stalkers stand south of the scarp too")
+
+	# --- angler-lights: a lure exists near a stalker; the Lantern marks it false ---
+	# (the Lantern's own equip state may already be either way from the M3.b
+	# tests earlier in this file — these helpers force it to a known state
+	# instead of assuming, so the test is correct regardless of what came before.)
+	var stalker: DSEnemy = stalker_list[0] as DSEnemy
+	var lure := host._nearest_angler_lure(stalker.position)
+	check(lure != null and lure.position.distance_to(stalker.position) < 60.0, "a false-glow lure stands near the stalker, not on top of it")
+	if host.equipped_item(1, "trinket") == "item-lighthouse-keepers-lantern":
+		host.equip_toggle(1, "item-lighthouse-keepers-lantern")   # force UNequipped for the baseline check
+	host.player.position = lure.position   # right on top of it, but bare-handed
+	host._update_angler_lures()
+	check(not bool(lure.get_meta("revealed", false)), "even standing right on it, bare-handed the lure reads as an ordinary light")
+	check(host._direction_hints().contains("a light glimmers"), "...and the HUD carries the tell, undisguised (%s)" % host._direction_hints())
+	if host.equipped_item(1, "trinket") != "item-lighthouse-keepers-lantern":
+		host.equip_toggle(1, "item-lighthouse-keepers-lantern")   # force EQUIPPED for the reveal check
+	host._update_angler_lures()
+	check(bool(lure.get_meta("revealed", false)), "wearing the Lantern, within its radius at night, the lure is revealed")
+	var lure_label: Label = lure.get_meta("label", null)
+	check(lure_label != null and lure_label.text.contains("FALSE"), "the nameplate marks it false in text — testable headlessly (%s)" % (lure_label.text if lure_label != null else "?"))
+	check(host._direction_hints().contains("exposed"), "...and the HUD tell changes too (%s)" % host._direction_hints())
+	host.player.position = lure.position + Vector2(500, 500)   # still worn, but out of radius
+	host._update_angler_lures()
+	check(not bool(lure.get_meta("revealed", false)), "wearing the Lantern but too far away, the reveal doesn't reach")
+	if host.equipped_item(1, "trinket") == "item-lighthouse-keepers-lantern":
+		host.equip_toggle(1, "item-lighthouse-keepers-lantern")   # unequip, tidy up for what follows
+
+	# --- dawn: both species (and their lures) are gone again ---------------------
+	host.clock.minute_of_day = 6 * 60
+	host.clock.advance(1.0)
+	check(not host._night_creatures_active, "dawn clears the reef's dark")
+	check(host.enemies.filter(func(e: DSEnemy) -> bool: return e.creature_id in ["creature-the-drowned", "creature-angler-stalker"]).is_empty(),
+		"gone again by dawn")
+	check(host.angler_lures.is_empty(), "the lure goes with its stalker")
+
+	# --- the Anglermother: her ring stands from world-gen, boss or no boss -------
+	var mother := _enemy_of(host, "creature-anglermother")
+	check(mother != null, "the Anglermother's ring stands")
+	host.clock.minute_of_day = 12 * 60
+	host.clock.advance(1.0)
+	check(mother != null and not mother.is_attackable(), "by day she is dormant — unattackable, not despawned")
+	host.player.position = mother.position
+	host.stats.actors[1].stamina = 60.0
+	var mother_hp0 := host.stats.hp(mother)
+	host.intent_attack()
+	check(host.stats.hp(mother) == mother_hp0, "no damage reaches a dormant boss by day, even standing right on her")
+
+	# --- fightable at night, and her arena is darker than the surrounding reef ---
+	host.clock.minute_of_day = 22 * 60
+	host.clock.advance(1.0)
+	check(mother.is_attackable(), "at night, she wakes — fightable")
+	var arena_tint := host._tint_for_minute(22 * 60, GameHost.ANGLERMOTHER_RING_POS.y, GameHost.ANGLERMOTHER_RING_POS.x)
+	var nearby_tint := host._tint_for_minute(22 * 60, GameHost.ANGLERMOTHER_RING_POS.y, GameHost.ANGLERMOTHER_RING_POS.x - 1500.0)
+	var arena_sum := arena_tint.r + arena_tint.g + arena_tint.b
+	var nearby_sum := nearby_tint.r + nearby_tint.g + nearby_tint.b
+	check(arena_sum < nearby_sum, "her arena reads darker than the surrounding reef, same hour (%.2f < %.2f)" % [arena_sum, nearby_sum])
+
+	# --- the kill (test-accelerated, same grammar as Old Shellback's) ------------
+	host.player.position = mother.position + Vector2(40, 0)
+	host.stats.damage(mother, 1580.0)
+	mother.on_hit()
+	host.stats.actors[1].stamina = 60.0
+	var mother_remnant0 := host.inventory.count(1, "item-remnant-anglermother")
+	var mtries := 0
+	while host.inventory.count(1, "item-remnant-anglermother") == mother_remnant0 and mtries < 20:
+		host.stats.actors[1].stamina = 60.0
+		host.intent_attack()
+		mtries += 1
+		await get_tree().physics_frame
+	check(host.inventory.count(1, "item-remnant-anglermother") == mother_remnant0 + 1, "her remnant falls — HER own remnant, not a placeholder pointing at Shellback's")
+	check(str(host.registry.get_entity("item-remnant-anglermother").get("remnantOf", "")) == "god-ghal",
+		"and it is remnantOf GHAL — the bug that would have shipped (a Halor remnant from her own bossNotes' admitted placeholder)")
+	check(host.bosses_dead.get("creature-anglermother", false), "her per-boss dead flag is set")
+	check(host.bosses_dead.get("creature-old-shellback", false), "...and Shellback's stays independently true — per-boss, not a shared bool")
+
+	# --- consuming her remnant consumes GHAL, not Halor (the fixed data bug, proven end to end) ---
+	host.inventory._inv(1).erase("item-remnant-shellback")   # defensive: nothing else competes for intent_consume_remnant's "first remnant found"
+	check(not host.godhead.is_consumed("god-ghal"), "Ghal stands untouched, so far")
+	check(host.intent_consume_remnant(), "the warm voice gets its way, again")
+	check(host.godhead.is_consumed("god-ghal") and host.godhead.godhead("god-ghal") == 0.0, "GHAL locks at 0 forever — the real remnantOf, read off data, not a hardcoded id")
+	check(host.godhead.is_consumed("god-halor"), "Halor, meanwhile, is untouched by THIS act — still exactly as consumed as he already was, no double-dip")
+
+	# --- the keystone moment (REEF-FOREST-SPEC §6) -------------------------------
+	# Shellback's RETROACTIVE keystone: he fell long before keystones existed in
+	# this build — "the game pays its debts": his kneel-spot is simply unclaimed.
+	check(host.bosses_dead.get("creature-old-shellback", false), "Shellback died earlier in this very run")
+	host.player.position = GameHost.BOSS_RING_POS
+	check(host._keystone_takes_e() == "creature-old-shellback", "his retroactive kneel-spot stands, unclaimed")
+	check(host.current_prompt() == "[E] Dedicate the keystone", "the prompt reads like a shrine's kneel-prompt")
+	host.godhead.state["god-maren"] = {"value": 20.0, "consumed": false}   # deterministic footing for the exact-numbers check below
+	host._toggle_keystone(true, "creature-old-shellback")
+	check(host.keystone_open, "the modal opens")
+	check("god-halor" not in host.keystone_items, "a consumed god (Halor) never appears in the list")
+	check("god-ghal" not in host.keystone_items, "...and neither does Ghal, consumed just above")
+	check("god-maren" in host.keystone_items, "Maren — attuned and living — IS offered")
+	var maren_idx: int = host.keystone_items.find("god-maren")
+	check(host.intent_dedicate_keystone("creature-old-shellback", maren_idx), "dedicate Shellback's keystone to Maren")
+	check(is_equal_approx(host.godhead.godhead("god-maren"), 28.0), "exactly +8%% landed (20%% -> 28%%, well under cap)")
+	check(host.message.contains("+8%") and host.message.contains("MAREN") and host.message.contains("20%") and host.message.contains("28%") and host.message.contains("cap"),
+		"the confirmation prints the numbers, UI law (%s)" % host.message)
+	check(host.keystones_claimed.get("creature-old-shellback", false), "claimed — one per boss per world")
+	check(not host.intent_dedicate_keystone("creature-old-shellback", maren_idx), "cannot be claimed twice")
+	check(host._keystone_takes_e() == "", "and his ring no longer offers [E]")
+
+	# --- a cap-limited pick: the Anglermother's keystone, dedicated near the cap ---
+	check(host.bosses_dead.get("creature-anglermother", false), "she's dead too, now")
+	host.player.position = GameHost.ANGLERMOTHER_RING_POS
+	check(host._keystone_takes_e() == "creature-anglermother", "her kneel-spot stands, unclaimed")
+	var gh_cap := host.godhead.cap()
+	host.godhead.state["god-neris"] = {"value": gh_cap - 5.0, "consumed": false}   # 5 short of the cap: an 8-point feed must clamp to 5
+	host._toggle_keystone(true, "creature-anglermother")
+	check("god-neris" in host.keystone_items, "Neris — attuned and living — is offered")
+	var neris_idx: int = host.keystone_items.find("god-neris")
+	check(host.intent_dedicate_keystone("creature-anglermother", neris_idx), "dedicate her keystone to Neris")
+	check(is_equal_approx(host.godhead.godhead("god-neris"), gh_cap), "clamped AT the cap, not a flat +8 past it")
+	check(host.message.contains("+5%") and not host.message.contains("+8%"), "the clamped pick prints the number that actually landed, not a hardcoded 8 (%s)" % host.message)
+	check(host.keystones_claimed.get("creature-anglermother", false), "claimed")
+
+	# --- save/load: per-boss dead flags AND keystone claims round-trip ------------
+	host.save_game()
+	var host9: GameHost = load("res://scenes/main.tscn").instantiate()
+	host9.skip_autoload = true
+	host9.save_path = host.save_path
+	add_child(host9)
+	await get_tree().physics_frame
+	host9.load_game()
+	check(host9.bosses_dead.get("creature-old-shellback", false) and host9.bosses_dead.get("creature-anglermother", false),
+		"both per-boss dead flags survive save/load, independently")
+	check(host9.keystones_claimed.get("creature-old-shellback", false) and host9.keystones_claimed.get("creature-anglermother", false),
+		"...and both keystone claims too")
+	check(_enemy_of(host9, "creature-anglermother") == null, "her body stays gone across save/load, same law as Shellback's")
+	host9.queue_free()
+
+	# --- an OLD save's single boss_dead:true migrates to Shellback-dead ONLY ------
+	var oldsave: Dictionary = SaveSystem.read_file(host.save_path)
+	(oldsave.game as Dictionary).erase("bosses_dead")
+	(oldsave.game as Dictionary).erase("keystones_claimed")
+	(oldsave.game as Dictionary)["boss_dead"] = true
+	SaveSystem.write_file("user://smoke-oldboss-save.json", oldsave)
+	var host10: GameHost = load("res://scenes/main.tscn").instantiate()
+	host10.skip_autoload = true
+	host10.save_path = "user://smoke-oldboss-save.json"
+	add_child(host10)
+	await get_tree().physics_frame
+	host10.load_game()
+	check(host10.bosses_dead.get("creature-old-shellback", false), "an old boss_dead:true migrates to Shellback-dead")
+	check(not host10.bosses_dead.get("creature-anglermother", false), "...and ONLY Shellback — the old flag never meant her")
+	check(not host10.keystones_claimed.get("creature-old-shellback", false), "his retroactive keystone stands unclaimed on this migrated world")
+	host10.queue_free()
+
+	# --- wait:"night" gates a calling by day, passes at night ---------------------
+	host.callings.clear()
+	host.registry.by_id["calling-smoke-night"] = {"id": "calling-smoke-night", "title": "Smoke Night",
+		"tier": "vignette", "source": "rumor", "giver": {"name": "t", "wound": "t"},
+		"steps": [{"id": "n1", "type": "wait", "text": "t", "params": {"until": "night"}, "next": null}],
+		"echo": {"text": "t"}, "status": "draft"}
+	host._active_callings(1).append({"id": "calling-smoke-night", "step": "n1", "since_day": host.clock.day})
+	host.clock.minute_of_day = 12 * 60
+	host.journal_interact(1, 0)
+	check(str(host._active_callings(1)[0].step) == "n1", "a wait:night step holds by day")
+	check(host.message.contains("has not yet come"), "and the nudge speaks night, not timers (%s)" % host.message)
+	host.clock.minute_of_day = 22 * 60
+	host.journal_interact(1, 0)
+	check("calling-smoke-night" in host._done_callings(1), "night falls, the vigil completes")
+	host.registry.by_id.erase("calling-smoke-night")
+	host.callings.clear(); host.callings_done.clear()
+
+	# set/restore the clock explicitly, as instructed — this whole block forced night repeatedly
+	host.clock.day = m3c_day0
+	host.clock.minute_of_day = m3c_minute0
+	host.clock.advance(1.0)
 
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)

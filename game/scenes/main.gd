@@ -112,6 +112,11 @@ var rename_open := false
 var rename_beast_id := -1
 var rename_items: Array = []   # numbered choices: current name, then the species' namePool
 
+# M3.c: the keystone modal (REEF-FOREST-SPEC §6), house-modal style (_make_modal)
+var keystone_open := false
+var keystone_boss_id := ""     # which dead boss's ring this kneel-prompt is for
+var keystone_items: Array = [] # numbered choices: attuned, living (not guttered/consumed) gods
+
 # CALLINGS — the per-player quest journal
 var callings: Dictionary = {}        # pid -> Array of {id, step}
 var callings_done: Dictionary = {}   # pid -> Array of calling ids
@@ -190,7 +195,12 @@ var camp_ring: Line2D
 var save_path := "user://dried-sea-save.json"
 var skip_autoload := false        # tests and --fresh runs start clean
 var harvested_indices: Array = [] # which resource nodes are gone
-var boss_dead := false
+# M3.c (REEF-FOREST-SPEC §9/§6, data bug 2): was a single global `boss_dead`
+# bool — fine with one boss, wrong with two. Now per-boss, keyed by creature
+# id. Save migration (load_game): an old save's `boss_dead: true` (the only
+# boss that ever existed then) migrates to {"creature-old-shellback": true}.
+var bosses_dead: Dictionary = {}   # creature_id -> bool
+var keystones_claimed: Dictionary = {}   # creature_id -> bool (REEF-FOREST-SPEC §6)
 var node_defs: Array = []         # deterministic layout: storms respawn from this
 var _static_node_def_count := 0   # M3.a: set once boot-time world-gen (both bands) finishes; _world_sync's extra_defs only needs to ride indices minted AFTER this (boss hoard, corpse drops) — the deterministic base regenerates identically client-side for free
 
@@ -250,6 +260,28 @@ const SOUTH_ENEMY_SEED := 2300
 const SOUTH_NODE_COUNTS := {
 	"item-coralwood": 10, "item-reef-iron": 8, "item-pearl": 5, "item-anemone-silk": 6,
 }
+
+# M3.c (REEF-FOREST-SPEC §2/§4): the dark. NIGHT-ONLY, non-boss reef creatures
+# don't exist by day at all — spawned wholesale at dusk, despawned wholesale
+# at dawn (_sync_night_creatures), a SEPARATE seeded pass from every other
+# spawn above (SOUTH_ENEMY_SEED's eel-wolves/urchin-backs are unaffected —
+# "night spawns are their own pass"). Counts are data-driven off any
+# creature.nightOnly flag (_night_creature_spawn_list) so a future B3 nightOnly
+# creature gets the same on/off behavior for free; the counts themselves are
+# first-guess code consts here, same convention as SOUTH_EEL_WOLF_COUNT etc.
+# above — "many" (Drowned) vs "fewer, ambush" (angler-stalkers), per WORLD-SPEC.
+const NIGHT_CREATURE_SEED := 2500
+const NIGHT_CREATURE_COUNTS := {"creature-the-drowned": 6, "creature-angler-stalker": 4}
+const NIGHT_CREATURE_DEFAULT_COUNT := 4   # any future nightOnly creature not yet tuned by name
+var night_creatures: Array[DSEnemy] = []
+var _night_creatures_active := false
+# the stalker's false-glow decoy (REEF-FOREST-SPEC §4/B): client visual + a HUD
+# tell (_direction_hints), "pathing bait rather than a creature" — a bare
+# Node2D near the stalker, not a DSEnemy (it has no AI, no collision, no HP).
+# The Lantern's glow reveals it within its radius (_lure_is_revealed) — the
+# trinket's promised payoff, "the dark biomes respect it."
+var angler_lures: Array[Node2D] = []
+const LURE_OFFSET := Vector2(36.0, -22.0)   # "placed near the stalker" — not on top of it
 const SOUTH_CANOPY_PILLAR_COUNT := 22
 const SOUTH_EEL_WOLF_COUNT := 5
 const SOUTH_URCHIN_BACK_COUNT := 6
@@ -268,6 +300,26 @@ const DROWNED_RUIN_3_POS := Vector2(TILE * 40, TILE * 118)
 # far end of the band). Distance between the two: ~2640px.
 const VESSA_SHRINE_POS := Vector2(TILE * 8, NORTH_H * TILE + TILE * 30)
 const GHAL_SHRINE_POS := Vector2(WORLD.x * TILE - TILE * 8, NORTH_H * TILE + TILE * 50)
+
+# M3.c (REEF-FOREST-SPEC §4/§6): the Anglermother's fixed reef arena — deep in
+# the band, well clear of every other anchor (>700px from the nearest: the
+# Stair, both M3.b shrines, the drowned-town ruin clusters). A DETERMINISTIC
+# constant like the other named anchors above, not seeded-random — her ring,
+# the keystone kneel-spot, and the arena-darkness override (_tint_for_minute)
+# all want one stable position that exists from world-gen regardless of the
+# hour (she is dormant by day at this same spot, never despawned — see
+# enemy.gd is_attackable/_physics_process).
+const ANGLERMOTHER_RING_POS := Vector2(TILE * 60, TILE * 108)
+const ANGLERMOTHER_ARENA_RADIUS := 420.0   # first guess: a fight-sized clearing, well inside her boss-leash range
+
+# M3.c §6: every boss ring that can carry a keystone. Shellback's is here even
+# though he predates keystones entirely — REEF-FOREST-SPEC's own instruction
+# ("the game pays its debts"): an unclaimed dict entry just means "not yet
+# claimed", which is exactly what an old world that never had the chance IS.
+const KEYSTONE_RINGS := {
+	"creature-old-shellback": BOSS_RING_POS,
+	"creature-anglermother": ANGLERMOTHER_RING_POS,
+}
 
 # STYLE-BIBLE salt-shallows palette (placeholder blocks, right colors)
 const ITEM_COLORS := {
@@ -541,7 +593,8 @@ func save_game() -> void:
 		"camp": [camp_center.x, camp_center.y] if camp_center != Vector2.INF else null,
 		"rites_done_today": rites_done_today.duplicate(),
 		"harvested_indices": harvested_indices.duplicate(),
-		"boss_dead": boss_dead,
+		"bosses_dead": bosses_dead.duplicate(),
+		"keystones_claimed": keystones_claimed.duplicate(),
 		"abilities": abilities.state.duplicate(true),
 		"consumed_hp": consumed_hp.duplicate(true),
 		"equipped": equipped.duplicate(true),
@@ -647,24 +700,36 @@ func load_game() -> void:
 		var inst: Dictionary = works.placed[inst_id]
 		_spawn_work_visual(int(inst_id), str(inst.work_id), Vector2(float(inst.get("x", 0)), float(inst.get("y", 0))), chapel_dict)
 	_recompute_memorial()
-	boss_dead = bool(g.get("boss_dead", false))
+	# M3.c migration (data bug 2): a single global boss_dead -> per-boss
+	# bosses_dead, keyed by creature id. An old save's boss_dead:true meant
+	# Shellback — the only boss that existed then — so it migrates to exactly
+	# that entry; a save already on the new shape just carries its dict over.
+	if g.has("bosses_dead"):
+		bosses_dead = (g.get("bosses_dead", {}) as Dictionary).duplicate()
+	else:
+		bosses_dead = {"creature-old-shellback": true} if bool(g.get("boss_dead", false)) else {}
+	keystones_claimed = (g.get("keystones_claimed", {}) as Dictionary).duplicate()
 	if g.has("abilities"):
 		abilities.state = SaveSystem._int_keys(g.get("abilities", {}))
 	else:
 		# pre-Tally save: back-pay everything the flats already owe this player
-		var back_pay := 6 + clock.day * 2 + (2 if boss_dead else 0) + (g.get("attuned_gods", []) as Array).size() \
+		var back_pay := 6 + clock.day * 2 + (2 if bosses_dead.get("creature-old-shellback", false) else 0) + (g.get("attuned_gods", []) as Array).size() \
 			+ (1 if bool(g.get("survivor", {}).get("rescued", false)) else 0)
 		abilities.state[1] = {"earned": back_pay, "alloc": {}}
 		message += "\nThe flats have been keeping count: %d TEMPER owed. [T] to spend it." % back_pay
 	consumed_hp = SaveSystem._int_keys(g.get("consumed_hp", {})) if g.has("consumed_hp") else {1: float(g.get("consumed_hp_bonus", 0.0))}
 	equipped = SaveSystem._int_keys(g.get("equipped", {}))
 	_recompute_vitals()
-	if boss_dead:
-		for e in enemies.duplicate():
-			if is_instance_valid(e) and e.is_boss:
-				stats.unregister(e)
-				enemies.erase(e)
-				e.queue_free()
+	for e in enemies.duplicate():
+		if is_instance_valid(e) and e.is_boss and bool(bosses_dead.get(e.creature_id, false)):
+			stats.unregister(e)
+			enemies.erase(e)
+			e.queue_free()
+	# night-only creatures (REEF-FOREST-SPEC §2/§4): re-derive from the loaded
+	# clock rather than persisting them — they're fully ephemeral (gone by
+	# dawn), so a save/load just needs to re-sync to whatever hour it landed on.
+	_night_creatures_active = false
+	_sync_night_creatures()
 	var sv: Dictionary = g.get("survivor", {})
 	if bool(sv.get("rescued", false)) and survivor != null:
 		survivor.rescued = true
@@ -806,6 +871,8 @@ func current_prompt() -> String:
 	for s in shrines:
 		if player.position.distance_to(s.position) < interact_range() and s.get_meta("god_id") not in attuned_for(my_pid):
 			return "[E] Kneel"
+	if _keystone_takes_e() != "":
+		return "[E] Dedicate the keystone"
 	if player.position.distance_to(LANTERN_WRECK_POS) < interact_range() and not lantern_wreck_inspected.get(my_pid, false):
 		return "[E] Inspect the wreck"
 	if survivor != null and not survivor.rescued and player.position.distance_to(survivor.position) < interact_range():
@@ -1042,6 +1109,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			_toggle_rename(false)
 			return
 		return   # the naming holds your attention; other keys wait
+	if keystone_open and event is InputEventKey and event.pressed:
+		var kkey := (event as InputEventKey).physical_keycode
+		if kkey >= KEY_1 and kkey <= KEY_9:
+			var kidx := int(kkey - KEY_1)
+			if kidx < keystone_items.size():
+				intent_dedicate_keystone(keystone_boss_id, kidx)
+				_toggle_keystone(false)
+			return
+		if kkey == KEY_ESCAPE or kkey == KEY_E:
+			sfx("ui")
+			_toggle_keystone(false)
+			return
+		return   # the keystone holds your attention; other keys wait
 	if event.is_action_pressed("interact"):
 		# standing at an altar, E opens the Offertory (the god's inventory);
 		# a pending chapel rite that's closer keeps its claim on E
@@ -1054,6 +1134,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		if drill >= 0 and not menu_open and altar < 0:
 			sfx("ui")
 			_toggle_drill(true, drill)
+			return
+		var keystone_boss := _keystone_takes_e()
+		if keystone_boss != "" and not menu_open and altar < 0 and drill < 0:
+			sfx("ui")
+			_toggle_keystone(true, keystone_boss)
 			return
 		intent_interact()
 	elif event.is_action_pressed("craft"):
@@ -2598,8 +2683,8 @@ func intent_attack() -> bool:
 	var target: DSEnemy = null
 	var best := ATTACK_RANGE
 	for e in enemies:
-		if not is_instance_valid(e):
-			continue
+		if not is_instance_valid(e) or not e.is_attackable():
+			continue   # a nightOnly boss dormant by day (the Anglermother) can't even be targeted
 		var d := acting_pos().distance_to(e.position)
 		if d < best:
 			best = d
@@ -2874,21 +2959,26 @@ func _on_enemy_killed(enemy: DSEnemy) -> void:
 			qty += int(abilities.mod_add(acting_pid, "crab-bonus-drop"))  # the respectful way
 		inventory.add(acting_pid, str(drop.itemId), qty)
 	if enemy.is_boss:
-		boss_dead = true
+		bosses_dead[enemy.creature_id] = true   # M3.c: per-boss now, not a single global flag
 		abilities.earn(acting_pid, 2)   # nothing tempers like a king
-		# the wreck-ring opens: his hoard becomes salvage ground
-		var hoard_rng := RandomNumberGenerator.new()
-		hoard_rng.seed = 77
-		for i in 6:
-			var item := "item-bronze-salvage" if i % 2 == 0 else "item-wreck-timber"
-			var pos := enemy.spawn_pos + Vector2(hoard_rng.randf_range(-120, 120), hoard_rng.randf_range(-100, 100))
-			var def_idx := node_defs.size()
-			node_defs.append({"item_id": item, "pos": pos, "idx": def_idx})
-			_spawn_one_node(item, pos, def_idx)
+		if enemy.creature_id == "creature-old-shellback":
+			# the wreck-ring opens: his hoard becomes salvage ground (Shellback
+			# only — the Anglermother's reef arena has no wreck to salvage)
+			var hoard_rng := RandomNumberGenerator.new()
+			hoard_rng.seed = 77
+			for i in 6:
+				var item := "item-bronze-salvage" if i % 2 == 0 else "item-wreck-timber"
+				var pos := enemy.spawn_pos + Vector2(hoard_rng.randf_range(-120, 120), hoard_rng.randf_range(-100, 100))
+				var def_idx := node_defs.size()
+				node_defs.append({"item_id": item, "pos": pos, "idx": def_idx})
+				_spawn_one_node(item, pos, def_idx)
 	var remnant_id: String = creature.get("remnantItemId", "")
 	if remnant_id != "":
 		inventory.add(acting_pid, remnant_id, 1)
-		message = "%s falls — the oldest sailor left, out of his depth at last. His wreck-ring is yours to salvage.\nSomething divine remains in him. A warm, reasonable voice: 'They'd ask you to feed it to them. I only ever ask you to eat.'\n[E] at a chapel to ENSHRINE it — or [X] to consume it. Some doors only open once." % str(creature.name)
+		if enemy.creature_id == "creature-old-shellback":
+			message = "%s falls — the oldest sailor left, out of his depth at last. His wreck-ring is yours to salvage.\nSomething divine remains in him. A warm, reasonable voice: 'They'd ask you to feed it to them. I only ever ask you to eat.'\n[E] at a chapel to ENSHRINE it — or [X] to consume it. Some doors only open once." % str(creature.name)
+		else:
+			message = "%s goes dark and still — the lure gutters out, and for the first time the water here is just water.\nSomething divine remains in her: Old Ghal's own strength, embodied in the reef's great mother. A warm, reasonable voice: 'They'd ask you to feed it to them. I only ever ask you to eat.'\n[E] at a chapel to ENSHRINE it — or [X] to consume it. Some doors only open once." % str(creature.name)
 	# Arms XP (VILLAGER-AND-GODHEAD-SPEC Part I §2): the killing blow OR simply
 	# being in the fight earns kill-assist credit — covers wardens on duty,
 	# road companions, and anyone else classed and close enough to have helped.
@@ -2955,6 +3045,91 @@ func intent_enshrine(god_id_of_chapel: String) -> bool:
 		_refresh_hud()
 		return true
 	return false
+
+## --- the keystone moment (REEF-FOREST-SPEC §6, VILLAGER-AND-GODHEAD-SPEC Part II §3) ---
+## A dead boss's ring: BOSS_RING_POS (Shellback, retroactive — his kneel-spot
+## stands unclaimed for any world where he died before keystones existed) and
+## ANGLERMOTHER_RING_POS. Which gods a kneeling player may dedicate the
+## keystone to: attuned to THEM, and living — not guttered (godhead <= 0) and
+## not consumed (godhead_system.is_consumed). Same "attuned, living" filter is
+## used both to render the modal and to validate the pick server-side.
+func _keystone_eligible_gods(pid: int) -> Array:
+	var out: Array = []
+	for god_id: String in attuned_for(pid):
+		if not godhead.is_consumed(god_id) and not godhead.is_guttered(god_id):
+			out.append(god_id)
+	return out
+
+## Which dead boss's keystone (if any) stands unclaimed within [E] reach right
+## now. Returns the creature id, or "" — mirrors _drill_takes_e/_offertory_takes_e's
+## "takes_e" shape (a pure lookup, no mutation).
+func _keystone_takes_e() -> String:
+	for creature_id: String in KEYSTONE_RINGS:
+		if not bool(bosses_dead.get(creature_id, false)):
+			continue
+		if bool(keystones_claimed.get(creature_id, false)):
+			continue
+		if acting_pos().distance_to(KEYSTONE_RINGS[creature_id]) < interact_range():
+			return creature_id
+	return ""
+
+func _toggle_keystone(open: bool, creature_id: String = "") -> void:
+	keystone_open = open
+	keystone_boss_id = creature_id if open else ""
+	var m: Dictionary = modals.get("keystone", {})
+	if m.is_empty():
+		return
+	(m.root as Control).visible = open
+	if not open:
+		return
+	_render_keystone()
+
+func _render_keystone() -> void:
+	var m: Dictionary = modals.get("keystone", {})
+	if m.is_empty() or not keystone_open:
+		return
+	var boss_name := str(registry.get_entity(keystone_boss_id).get("name", keystone_boss_id))
+	keystone_items = _keystone_eligible_gods(my_pid)
+	var cap := godhead.cap()
+	var lines: Array[String] = ["%s's keystone waits here, unclaimed." % boss_name, "",
+		"Dedicate it to ONE god — +8%% one-time, inside the cap (%.0f%%):" % cap]
+	if keystone_items.is_empty():
+		lines.append("  (you are attuned to no living god right now)")
+	for i in keystone_items.size():
+		var god_id: String = keystone_items[i]
+		var god_name := str(registry.get_entity(god_id).name).to_upper()
+		lines.append("  %d. %s — %.0f%%" % [i + 1, god_name, godhead.godhead(god_id)])
+	(m.body as Label).text = "\n".join(lines)
+	(m.footer as Label).text = "[1-%d] dedicate   ·   [E]/[ESC] close" % maxi(keystone_items.size(), 1)
+
+## Server-authoritative: recomputes the SAME deterministic eligible-gods list
+## off current attunement/godhead state (not the client's cached render), same
+## justification as intent_rename_beast's _rename_offer recomputation. One
+## keystone per boss per world — keystones_claimed locks it after the first pick.
+func intent_dedicate_keystone(creature_id: String, idx: int) -> bool:
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "dedicate_keystone", [creature_id, idx])
+		return true
+	if not bool(bosses_dead.get(creature_id, false)) or bool(keystones_claimed.get(creature_id, false)):
+		return false
+	var eligible := _keystone_eligible_gods(acting_pid)
+	if idx < 0 or idx >= eligible.size():
+		return false
+	var god_id: String = eligible[idx]
+	var old_val := godhead.godhead(god_id)
+	var delta := godhead.keystone_dedicate(god_id)
+	var new_val := godhead.godhead(god_id)
+	keystones_claimed[creature_id] = true
+	verdict.keystone_dedicated(acting_pid, god_id)
+	var god_name := str(registry.get_entity(god_id).name).to_upper()
+	# UI law (REEF-FOREST-SPEC §6): the prompt/confirmation print the numbers —
+	# "+8% — MAREN 31% -> 39% (cap 70%)". `delta` (not a hardcoded 8) so a
+	# cap-clamped pick prints the number that ACTUALLY landed.
+	message = "+%.0f%% — %s %.0f%% -> %.0f%% (cap %.0f%%)" % [delta, god_name, old_val, new_val, godhead.cap()]
+	_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+	return true
 
 func intent_build(work_id: String) -> bool:
 	if net_mode == "client":
@@ -3557,6 +3732,7 @@ func _calling_anchor_pos(anchor_name: String) -> Vector2:
 		"wreck-mid": return WRECK_MID_POS
 		"wreck-east": return WRECK_EAST_POS
 		"boss-ring": return BOSS_RING_POS
+		"anglermother-ring": return ANGLERMOTHER_RING_POS
 		"village": return village_heart()
 		"brine-pool": return _nearest_brine_pool(acting_pos())
 		"trench-edge": return TRENCH_EDGE_POS
@@ -3616,6 +3792,12 @@ func _step_met(pid: int, entry: Dictionary, step: Dictionary) -> Dictionary:
 				var since := int(entry.get("since_day", clock.day))
 				var elapsed := maxi(0, clock.day - since)
 				return {"met": elapsed >= need, "progress": "%d/%d days kept" % [mini(elapsed, need), need]}
+			elif until == "night":
+				# Open Q14, decided YES (REEF-FOREST-SPEC §7/§10): Drowned-country
+				# vigils that only make sense after dark. clock.is_night() is the
+				# same threshold every other night-gated system reads (SimClock.is_night_at).
+				var here_night := clock.is_night()
+				return {"met": here_night, "progress": "night has fallen" if here_night else "the night has not yet come"}
 			return {"met": true, "progress": ""}
 		"goto", "escort", "talk":
 			var near := str(params.get("near", params.get("at", "")))
@@ -5298,6 +5480,13 @@ func _test_seed_beast(pid: int) -> void:
 		"owner_pid": pid, "at_heel": true, "kenneled": false, "fed_today": true, "mood": "keen"}
 	_spawn_beast(id, avatars.get(pid, player.position), true)
 
+## test hook (net_smoke.gd, M3.c): jump the clock into night and force an
+## immediate re-sync — see srv_intent's "test_force_night" case.
+func _test_force_night() -> void:
+	clock.minute_of_day = 22 * 60
+	_night_creatures_active = false
+	_sync_night_creatures()
+
 func _enemy_by_nid(nid: int) -> DSEnemy:
 	for e in enemies:
 		if is_instance_valid(e) and _enemy_nid(e) == nid:
@@ -5415,7 +5604,8 @@ func _storm_dawn() -> void:
 		enemies.append(crab)
 		crabs += 1
 	# the king is gone: scavengers fill a throne faster than grief does
-	var hound_cap := 8 if boss_dead else 6
+	# (Shellback specifically — the Salt Shallows' own apex, not any boss anywhere)
+	var hound_cap := 8 if bosses_dead.get("creature-old-shellback", false) else 6
 	while hounds < hound_cap:
 		var hound := DSEnemy.new()
 		var pos := center
@@ -5519,6 +5709,137 @@ func _spawn_enemies() -> void:
 		urchin.setup(self, "creature-urchin-back")
 		add_child(urchin)
 		enemies.append(urchin)
+	# The Anglermother: a FIXED reef arena, standing from world-gen regardless
+	# of the hour (REEF-FOREST-SPEC §4/§6, Q17) — dormant-and-unattackable by
+	# day, not despawned (enemy.gd is_attackable/_physics_process), so her ring
+	# is always there to name (the keystone anchor, the arena-darkness override).
+	var anglermother := DSEnemy.new()
+	anglermother.position = ANGLERMOTHER_RING_POS
+	anglermother.setup(self, "creature-anglermother")
+	anglermother.add_child(_world_label("The Anglermother", Vector2(0, 26)))
+	add_child(anglermother)
+	enemies.append(anglermother)
+
+## --- the dark: nightOnly creatures (REEF-FOREST-SPEC §2/§4) ------------------------
+## Which non-boss creatures spawn at dusk, and how many of each. Data-driven
+## off creature.nightOnly (any future B3 nightOnly creature is included for
+## free, at a sane default count); boss nightOnly creatures (the Anglermother)
+## are handled separately — dormant, never despawned (see enemy.gd, _spawn_enemies).
+func _night_creature_spawn_list() -> Dictionary:
+	var out := {}
+	for c: Dictionary in registry.all_of("creature"):
+		if bool(c.get("nightOnly", false)) and str(c.get("archetype", "")) != "boss":
+			out[str(c.id)] = int(NIGHT_CREATURE_COUNTS.get(str(c.id), NIGHT_CREATURE_DEFAULT_COUNT))
+	return out
+
+## Host-authoritative: called once per minute tick (_on_sim_minute). A no-op
+## unless the day/night state actually FLIPPED since the last check — so it
+## fires exactly once at dusk (spawn) and once at dawn (despawn), never every
+## minute in between.
+func _sync_night_creatures() -> void:
+	if net_mode == "client":
+		return
+	var want_night := clock.is_night()
+	if want_night == _night_creatures_active:
+		return
+	_night_creatures_active = want_night
+	if want_night:
+		_spawn_night_creatures()
+	else:
+		_despawn_night_creatures()
+
+func _spawn_night_creatures() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = NIGHT_CREATURE_SEED + clock.day   # a fresh layout each dusk — these are ephemeral, not the deterministic day-node layout
+	var spawn_list := _night_creature_spawn_list()
+	for creature_id: String in spawn_list:
+		for i in int(spawn_list[creature_id]):
+			var e := DSEnemy.new()
+			e.position = Vector2(rng.randi_range(2, WORLD.x - 2) * TILE, rng.randi_range(NORTH_H + 2, WORLD.y - 2) * TILE)
+			e.setup(self, creature_id)
+			add_child(e)
+			enemies.append(e)
+			night_creatures.append(e)
+			if e.is_lure:
+				_spawn_angler_lure(e)
+
+func _despawn_night_creatures() -> void:
+	for e in night_creatures.duplicate():
+		if is_instance_valid(e):
+			stats.unregister(e)
+			enemies.erase(e)
+			e.queue_free()
+	night_creatures.clear()
+	for l in angler_lures.duplicate():
+		if is_instance_valid(l):
+			l.queue_free()
+	angler_lures.clear()
+
+## --- angler-lights: the stalker's lure (REEF-FOREST-SPEC §4/B) ---------------------
+## A false glow near the stalker that reads like a light source at a
+## distance — client visual + a HUD tell (_direction_hints), pathing bait
+## rather than a creature: no AI, no collision, no HP. The Lantern reveals it
+## within its radius (_lure_is_revealed) — "the dark biomes respect it."
+func _spawn_angler_lure(stalker: DSEnemy) -> void:
+	var lure := Node2D.new()
+	lure.position = stalker.position + LURE_OFFSET
+	lure.set_meta("stalker", stalker)
+	lure.set_meta("revealed", false)
+	var glow := SpriteKit.sprite("lure_glow", Vector2(12, 12), Color(1.0, 0.86, 0.55))
+	glow.modulate = Color(1.3, 1.18, 0.75)
+	lure.add_child(glow)
+	lure.set_meta("glow", glow)
+	var label := _world_label("a light in the dark", Vector2(0, -18))
+	lure.add_child(label)
+	lure.set_meta("label", label)
+	add_child(lure)
+	angler_lures.append(lure)
+
+## Follows its stalker + refreshes the reveal state — called each minute tick
+## (non-server), and directly by tests for deterministic checks without
+## waiting on real time.
+func _update_angler_lures() -> void:
+	for lure in angler_lures:
+		if not is_instance_valid(lure):
+			continue
+		var stalker: DSEnemy = lure.get_meta("stalker", null)
+		if stalker != null and is_instance_valid(stalker):
+			lure.position = stalker.position + LURE_OFFSET
+		var revealed := _lure_is_revealed(lure)
+		lure.set_meta("revealed", revealed)
+		var label: Label = lure.get_meta("label", null)
+		if label != null:
+			label.text = "FALSE LIGHT — a lure, not a hearth" if revealed else "a light in the dark"
+		var glow: Node2D = lure.get_meta("glow", null)
+		if glow != null:
+			glow.modulate = Color(0.55, 0.85, 1.0) if revealed else Color(1.3, 1.18, 0.75)
+
+## Within the Lighthouse-Keeper's Lantern's own night-light-radius (the same
+## magnitude _update_lantern_glow sizes the visual light with), at night, a
+## lure is marked false — the trinket's promised payoff, made legible both as
+## a distinct tint (the glow color swap above) and in text (the label, and
+## _direction_hints below) so it's testable headlessly.
+func _lure_is_revealed(lure: Node2D) -> bool:
+	if player == null or not clock.is_night():
+		return false
+	if equipped_item(my_pid, "trinket") != "item-lighthouse-keepers-lantern":
+		return false
+	var mag := 90.0
+	for eff: Dictionary in registry.get_entity("item-lighthouse-keepers-lantern").get("effects", []):
+		if str(eff.get("type", "")) == "night-light-radius":
+			mag = float(eff.get("magnitude", 90.0))
+	return player.position.distance_to(lure.position) <= mag
+
+func _nearest_angler_lure(from: Vector2) -> Node2D:
+	var best: Node2D = null
+	var best_d := INF
+	for lure in angler_lures:
+		if is_instance_valid(lure):
+			var d := from.distance_to(lure.position)
+			if d < best_d:
+				best_d = d
+				best = lure
+	return best
 
 ## --- day/night + HUD ---------------------------------------------------------------
 const TIDE_BELL_RING_MINUTES := [6 * 60, 18 * 60]   # 06:00 and 18:00
@@ -5544,7 +5865,8 @@ func _on_sim_minute(_m: int) -> void:
 		_minutes_since_hour = 0
 		works.favor_hour()
 	_tick_tide_bell(clock.minute_of_day)
-	var tint := _tint_for_minute(clock.minute_of_day, player.position.y if player != null else 0.0)
+	_sync_night_creatures()
+	var tint := _tint_for_minute(clock.minute_of_day, player.position.y if player != null else 0.0, player.position.x if player != null else INF)
 	if is_storm_day():
 		tint = tint * Color(0.72, 0.76, 0.86)   # storm-gray over everything
 		if clock.minute_of_day % 47 == 0:
@@ -5557,6 +5879,7 @@ func _on_sim_minute(_m: int) -> void:
 		rpc("cl_world_sync", _world_sync())
 	if net_mode != "server":
 		_update_lantern_glow()
+		_update_angler_lures()
 	_refresh_hud()
 
 var _lantern_light: PointLight2D = null
@@ -5598,10 +5921,12 @@ func _update_lantern_glow() -> void:
 		_lantern_light = null
 
 ## Gradual light: night -> warm dawn -> blinding day -> gold dusk -> night.
-## A pure function of (minute, y) — no sim state, client-visual only.
+## A pure function of (minute, y, x) — no sim state, client-visual only. `x`
+## is optional (INF skips the arena check below) so every pre-M3.c call site
+## and test keeps working unchanged.
 ## REEF-FOREST-SPEC §2: south of the scarp the canopy adds a THIRD band —
 ## reef "daytime" reads like a Salt Shallows dusk, reef night goes near-black.
-func _tint_for_minute(m: int, y: float = 0.0) -> Color:
+func _tint_for_minute(m: int, y: float = 0.0, x: float = INF) -> Color:
 	const NIGHT := Color(0.42, 0.46, 0.62)
 	const DAWN := Color(0.95, 0.82, 0.72)
 	const DAY := Color(1, 1, 1)
@@ -5629,7 +5954,15 @@ func _tint_for_minute(m: int, y: float = 0.0) -> Color:
 	# STYLE-BIBLE's cold-palette bias for the band, and near-black at night.
 	const CANOPY_MULT := Color(0.5, 0.48, 0.55)
 	var capped := Color(minf(north.r, DUSK.r), minf(north.g, DUSK.g), minf(north.b, DUSK.b), north.a)
-	return capped * CANOPY_MULT
+	var reef := capped * CANOPY_MULT
+	# REEF-FOREST-SPEC §6: the Anglermother's arena — her lure is the ONLY
+	# light, so at night (and only at night; by day she's dormant and the
+	# reef's ordinary twilight is fine to walk through) a hard-dark override
+	# inside her ring, on top of the normal reef dusk-cap above.
+	if x != INF and SimClock.is_night_at(m) and Vector2(x, y).distance_to(ANGLERMOTHER_RING_POS) <= ANGLERMOTHER_ARENA_RADIUS:
+		const ARENA_DARK_MULT := Color(0.18, 0.16, 0.22)
+		return reef * ARENA_DARK_MULT
+	return reef
 
 ## A framed, dimmed modal window on the UI layer — one shared frame so every
 ## menu reads as the same object: the flats recede behind it, a bronze-rimmed
@@ -5799,6 +6132,7 @@ func _build_hud() -> void:
 
 	_make_modal(layer, "drill", Vector2(640, 520), "THE DRILL-YARD")
 	_make_modal(layer, "rename", Vector2(480, 380), "NAME THE BEAST")   # M3.b, kennel rename modal ([M])
+	_make_modal(layer, "keystone", Vector2(560, 460), "THE KEYSTONE")   # M3.c, boss-ring kneel-prompt ([E])
 
 func _refresh_bars() -> void:
 	if hp_bar == null:
@@ -5869,6 +6203,13 @@ func _direction_hints() -> String:
 	var verses := inventory.count(acting_pid, "item-harpoon-verse")
 	if verses > 0 and verses < 3:
 		bits.append("the harpoon-song: %d/3 verses" % verses)
+	# angler-lights (REEF-FOREST-SPEC §4/B): the HUD tell for a lure — it
+	# reads as an ordinary light until the Lantern reveals it (the label
+	# text on the lure itself carries the reveal too, for a world-space tell).
+	var lure := _nearest_angler_lure(player.position)
+	if lure != null:
+		var revealed := bool(lure.get_meta("revealed", false))
+		bits.append(("a lure exposed for what it is %s" % _bearing(lure.position)) if revealed else ("a light glimmers %s" % _bearing(lure.position)))
 	var calling_bearing := _calling_bearing_hint()
 	if calling_bearing != "":
 		bits.append(calling_bearing)
@@ -6110,6 +6451,24 @@ func srv_intent(kind: String, args: Array) -> void:
 		"beast_interact": intent_beast_interact(_beast_by_id(int(args[0])))
 		"beast_revive": intent_revive_beast(_beast_by_id(int(args[0])))
 		"rename_beast": intent_rename_beast(int(args[0]), int(args[1]))
+		"dedicate_keystone": intent_dedicate_keystone(str(args[0]), int(args[1]))
+		# test hook (net_smoke.gd, M3.c): force night RIGHT NOW and re-sync the
+		# reef's night-only creatures immediately — a wire test can't sit
+		# through real sim-hours to reach dusk, and the thing actually novel
+		# over the network is the mirror (any DSEnemy the server spawns already
+		# rides the existing enemy_list/cl_world_sync path — "just works").
+		"test_force_night": _test_force_night()
+		# test hook (net_smoke.gd, M3.c): killing a boss for real (even
+		# test-accelerated melee) is more wire-test plumbing than the thing
+		# actually under test — this seeds the per-boss dead flag directly so
+		# a wire test can reach the keystone-dedication path (a REAL intent
+		# from here on) without re-proving melee combat over the network.
+		"test_kill_boss": bosses_dead[str(args[0])] = true
+		# test hook (net_smoke.gd, M3.c): attunement bookkeeping (attuned_for)
+		# is separate from devotion rank (test_attune only touches the
+		# latter) — this grants the former directly so a wire test can make a
+		# god ELIGIBLE for a keystone pick without walking to a shrine.
+		"test_grant_attunement": attuned_for(acting_pid).append(str(args[0]))
 		# test hook (net_smoke.gd): a deterministic way to trigger a REAL,
 		# server-authoritative player death over the wire — real hound combat
 		# has no deterministic timing to assert against; this calls the exact
@@ -6220,7 +6579,7 @@ func _world_sync() -> Dictionary:
 		"harvested": harvested_indices, "extra_defs": extra_defs,
 		"works": works.placed, "chapels": _chapels_to_dict(),
 		"camp": [camp_center.x, camp_center.y] if camp_center != Vector2.INF else null,
-		"boss_dead": boss_dead, "enemies": enemy_list, "specials": specials,
+		"bosses_dead": bosses_dead, "keystones_claimed": keystones_claimed, "enemies": enemy_list, "specials": specials,
 		"villager": {"rescued": survivor.rescued, "tid": survivor.tribesman_id,
 			"bloomed": bool(village.tribesmen.get(survivor.tribesman_id, {}).get("bloomed", false)),
 			"mood": survivor.mood, "task": survivor.task, "help": survivor.needs_help,
@@ -6322,7 +6681,7 @@ func cl_player_state(p: Dictionary) -> void:
 func cl_world_sync(w: Dictionary) -> void:
 	clock.day = int(w.get("day", 0))
 	clock.minute_of_day = int(w.get("minute", 360))
-	daynight.color = _tint_for_minute(clock.minute_of_day, player.position.y if player != null else 0.0)
+	daynight.color = _tint_for_minute(clock.minute_of_day, player.position.y if player != null else 0.0, player.position.x if player != null else INF)
 	var wcamp: Variant = w.get("camp", null)
 	camp_center = Vector2(float(wcamp[0]), float(wcamp[1])) if wcamp != null else Vector2.INF
 	_update_camp_ring()
@@ -6378,7 +6737,8 @@ func cl_world_sync(w: Dictionary) -> void:
 		var cp: Array = chapel_dict[god_id]
 		chapels[str(god_id)] = Vector2(float(cp[0]), float(cp[1]))
 	# enemies: reconcile by net id
-	boss_dead = bool(w.get("boss_dead", false))
+	bosses_dead = (w.get("bosses_dead", {}) as Dictionary)
+	keystones_claimed = (w.get("keystones_claimed", {}) as Dictionary)
 	for e in enemies.duplicate():
 		if not is_instance_valid(e):
 			enemies.erase(e)

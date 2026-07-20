@@ -233,7 +233,8 @@ for (const { file, obj } of entities) {
     // The runtime (main.gd _step_met) enforces these at play; the validator
     // enforces them at authoring time so a typo'd key or anchor never ships.
     const ANCHORS = new Set(["shrine-halor", "shrine-maren", "shrine-neris",
-      "wreck-west", "wreck-mid", "wreck-east", "boss-ring", "village", "brine-pool", "trench-edge"]);
+      "wreck-west", "wreck-mid", "wreck-east", "boss-ring", "village", "brine-pool", "trench-edge",
+      "anglermother-ring", "stair-of-hulls"]);
     const PARAM_KEYS = {
       goto: ["near", "radius"], escort: ["near", "radius"], talk: ["at", "radius"],
       collect: ["itemId", "qty", "consume"], turn: ["itemId", "qty", "consume"],
@@ -275,7 +276,7 @@ for (const { file, obj } of entities) {
         else ref(file, c.id, p.workId, `${s.id} params.workId`);
       }
       if (s.type === "wait") {
-        if (!["storm", "storm-end", "days"].includes(p.until)) err(file, `${where} wait params.until must be 'storm', 'storm-end' or 'days'`);
+        if (!["storm", "storm-end", "days", "night"].includes(p.until)) err(file, `${where} wait params.until must be 'storm', 'storm-end', 'days' or 'night'`);
         if (p.until === "days" && !(Number.isInteger(p.days) && p.days >= 1)) err(file, `${where} wait until:'days' needs integer params.days >= 1`);
         if (p.until !== "days" && p.days !== undefined) err(file, `${where} params.days only belongs with until:'days'`);
       }

@@ -252,6 +252,18 @@
   "text": "A divine fragment — the endurance of the old sea, shelled in something you can hold. Enshrine it at a chapel, or consume it, and hear a warm voice approve."
  },
  {
+  "id": "item-remnant-anglermother",
+  "name": "Remnant of the Mother",
+  "category": "remnant",
+  "tier": 2,
+  "stackSize": 1,
+  "remnantOf": "god-ghal",
+  "relic": {
+   "points": 0.4
+  },
+  "text": "A divine fragment — Old Ghal's watchfulness, grown enormous and hungry in the permanent dark below the canopy, and patient long enough to forget it was ever kind. Enshrine it at a chapel, or consume it, and hear a warm voice approve."
+ },
+ {
   "id": "item-harpoon-verse",
   "name": "Verse of the Harpoon-Song",
   "category": "relic",

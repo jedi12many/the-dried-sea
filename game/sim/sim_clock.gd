@@ -26,6 +26,13 @@ func advance(real_delta: float) -> void:
 		sim_minute.emit(minute_of_day)
 
 func is_night() -> bool:
+	return is_night_at(minute_of_day)
+
+## Static, pure form (REEF-FOREST-SPEC §2/§6): _tint_for_minute and the reef's
+## night-only creature spawns both need "is it night at minute X" without an
+## instance — this is the one source of truth both read, so the threshold
+## never drifts between the two call sites.
+static func is_night_at(minute_of_day: int) -> bool:
 	return minute_of_day < 5 * 60 or minute_of_day >= 21 * 60
 
 func day_fraction(minutes: int) -> float:
