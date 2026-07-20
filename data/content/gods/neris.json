@@ -91,7 +91,8 @@
  "offerings": {
   "craves": [
    "item-bronze-salvage",
-   "item-salt-votive"
+   "item-salt-votive",
+   "item-pearl-votive"
   ],
   "accepts": [
    "item-salt"

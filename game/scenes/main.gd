@@ -5,7 +5,15 @@ extends Node2D
 ## M1 slice: walk, harvest, hand-craft, build, day/night. Placeholder art only.
 
 const TILE := 32
-const WORLD := Vector2i(96, 64)
+const WORLD := Vector2i(96, 128)
+## REEF-FOREST-SPEC §1: WORLD grew 96x64 -> 96x128 by APPENDING south rows.
+## NORTH_H is the frozen footprint of the old world — every B1 seeded
+## generator (rng seeds 7/11/23) that used to size itself off WORLD.y must
+## use NORTH_H instead, or every existing seeded position (nodes, shrines,
+## fauna, the stranded pool) silently shifts when the map grows. NEVER change
+## this number; it is the byte-identical north half's whole contract.
+const NORTH_H := 64
+const SCARP_Y := NORTH_H * TILE   # the border scarp's y-line: the old south rim
 const SCREEN := Vector2(1280, 720)   # design resolution; modals center on it
 const HARVEST_RANGE := 56.0
 const ATTACK_RANGE := 44.0
@@ -163,6 +171,7 @@ var skip_autoload := false        # tests and --fresh runs start clean
 var harvested_indices: Array = [] # which resource nodes are gone
 var boss_dead := false
 var node_defs: Array = []         # deterministic layout: storms respawn from this
+var _static_node_def_count := 0   # M3.a: set once boot-time world-gen (both bands) finishes; _world_sync's extra_defs only needs to ride indices minted AFTER this (boss hoard, corpse drops) — the deterministic base regenerates identically client-side for free
 
 # the great storm (every 4th day; Maren's country)
 const STORM_GLASS_IDX_BASE := 1000  # ephemeral nodes: never persisted
@@ -186,14 +195,43 @@ var tide_bell_rang_today := false              # Neris's Tide-Bell: rang at 06:0
 const WRECK_MID_POS := Vector2(TILE * 30, TILE * 27)
 const WRECK_EAST_POS := Vector2(TILE * 38, TILE * 8)
 const BOSS_RING_POS := Vector2(TILE * 5, TILE * 5)
-const TRENCH_EDGE_POS := Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE - TILE * 1.5)  # the fixed south-deep point
+# the fixed south-deep point — pinned to the OLD world's south rim (NORTH_H,
+# never WORLD.y): REEF-FOREST-SPEC §1, "now ON the scarp — poetic, correct,
+# zero content breakage."
+const TRENCH_EDGE_POS := Vector2(WORLD.x * TILE / 2.0, NORTH_H * TILE - TILE * 1.5)
+# the Stair of Hulls: the ~6-tile gap in the scarp, dead center — the ONLY
+# crossing (REEF-FOREST-SPEC §1). "stair-of-hulls" calling anchor + HUD bearing.
+const STAIR_GAP_HALF := TILE * 3.0
+const STAIR_OF_HULLS_POS := Vector2(WORLD.x * TILE / 2.0, SCARP_Y)
 var brine_pools: Array[Vector2] = []   # tracked in _build_ground() so "brine-pool" can resolve to the nearest one
+var scarp_crossed := false   # world-level, one-shot (REEF-FOREST-SPEC §1 the crossing); persists in the save
+
+# --- the Reef Forest band (REEF-FOREST-SPEC §1/§4/M3.a): its own seeded pass,
+# appended after every north generator, touching NONE of their rng state or
+# positions. Node/deco counts are tuning, not law — the seed is what's law.
+const SOUTH_BAND_SEED := 2200
+const SOUTH_ENEMY_SEED := 2300
+const SOUTH_NODE_COUNTS := {
+	"item-coralwood": 10, "item-reef-iron": 8, "item-pearl": 5, "item-anemone-silk": 6,
+}
+const SOUTH_CANOPY_PILLAR_COUNT := 22
+const SOUTH_EEL_WOLF_COUNT := 5
+const SOUTH_URCHIN_BACK_COUNT := 6
+# three drowned-town ruin clusters (deco only this slice — M3.d houses their
+# content); named now so later anchors/callings have somewhere real to point.
+const DROWNED_RUIN_1_POS := Vector2(TILE * 14, TILE * 84)
+const DROWNED_RUIN_2_POS := Vector2(TILE * 74, TILE * 96)
+const DROWNED_RUIN_3_POS := Vector2(TILE * 40, TILE * 118)
 
 # STYLE-BIBLE salt-shallows palette (placeholder blocks, right colors)
 const ITEM_COLORS := {
 	"item-driftwood": Color("a08768"), "item-wreck-timber": Color("6e5138"),
 	"item-ship-cloth": Color("d9d2bf"), "item-salt": Color("f2efe8"),
 	"item-bronze-salvage": Color("b87333"), "item-rope": Color("8a7a5c"),
+	# STYLE-BIBLE Reef Forest sub-palette: muted purples, bone-white coral,
+	# teal shadow, pearl glints (cold-palette bias — these are "left things").
+	"item-coralwood": Color("8a7a9c"), "item-reef-iron": Color("5c6b6a"),
+	"item-pearl": Color("e8e2e8"), "item-anemone-silk": Color("b9a8c9"),
 }
 
 func _ready() -> void:
@@ -250,8 +288,9 @@ func _ready() -> void:
 
 	_build_ground()
 	_spawn_resource_nodes()
+	_spawn_south_band()
 	player = DSPlayer.new()
-	player.position = Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
+	player.position = Vector2(WORLD.x * TILE / 2.0, NORTH_H * TILE / 2.0)
 	add_child(player)
 	_attach_camera()
 	_spawn_enemies()
@@ -309,7 +348,7 @@ func _ready() -> void:
 			raider.surrender()
 			player.position = raider.position
 			intent_capture(raider)
-			player.position = camp_center if camp_center != Vector2.INF else Vector2(WORLD.x*TILE/2, WORLD.y*TILE/2)
+			player.position = camp_center if camp_center != Vector2.INF else Vector2(WORLD.x*TILE/2, NORTH_H*TILE/2)
 			for v: DSVillager in villagers:
 				if v.is_captive:
 					v.position = player.position + Vector2(50, 0)
@@ -482,6 +521,15 @@ func save_game() -> void:
 		"lantern_wreck_inspected": lantern_wreck_inspected.duplicate(),
 		"lantern_verse3_taken": lantern_verse3_taken.duplicate(),
 		"tide_bell_rang_today": tide_bell_rang_today,
+		# M3.a migration (REEF-FOREST-SPEC §1): world_size records the map this
+		# save was written against. World-gen itself never reads the save (see
+		# _ready() — _build_ground/_spawn_resource_nodes/_spawn_south_band/
+		# _spawn_enemies all run unconditionally, before load_game() is ever
+		# called), so a pre-band save needs no special generation step — the
+		# south band is already standing by the time load_game() runs. This
+		# field is the record of that fact, and how _save_predates_band() detects one.
+		"world_size": [WORLD.x, WORLD.y],
+		"scarp_crossed": scarp_crossed,
 		# beast_system.to_save() (via SaveSystem above) carries the roster + trust
 		# ledgers; this is the presentation-only overlay it doesn't know about —
 		# position, the porter's own bag, and the downed timer (same law as
@@ -492,6 +540,16 @@ func save_game() -> void:
 	}
 	SaveSystem.write_file(save_path, s)
 
+## REEF-FOREST-SPEC §1 migration detection: true when `g` (the save's "game"
+## dict) predates the Reef Forest band — no world_size at all, or one shorter
+## than today's WORLD. World-gen doesn't branch on this (see _ready(): it's
+## unconditional, both bands, every boot) — it only gates the one-time
+## welcome line in load_game() above.
+func _save_predates_band(g: Dictionary) -> bool:
+	var ws: Array = g.get("world_size", [WORLD.x, NORTH_H])
+	var saved_h := int(ws[1]) if ws.size() > 1 else NORTH_H
+	return saved_h < WORLD.y
+
 func load_game() -> void:
 	var s := SaveSystem.read_file(save_path)
 	if s.is_empty():
@@ -501,7 +559,7 @@ func load_game() -> void:
 	inventory.inventories = SaveSystem._int_keys(g.get("inventory", {}))
 	if g.has("player_stats"):
 		stats.actors[acting_pid] = g.player_stats
-	var pp: Array = g.get("player_pos", [WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0])
+	var pp: Array = g.get("player_pos", [WORLD.x * TILE / 2.0, NORTH_H * TILE / 2.0])
 	player.position = Vector2(float(pp[0]), float(pp[1]))
 	if g.has("attuned"):
 		attuned = SaveSystem._int_keys(g.get("attuned", {}))
@@ -521,7 +579,15 @@ func load_game() -> void:
 	lantern_wreck_inspected = SaveSystem._int_keys(g.get("lantern_wreck_inspected", {}))
 	lantern_verse3_taken = SaveSystem._int_keys(g.get("lantern_verse3_taken", {}))
 	tide_bell_rang_today = bool(g.get("tide_bell_rang_today", false))
+	# REEF-FOREST-SPEC §1 migration: additive. World-gen already ran (both
+	# bands — see _ready()) before this function was ever called, so there is
+	# nothing left to build; this only restores the one-shot crossing flag,
+	# defaulting sanely off godhead's own restored biomes_cleared for a save
+	# that predates the flag but somehow already recorded the crossing.
+	scarp_crossed = bool(g.get("scarp_crossed", godhead.biomes_cleared() >= 2))
 	message = str(g.get("message", "The flats are as you left them."))
+	if _save_predates_band(g):
+		message += "\nThe world holds more of it now than when you left — south of the old rim, the reef is standing."
 	# world state: remove harvested nodes, rebuild work visuals, restore the boss & Anna
 	# (JSON floats -> ints: Array.has is TYPE-STRICT — 40 in [40.0] is false)
 	harvested_indices = (g.get("harvested_indices", []) as Array).map(func(v: Variant) -> int: return int(v))
@@ -636,6 +702,7 @@ func _physics_process(delta: float) -> void:
 		clock.advance(delta)
 		stats.tick(delta)
 		_tick_healing_bath(delta)
+		_check_scarp_crossing(acting_pid, player.position.y)   # the host's own (offline/local-server) player
 		for pid: Variant in petrify.keys():
 			if int(petrify[pid]) > 0:
 				petrify[pid] = int(petrify[pid]) - 1
@@ -1545,7 +1612,7 @@ func village_heart() -> Vector2:
 		var pos := work_pos(wid)
 		if pos != Vector2.INF:
 			return pos
-	return Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
+	return Vector2(WORLD.x * TILE / 2.0, NORTH_H * TILE / 2.0)
 
 ## The nearest placed work in reach that isn't a chapel (chapels have rites).
 func nearest_work(from: Vector2) -> int:
@@ -1936,6 +2003,13 @@ func intent_harvest() -> bool:
 			nearest = node
 	if nearest == null:
 		return false
+	# CRAFT-AND-BUILD-SPEC Part 1 Law 2: one tool per tier, best-in-pack —
+	# the Bronze Mattock's tool.tier:2 (shipped inert at M2.75) goes live here.
+	var tier_needed := int(registry.get_entity(str(nearest.get_meta("item_id"))).get("gather", {}).get("tierRequired", 0))
+	if tier_needed > 0 and _best_tool_tier(acting_pid) < tier_needed:
+		message = "This needs %s in your pack — bare hands won't cut it here." % _tool_name_for_tier(tier_needed)
+		_refresh_hud()
+		return false
 	sfx("harvest", nearest.position)
 	# a workable node yields one unit per swing and wears down; a simple pickup
 	# (cloth, storm-glass) comes up whole like it always did
@@ -1955,6 +2029,27 @@ func intent_harvest() -> bool:
 	nearest.queue_free()
 	_refresh_hud()
 	return true
+
+## Best mattock-class tool tier currently in PACK — tools have no doll slot
+## (item.schema.json "slot" is weapon/armor/trinket only), so "equipped" isn't
+## meaningful here; CRAFT-AND-BUILD-SPEC Part 1 Law 2 is best-in-pack instead.
+func _best_tool_tier(pid: int) -> int:
+	var best := 0
+	for item_id: String in inventory._inv(pid).keys():
+		if int(inventory._inv(pid).get(item_id, 0)) <= 0:
+			continue
+		var t := int(registry.get_entity(item_id).get("tool", {}).get("tier", 0))
+		if t > best:
+			best = t
+	return best
+
+## Names the tool a gather-gated node is waiting for, for the refusal message
+## (the UI law: never gate silently — say what's missing).
+func _tool_name_for_tier(tier: int) -> String:
+	for item: Dictionary in registry.all_of("item"):
+		if int(item.get("tool", {}).get("tier", 0)) == tier:
+			return str(item.get("name", "a better tool"))
+	return "a better tool"
 
 ## Wear a workable node down by `amount` hits. Spent nodes vanish (and rejoin the
 ## dawn-respawn pool via harvested_indices); live ones shrink so you can read
@@ -2366,7 +2461,7 @@ func _respawn_point(pid: int) -> Vector2:
 	var hearth := work_pos("work-hearth")
 	if hearth != Vector2.INF:
 		return hearth
-	return Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
+	return Vector2(WORLD.x * TILE / 2.0, NORTH_H * TILE / 2.0)
 
 func damage_player(amount: float, pid: int = -1) -> void:
 	if pid < 0:
@@ -2505,7 +2600,7 @@ func _on_enemy_killed(enemy: DSEnemy) -> void:
 func _creature_tier(creature_id: String) -> int:
 	match str(registry.get_entity(creature_id).get("archetype", "")):
 		"boss": return 2
-		"ambient": return 0
+		"ambient", "ambient-armored": return 0
 		_: return 1
 
 ## The Verdict, in your hands: consume a remnant for permanent strength —
@@ -3153,6 +3248,7 @@ func _calling_anchor_pos(anchor_name: String) -> Vector2:
 		"village": return village_heart()
 		"brine-pool": return _nearest_brine_pool(acting_pos())
 		"trench-edge": return TRENCH_EDGE_POS
+		"stair-of-hulls": return STAIR_OF_HULLS_POS
 		_: return Vector2.INF
 
 func _nearest_brine_pool(from: Vector2) -> Vector2:
@@ -3722,9 +3818,11 @@ func _spawn_work_visual(inst_id: int, work_id: String, pos: Vector2, chapel_hint
 		"work-driftwood-cot": "cot_hut", "work-tent": "tent",
 		"work-salt-wheel": "salt_wheel",
 		"work-tide-bell": "tide_bell", "work-healing-bath": "healing_bath",
-		"work-kennel": "kennel",
+		"work-kennel": "kennel", "work-reef-forge": "reef_forge",
 	}
 	var fallback := Color("6e5138") if not work.get("grim", false) else Color("5b3a6e")
+	if work_id == "work-reef-forge":
+		fallback = Color("6a5d78")   # muted reef purple (STYLE-BIBLE)
 	if work_id == "work-altar-halor":
 		fallback = Color("e8e2d4")   # salt-pale
 	elif work_id == "work-altar-maren":
@@ -3797,6 +3895,9 @@ func _attach_camera() -> void:
 	cam.make_current()
 
 ## --- world (placeholder) ---------------------------------------------------------
+## B1, the Salt Shallows: byte-identical forever (REEF-FOREST-SPEC §1's hard
+## law). Sized/seeded off NORTH_H, never WORLD.y — the map growing south must
+## not move one pillar, pool, wreck, or node here.
 func _build_ground() -> void:
 	var ground_tex := SpriteKit.texture("ground")
 	if ground_tex != null:
@@ -3804,12 +3905,12 @@ func _build_ground() -> void:
 		ground.texture = ground_tex
 		ground.stretch_mode = TextureRect.STRETCH_TILE
 		ground.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		ground.size = Vector2(WORLD.x * TILE, WORLD.y * TILE)
+		ground.size = Vector2(WORLD.x * TILE, NORTH_H * TILE)
 		ground.z_index = -10
 		add_child(ground)
 	else:
 		var flat := ColorRect.new()
-		flat.size = Vector2(WORLD.x * TILE, WORLD.y * TILE)
+		flat.size = Vector2(WORLD.x * TILE, NORTH_H * TILE)
 		flat.color = Color("e8e2d4")   # blinding flats, high-key
 		flat.z_index = -10
 		add_child(flat)
@@ -3821,7 +3922,7 @@ func _build_ground() -> void:
 		var deco := SpriteKit.sprite("salt_pillar" if pillar else "brine_pool",
 			Vector2(14, 22) if pillar else Vector2(18, 8),
 			Color("f7f5ee") if pillar else Color("cfd8d2"))
-		deco.position = Vector2(rng.randi_range(16, WORLD.x * TILE - 16), rng.randi_range(16, WORLD.y * TILE - 16))
+		deco.position = Vector2(rng.randi_range(16, WORLD.x * TILE - 16), rng.randi_range(16, NORTH_H * TILE - 16))
 		deco.z_index = -9
 		add_child(deco)
 		if not pillar:
@@ -3833,6 +3934,7 @@ func _build_ground() -> void:
 		wreck.z_index = -8
 		wreck.modulate = Color(1, 1, 1, 0.96)
 		add_child(wreck)
+	_spawn_scarp()
 
 func _spawn_resource_nodes() -> void:
 	var rng := RandomNumberGenerator.new()
@@ -3842,19 +3944,134 @@ func _spawn_resource_nodes() -> void:
 	var taken_tiles := {}
 	for item_id: String in biome.get("resourceItemIds", []):
 		for i in 14:
-			var tile := Vector2i(rng.randi_range(2, WORLD.x - 2), rng.randi_range(2, WORLD.y - 2))
+			var tile := Vector2i(rng.randi_range(2, WORLD.x - 2), rng.randi_range(2, NORTH_H - 2))
 			while taken_tiles.has(tile):
-				tile = Vector2i(rng.randi_range(2, WORLD.x - 2), rng.randi_range(2, WORLD.y - 2))
+				tile = Vector2i(rng.randi_range(2, WORLD.x - 2), rng.randi_range(2, NORTH_H - 2))
 			taken_tiles[tile] = true
 			var pos := Vector2(tile.x * TILE, tile.y * TILE)
 			node_defs.append({"item_id": item_id, "pos": pos, "idx": idx})
 			_spawn_one_node(item_id, pos, idx)
 			idx += 1
 
+## REEF-FOREST-SPEC §1: the Reef Forest band, appended south of the scarp.
+## Its OWN RandomNumberGenerator (SOUTH_BAND_SEED, documented, never 7/11/23)
+## — generates ground, canopy pillars, the three drowned-town ruin markers,
+## and B2 resource nodes. Runs on server AND client (deterministic, like
+## _spawn_resource_nodes above) so it never needs syncing over the wire.
+func _spawn_south_band() -> void:
+	var south_top := float(NORTH_H * TILE)
+	var south_h := float((WORLD.y - NORTH_H) * TILE)
+	var reef_tex := SpriteKit.texture("ground_reef")
+	if reef_tex != null:
+		var ground := TextureRect.new()
+		ground.texture = reef_tex
+		ground.stretch_mode = TextureRect.STRETCH_TILE
+		ground.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		ground.position = Vector2(0, south_top)
+		ground.size = Vector2(WORLD.x * TILE, south_h)
+		ground.z_index = -10
+		add_child(ground)
+	else:
+		var flat := ColorRect.new()
+		flat.position = Vector2(0, south_top)
+		flat.size = Vector2(WORLD.x * TILE, south_h)
+		flat.color = Color("6a5d78")   # muted reef purple (STYLE-BIBLE cold-palette bias)
+		flat.z_index = -10
+		add_child(flat)
+
+	var rng := RandomNumberGenerator.new()
+	rng.seed = SOUTH_BAND_SEED
+	# sparse canopy pillars: blocking, like walls (petrified-coral trunks)
+	for i in SOUTH_CANOPY_PILLAR_COUNT:
+		var pos := Vector2(rng.randi_range(2, WORLD.x - 2) * TILE, rng.randi_range(NORTH_H + 2, WORLD.y - 2) * TILE)
+		var deco := SpriteKit.sprite("coralwood", Vector2(20, 44), Color("7a6a86"))
+		deco.position = pos
+		deco.z_index = -8
+		var body := StaticBody2D.new()
+		var shape := CollisionShape2D.new()
+		var rect := RectangleShape2D.new()
+		rect.size = Vector2(16, 16)
+		shape.shape = rect
+		body.add_child(shape)
+		deco.add_child(body)
+		add_child(deco)
+
+	# three drowned-town ruin clusters: deco only this slice (M3.d houses their
+	# content) — a modest cluster of tinted, rotated wreck decos per site.
+	for ruin_pos: Vector2 in [DROWNED_RUIN_1_POS, DROWNED_RUIN_2_POS, DROWNED_RUIN_3_POS]:
+		for i in 3:
+			var ruin := SpriteKit.sprite("wreck", Vector2(46, 30), Color("585268"))
+			ruin.position = ruin_pos + Vector2((i - 1) * 40.0, rng.randf_range(-14.0, 14.0))
+			ruin.rotation_degrees = rng.randf_range(-45.0, 45.0)
+			ruin.modulate = Color(0.75, 0.72, 0.82, 0.95)
+			ruin.z_index = -8
+			add_child(ruin)
+		var marker := Node2D.new()
+		marker.position = ruin_pos
+		marker.add_child(_world_label("a drowned town", Vector2(0, 20)))
+		add_child(marker)
+
+	# B2 resource nodes: mattock-gated (gather.tierRequired on the item data),
+	# hits per CRAFT-AND-BUILD-SPEC Part 2 (6/5/4/3).
+	var taken_tiles := {}
+	for item_id: String in SOUTH_NODE_COUNTS:
+		for i in int(SOUTH_NODE_COUNTS[item_id]):
+			var tile := Vector2i(rng.randi_range(2, WORLD.x - 2), rng.randi_range(NORTH_H + 2, WORLD.y - 2))
+			while taken_tiles.has(tile):
+				tile = Vector2i(rng.randi_range(2, WORLD.x - 2), rng.randi_range(NORTH_H + 2, WORLD.y - 2))
+			taken_tiles[tile] = true
+			var pos := Vector2(tile.x * TILE, tile.y * TILE)
+			var idx := node_defs.size()
+			node_defs.append({"item_id": item_id, "pos": pos, "idx": idx})
+			_spawn_one_node(item_id, pos, idx)
+	# everything deterministic (both bands) has now been minted; only defs
+	# APPENDED after this point (boss hoard, corpse drops) are truly dynamic
+	# and need to ride cl_world_sync's extra_defs.
+	_static_node_def_count = node_defs.size()
+
+## The border scarp: a broken shelf along the old south rim, passable only at
+## the Stair of Hulls (REEF-FOREST-SPEC §1). Two thin StaticBody2D segments —
+## the shipped blocking-wall pattern (_spawn_work_visual's `blocks`) — with a
+## STAIR_GAP_HALF-wide gap at STAIR_OF_HULLS_POS. Teleports (every test's
+## harness, and player respawn) don't collide, so this can't strand anything.
+func _spawn_scarp() -> void:
+	var gap_left := STAIR_OF_HULLS_POS.x - STAIR_GAP_HALF
+	var gap_right := STAIR_OF_HULLS_POS.x + STAIR_GAP_HALF
+	_spawn_scarp_wall(0.0, gap_left)
+	_spawn_scarp_wall(gap_right, WORLD.x * TILE)
+	# ship-graveyard deco at the gap: the beached-wreck sprite, rotated/tinted
+	var wrng := RandomNumberGenerator.new()
+	wrng.seed = 8800   # deco-only, distinct from the boss-hoard rng's seed 77 (unrelated RNG instances, no actual collision, but keep them visually distinct in review)
+	for i in 3:
+		var wreck := SpriteKit.sprite("wreck", Vector2(52, 34), Color("53505c"))
+		wreck.position = STAIR_OF_HULLS_POS + Vector2((i - 1) * 46.0, wrng.randf_range(-10.0, 10.0))
+		wreck.rotation_degrees = wrng.randf_range(-30.0, 30.0)
+		wreck.modulate = Color(0.7, 0.68, 0.76, 0.95)
+		wreck.z_index = -8
+		add_child(wreck)
+	var marker := Node2D.new()
+	marker.position = STAIR_OF_HULLS_POS
+	marker.add_child(_world_label("the Stair of Hulls", Vector2(0, 22)))
+	add_child(marker)
+
+func _spawn_scarp_wall(x0: float, x1: float) -> void:
+	if x1 <= x0:
+		return
+	var body := StaticBody2D.new()
+	body.position = Vector2((x0 + x1) / 2.0, SCARP_Y)
+	var shape := CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = Vector2(x1 - x0, 16.0)
+	shape.shape = rect
+	body.add_child(shape)
+	add_child(body)
+
 const NODE_SPRITES := {
 	"item-driftwood": "driftwood", "item-wreck-timber": "timber",
 	"item-ship-cloth": "cloth", "item-salt": "salt_mound", "item-bronze-salvage": "bronze",
 	"item-rope": "rope", "item-storm-glass": "bronze",
+	"item-coralwood": "coralwood", "item-reef-iron": "reef_iron",
+	"item-pearl": "pearl_bed", "item-anemone-silk": "anemone_silk",
 }
 
 func _spawn_one_node(item_id: String, pos: Vector2, idx: int) -> Area2D:
@@ -3880,8 +4097,8 @@ func _spawn_shrines() -> void:
 	# Halor waits in the north; Maren on the east edge, where the weather comes from;
 	# Neris waits in the south, where the tide would be if there still were one.
 	_spawn_one_shrine("god-halor", Vector2(WORLD.x * TILE / 2.0, TILE * 5.0), Color.WHITE)
-	_spawn_one_shrine("god-maren", Vector2(WORLD.x * TILE - TILE * 4.0, WORLD.y * TILE / 2.0), Color(0.82, 0.88, 1.0))
-	_spawn_one_shrine("god-neris", Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE - TILE * 5.0), Color(0.75, 0.9, 0.95))
+	_spawn_one_shrine("god-maren", Vector2(WORLD.x * TILE - TILE * 4.0, NORTH_H * TILE / 2.0), Color(0.82, 0.88, 1.0))
+	_spawn_one_shrine("god-neris", Vector2(WORLD.x * TILE / 2.0, NORTH_H * TILE - TILE * 5.0), Color(0.75, 0.9, 0.95))
 
 func _spawn_one_shrine(god_id: String, pos: Vector2, tint: Color) -> void:
 	var s := Node2D.new()
@@ -3922,7 +4139,7 @@ func _local_display_name() -> String:
 func _spawn_survivor() -> void:
 	survivor = DSVillager.new()
 	survivor.host = self
-	survivor.position = Vector2(TILE * 6.0, WORLD.y * TILE - TILE * 5.0)  # far southwest, by the wrecks
+	survivor.position = Vector2(TILE * 6.0, NORTH_H * TILE - TILE * 5.0)  # far southwest, by the wrecks
 	add_child(survivor)
 	if net_mode != "client":
 		_spawn_stranded_pool()
@@ -3932,9 +4149,10 @@ func _spawn_survivor() -> void:
 func _spawn_stranded_pool() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 424242
-	# fractions of the world so they spread with the map instead of clumping
+	# fractions of the (north) world so they spread with the map instead of
+	# clumping — NORTH_H, never WORLD.y: this is B1 seeded content (REEF-FOREST-SPEC §1)
 	var w := WORLD.x * TILE
-	var h := WORLD.y * TILE
+	var h := NORTH_H * TILE
 	var spots := [Vector2(w * 0.92, h * 0.62), Vector2(w * 0.13, h * 0.56),
 		Vector2(w * 0.83, h * 0.88), Vector2(w * 0.33, h * 0.84)]
 	for i in spots.size():
@@ -4851,10 +5069,13 @@ func _storm_dawn() -> void:
 				hounds += 1
 	var fauna_rng := RandomNumberGenerator.new()
 	fauna_rng.seed = 500 + clock.day
-	var center := Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
+	# B1 fauna restock: bounded to NORTH_H, never WORLD.y (this is Salt Shallows
+	# wildlife — Reef Forest fauna are eel-wolf/urchin-back, spawned only by
+	# _spawn_south_band/_spawn_enemies' own south pass).
+	var center := Vector2(WORLD.x * TILE / 2.0, NORTH_H * TILE / 2.0)
 	while crabs < 8:
 		var crab := DSEnemy.new()
-		crab.position = Vector2(fauna_rng.randi_range(2, WORLD.x - 2) * TILE, fauna_rng.randi_range(2, WORLD.y - 2) * TILE)
+		crab.position = Vector2(fauna_rng.randi_range(2, WORLD.x - 2) * TILE, fauna_rng.randi_range(2, NORTH_H - 2) * TILE)
 		crab.setup(self, "creature-scuttle-crab")
 		add_child(crab)
 		enemies.append(crab)
@@ -4865,7 +5086,7 @@ func _storm_dawn() -> void:
 		var hound := DSEnemy.new()
 		var pos := center
 		while pos.distance_to(center) < 350.0:
-			pos = Vector2(fauna_rng.randi_range(2, WORLD.x - 2) * TILE, fauna_rng.randi_range(2, WORLD.y - 2) * TILE)
+			pos = Vector2(fauna_rng.randi_range(2, WORLD.x - 2) * TILE, fauna_rng.randi_range(2, NORTH_H - 2) * TILE)
 		hound.position = pos
 		hound.setup(self, "creature-salt-hound")
 		add_child(hound)
@@ -4877,7 +5098,7 @@ func _storm_dawn() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 100 + clock.day
 	for i in 3:
-		var pos := Vector2(rng.randi_range(3, WORLD.x - 3) * TILE, rng.randi_range(3, WORLD.y - 3) * TILE)
+		var pos := Vector2(rng.randi_range(3, WORLD.x - 3) * TILE, rng.randi_range(3, NORTH_H - 3) * TILE)
 		_spawn_one_node("item-storm-glass", pos, STORM_GLASS_IDX_BASE + i)
 	# ...and the storm washes in the desperate: raiders replenish to cap on
 	# storm days ONLY (Jeff 2026-07-18: the original 3 world-gen raiders were
@@ -4896,7 +5117,7 @@ func _storm_dawn() -> void:
 		var edge := rrng.randi_range(0, 3)
 		var rp := Vector2(
 			[3, WORLD.x - 3, rrng.randi_range(3, WORLD.x - 3), rrng.randi_range(3, WORLD.x - 3)][edge] * TILE,
-			[rrng.randi_range(3, WORLD.y - 3), rrng.randi_range(3, WORLD.y - 3), 3, WORLD.y - 3][edge] * TILE)
+			[rrng.randi_range(3, NORTH_H - 3), rrng.randi_range(3, NORTH_H - 3), 3, NORTH_H - 3][edge] * TILE)
 		raider.position = rp
 		raider.setup(self, "creature-raider")
 		add_child(raider)
@@ -4912,19 +5133,21 @@ func _spawn_enemies() -> void:
 		return  # the server's beasts arrive as mirrors
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 23
-	var center := Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
+	# B1 (Salt Shallows) enemies: bounded to NORTH_H, never WORLD.y — this seed
+	# is the smoke suite's proof that the north half never moves.
+	var center := Vector2(WORLD.x * TILE / 2.0, NORTH_H * TILE / 2.0)
 	for i in 6:
 		var hound := DSEnemy.new()
 		var pos := center
 		while pos.distance_to(center) < 350.0:  # never spawn on the player's doorstep
-			pos = Vector2(rng.randi_range(2, WORLD.x - 2) * TILE, rng.randi_range(2, WORLD.y - 2) * TILE)
+			pos = Vector2(rng.randi_range(2, WORLD.x - 2) * TILE, rng.randi_range(2, NORTH_H - 2) * TILE)
 		hound.position = pos
 		hound.setup(self, "creature-salt-hound")
 		add_child(hound)
 		enemies.append(hound)
 	for i in 8:  # scuttle-crabs: mostly harmless, excellent soup
 		var crab := DSEnemy.new()
-		crab.position = Vector2(rng.randi_range(2, WORLD.x - 2) * TILE, rng.randi_range(2, WORLD.y - 2) * TILE)
+		crab.position = Vector2(rng.randi_range(2, WORLD.x - 2) * TILE, rng.randi_range(2, NORTH_H - 2) * TILE)
 		crab.setup(self, "creature-scuttle-crab")
 		add_child(crab)
 		enemies.append(crab)
@@ -4932,7 +5155,7 @@ func _spawn_enemies() -> void:
 		var raider := DSEnemy.new()
 		var rp := center
 		while rp.distance_to(center) < 300.0:
-			rp = Vector2(rng.randi_range(3, WORLD.x - 3) * TILE, rng.randi_range(3, WORLD.y - 3) * TILE)
+			rp = Vector2(rng.randi_range(3, WORLD.x - 3) * TILE, rng.randi_range(3, NORTH_H - 3) * TILE)
 		raider.position = rp
 		raider.setup(self, "creature-raider")
 		add_child(raider)
@@ -4944,6 +5167,24 @@ func _spawn_enemies() -> void:
 	boss.add_child(_world_label("Old Shellback", Vector2(0, 22)))
 	add_child(boss)
 	enemies.append(boss)
+	# --- REEF-FOREST-SPEC §1/§4: the south-band enemy pass. Its OWN seeded rng
+	# (SOUTH_ENEMY_SEED) — never touches the north generator (seed 23) or its
+	# positions. Eel-wolves (pack-hunter) + urchin-backs (ambient-armored),
+	# roaming only south of the scarp.
+	var srng := RandomNumberGenerator.new()
+	srng.seed = SOUTH_ENEMY_SEED
+	for i in SOUTH_EEL_WOLF_COUNT:
+		var wolf := DSEnemy.new()
+		wolf.position = Vector2(srng.randi_range(2, WORLD.x - 2) * TILE, srng.randi_range(NORTH_H + 2, WORLD.y - 2) * TILE)
+		wolf.setup(self, "creature-eel-wolf")
+		add_child(wolf)
+		enemies.append(wolf)
+	for i in SOUTH_URCHIN_BACK_COUNT:
+		var urchin := DSEnemy.new()
+		urchin.position = Vector2(srng.randi_range(2, WORLD.x - 2) * TILE, srng.randi_range(NORTH_H + 2, WORLD.y - 2) * TILE)
+		urchin.setup(self, "creature-urchin-back")
+		add_child(urchin)
+		enemies.append(urchin)
 
 ## --- day/night + HUD ---------------------------------------------------------------
 const TIDE_BELL_RING_MINUTES := [6 * 60, 18 * 60]   # 06:00 and 18:00
@@ -4969,7 +5210,7 @@ func _on_sim_minute(_m: int) -> void:
 		_minutes_since_hour = 0
 		works.favor_hour()
 	_tick_tide_bell(clock.minute_of_day)
-	var tint := _tint_for_minute(clock.minute_of_day)
+	var tint := _tint_for_minute(clock.minute_of_day, player.position.y if player != null else 0.0)
 	if is_storm_day():
 		tint = tint * Color(0.72, 0.76, 0.86)   # storm-gray over everything
 		if clock.minute_of_day % 47 == 0:
@@ -5023,25 +5264,38 @@ func _update_lantern_glow() -> void:
 		_lantern_light = null
 
 ## Gradual light: night -> warm dawn -> blinding day -> gold dusk -> night.
-func _tint_for_minute(m: int) -> Color:
+## A pure function of (minute, y) — no sim state, client-visual only.
+## REEF-FOREST-SPEC §2: south of the scarp the canopy adds a THIRD band —
+## reef "daytime" reads like a Salt Shallows dusk, reef night goes near-black.
+func _tint_for_minute(m: int, y: float = 0.0) -> Color:
 	const NIGHT := Color(0.42, 0.46, 0.62)
 	const DAWN := Color(0.95, 0.82, 0.72)
 	const DAY := Color(1, 1, 1)
 	const DUSK := Color(1.0, 0.85, 0.62)
 	var h := m / 60.0
+	var north: Color
 	if h < 4.0:
-		return NIGHT
-	if h < 5.0:
-		return NIGHT.lerp(DAWN, h - 4.0)
-	if h < 7.0:
-		return DAWN.lerp(DAY, (h - 5.0) / 2.0)
-	if h < 18.0:
-		return DAY
-	if h < 20.0:
-		return DAY.lerp(DUSK, (h - 18.0) / 2.0)
-	if h < 21.5:
-		return DUSK.lerp(NIGHT, (h - 20.0) / 1.5)
-	return NIGHT
+		north = NIGHT
+	elif h < 5.0:
+		north = NIGHT.lerp(DAWN, h - 4.0)
+	elif h < 7.0:
+		north = DAWN.lerp(DAY, (h - 5.0) / 2.0)
+	elif h < 18.0:
+		north = DAY
+	elif h < 20.0:
+		north = DAY.lerp(DUSK, (h - 18.0) / 2.0)
+	elif h < 21.5:
+		north = DUSK.lerp(NIGHT, (h - 20.0) / 1.5)
+	else:
+		north = NIGHT
+	if y <= float(SCARP_Y):
+		return north
+	# permanent twilight under the canopy: cap brightness at "B1 dusk" (never
+	# brighter, whatever the hour), then a cold, dim canopy-shadow multiply —
+	# STYLE-BIBLE's cold-palette bias for the band, and near-black at night.
+	const CANOPY_MULT := Color(0.5, 0.48, 0.55)
+	var capped := Color(minf(north.r, DUSK.r), minf(north.g, DUSK.g), minf(north.b, DUSK.b), north.a)
+	return capped * CANOPY_MULT
 
 ## A framed, dimmed modal window on the UI layer — one shared frame so every
 ## menu reads as the same object: the flats recede behind it, a bronze-rimmed
@@ -5264,6 +5518,8 @@ func _direction_hints() -> String:
 			bits.append("a pale shrine %s" % _bearing(s.position))
 	if survivor != null and not survivor.rescued:
 		bits.append("someone stranded %s" % _bearing(survivor.position))
+	if not scarp_crossed:   # HUD bearing when unvisited, same grammar as shrines (REEF-FOREST-SPEC §1)
+		bits.append("a broken stair %s" % _bearing(STAIR_OF_HULLS_POS))
 	var raider := _nearest_raider()
 	if raider != null:
 		bits.append("a raider prowls %s" % _bearing(raider.position))
@@ -5459,7 +5715,7 @@ func srv_hello(username: String, version: String) -> void:
 	if not stats.actors.has(pid):
 		stats.register(pid, 60.0, 60.0)
 	peers[peer_id] = pid
-	avatars[pid] = Vector2(WORLD.x * TILE / 2.0, WORLD.y * TILE / 2.0)
+	avatars[pid] = Vector2(WORLD.x * TILE / 2.0, NORTH_H * TILE / 2.0)
 	acting_pid = pid
 	_recompute_vitals(pid)
 	print("joined: %s (pid %d)" % [username, pid])
@@ -5535,6 +5791,24 @@ func srv_pos(x: float, y: float) -> void:
 	var pid: int = peers.get(multiplayer.get_remote_sender_id(), -1)
 	if pid > 0:
 		avatars[pid] = Vector2(x, y)
+		_check_scarp_crossing(pid, y)   # the position stream already reports — hook it here, not input
+
+## REEF-FOREST-SPEC §1: the FIRST time any player crosses south of the scarp,
+## world-level and idempotent (fires once ever, persists in the save). Raises
+## the Godhead cap 40% -> 70% (one biome keystone's worth) and says the
+## numbers (the UI law). Called from the server tick that already tracks
+## positions (srv_pos for networked clients; _physics_process for the host's
+## own local player) — never from client input directly.
+func _check_scarp_crossing(pid: int, y: float) -> void:
+	if scarp_crossed or y <= float(SCARP_Y):
+		return
+	scarp_crossed = true
+	var old_cap := godhead.cap()
+	godhead.set_biomes_cleared(2)
+	var new_cap := godhead.cap()
+	_message_to(pid, "The world holds more of the gods here — cap %d%% -> %d%%." % [int(round(old_cap)), int(round(new_cap))])
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
 
 func _on_peer_left(peer_id: int) -> void:
 	var pid: int = peers.get(peer_id, -1)
@@ -5570,7 +5844,10 @@ func _world_sync() -> Dictionary:
 	for n in resource_nodes:
 		if is_instance_valid(n) and int(n.get_meta("idx", -1)) >= STORM_GLASS_IDX_BASE:
 			specials.append({"item": n.get_meta("item_id"), "x": n.position.x, "y": n.position.y, "idx": n.get_meta("idx")})
-	for i in range(84, node_defs.size()):
+	# _static_node_def_count (set once boot world-gen finishes, both bands):
+	# everything below it regenerates identically client-side for free; only
+	# truly dynamic post-boot defs (boss hoard, corpse drops) need the wire.
+	for i in range(_static_node_def_count, node_defs.size()):
 		var d: Dictionary = node_defs[i]
 		extra_defs.append({"item_id": d.item_id, "x": (d.pos as Vector2).x, "y": (d.pos as Vector2).y, "idx": d.idx})
 	return {
@@ -5679,7 +5956,7 @@ func cl_player_state(p: Dictionary) -> void:
 func cl_world_sync(w: Dictionary) -> void:
 	clock.day = int(w.get("day", 0))
 	clock.minute_of_day = int(w.get("minute", 360))
-	daynight.color = _tint_for_minute(clock.minute_of_day)
+	daynight.color = _tint_for_minute(clock.minute_of_day, player.position.y if player != null else 0.0)
 	var wcamp: Variant = w.get("camp", null)
 	camp_center = Vector2(float(wcamp[0]), float(wcamp[1])) if wcamp != null else Vector2.INF
 	_update_camp_ring()

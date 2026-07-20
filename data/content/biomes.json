@@ -10,8 +10,8 @@
   },
   {
     "id": "biome-reef-forest", "name": "The Reef Forest", "band": 2, "palette": "muted-purple-bone-white", "lightLevel": "twilight-canopy",
-    "resourceItemIds": ["item-coralwood", "item-reef-iron", "item-pearl"],
-    "creatureIds": ["creature-eel-wolf", "creature-the-drowned", "creature-angler-stalker"],
+    "resourceItemIds": ["item-coralwood", "item-reef-iron", "item-pearl", "item-anemone-silk"],
+    "creatureIds": ["creature-eel-wolf", "creature-the-drowned", "creature-angler-stalker", "creature-urchin-back"],
     "bossCreatureId": "creature-anglermother",
     "peopleIds": ["people-reefkin"],
     "signatureLegendItemId": "item-neriss-hourglass",

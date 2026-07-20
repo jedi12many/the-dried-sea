@@ -7,13 +7,16 @@ const AGGRO_RADIUS := 170.0
 const ATTACK_RANGE := 30.0
 const ATTACK_COOLDOWN := 1.1
 
-const CREATURE_SPRITES := {"creature-salt-hound": "hound", "creature-scuttle-crab": "crab", "creature-old-shellback": "shellback"}
+const CREATURE_SPRITES := {"creature-salt-hound": "hound", "creature-scuttle-crab": "crab", "creature-old-shellback": "shellback",
+	"creature-eel-wolf": "eel_wolf", "creature-urchin-back": "urchin_back"}
 
 var host: GameHost
 var creature_id: String
 var speed := 60.0
 var attack_damage := 8.0
 var peaceful := false   # ambient archetypes never chase or bite
+var ambient_armored := false   # M3.a: urchin-back — peaceful until struck, then a slow pursuit (never on its own)
+var provoked := false          # ambient_armored only: set true the first time on_hit() lands
 var mirror := false     # NET client: a visual echo — the server owns the brain
 var is_boss := false
 var subduable := false  # raiders: at low HP they surrender instead of dying
@@ -31,6 +34,8 @@ func stun(seconds: float) -> void:
 
 ## Hit feedback: white flash + a health sliver that appears once blooded.
 func on_hit() -> void:
+	if ambient_armored:
+		provoked = true   # harmless until struck (REEF-FOREST-SPEC §4) — this is the strike
 	if _visual != null:
 		_visual.modulate = Color(3, 3, 3)
 		get_tree().create_timer(0.1).timeout.connect(func() -> void:
@@ -59,6 +64,7 @@ func setup(game_host: GameHost, id: String) -> void:
 	speed = float(stats.get("speed", 1.0)) * 70.0
 	attack_damage = float(stats.get("damage", 5))
 	peaceful = creature.get("archetype", "") == "ambient"
+	ambient_armored = creature.get("archetype", "") == "ambient-armored"
 	is_boss = creature.get("archetype", "") == "boss"
 	subduable = creature.get("archetype", "") == "raider-human"
 	# a beast with a tame block that ISN'T peaceful (a hound, not a crab —
@@ -88,6 +94,8 @@ func _physics_process(delta: float) -> void:
 		return   # mirrors move by the server's word alone
 	if peaceful or surrendered:
 		return   # crabs have nowhere to be; a surrendered raider waits
+	if ambient_armored and not provoked:
+		return   # the urchin-back: harmless until struck (REEF-FOREST-SPEC §4)
 	if _stun > 0.0:
 		_stun -= delta
 		velocity = Vector2.ZERO

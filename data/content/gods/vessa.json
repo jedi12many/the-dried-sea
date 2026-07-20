@@ -118,7 +118,8 @@
    "item-driftwood"
   ],
   "accepts": [
-   "item-wreck-timber"
+   "item-wreck-timber",
+   "item-pearl-votive"
   ]
  },
  "lore": "The explorer's god. Every road you build is a prayer she answers with shortcuts.",

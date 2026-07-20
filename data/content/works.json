@@ -578,6 +578,31 @@
   "purpose": "Ghal's altar (B2 arrival). Relics displayed and offerings laid here strengthen his rites — data-complete, naturally unreachable until his shrine stands in the Reef Forest."
  },
  {
+  "$comment": "CRAFT-AND-BUILD-SPEC Part 1 Law 1: stations are god-neutral — the metal chain (workbench -> reef-forge -> trench-works) is Track-1 progression, and Track 1 is fair. Bootstrap is Valheim-honest: B1 metal (bronze) + B2 timber (coralwood) build the thing that works B2 metal (reef-iron).",
+  "id": "work-reef-forge",
+  "name": "Reef-Forge",
+  "godId": "neutral",
+  "category": "station",
+  "buildCost": [
+   {
+    "itemId": "item-coralwood",
+    "qty": 8
+   },
+   {
+    "itemId": "item-bronze-salvage",
+    "qty": 6
+   },
+   {
+    "itemId": "item-rope",
+    "qty": 4
+   }
+  ],
+  "useDetection": "crafting-at",
+  "favorTrickle": 0,
+  "text": "Tier-0 of the reef's own tree. Smelts and works reef-iron the way the workbench worked bronze.",
+  "purpose": "Crafting station. Unlocks reef-iron weapons, armor, and the tier-3 mattock when you stand near it."
+ },
+ {
   "id": "work-altar-ur-noth",
   "name": "Reliquary of the Unlit",
   "godId": "god-ur-noth",

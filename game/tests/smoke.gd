@@ -1702,6 +1702,144 @@ func _ready() -> void:
 	check(host7.beasts[0].at_heel, "...at_heel/kenneled restored from the roster")
 	host7.queue_free()
 
+	# ============================================================
+	# M3.a — the Descent (REEF-FOREST-SPEC): WORLD grows 96x64 -> 96x128,
+	# the north half stays byte-identical, the Reef Forest band stands south
+	# of the scarp.
+	# ============================================================
+	check(GameHost.WORLD == Vector2i(96, 128), "WORLD grew to 96x128")
+
+	# --- the north half is proven byte-identical: known B1 landmarks at their
+	# exact old coordinates (rng seeds 7/11/23 pinned to NORTH_H, not WORLD.y) ---
+	var halor_shrine: Node2D = null
+	var neris_shrine: Node2D = null
+	for s in host.shrines:
+		if str(s.get_meta("god_id", "")) == "god-halor":
+			halor_shrine = s
+		elif str(s.get_meta("god_id", "")) == "god-neris":
+			neris_shrine = s
+	check(halor_shrine != null and halor_shrine.position == Vector2(GameHost.WORLD.x * GameHost.TILE / 2.0, GameHost.TILE * 5.0),
+		"Halor's shrine stands exactly where it always did")
+	check(neris_shrine != null and neris_shrine.position == Vector2(GameHost.WORLD.x * GameHost.TILE / 2.0, GameHost.NORTH_H * GameHost.TILE - GameHost.TILE * 5.0),
+		"Neris's shrine (the old south rim) hasn't moved an inch")
+	check(host._calling_anchor_pos("wreck-west") == GameHost.LANTERN_WRECK_POS, "the beached wreck anchor is unmoved")
+	# Old Shellback fell earlier in this same run (the Verdict test above) — his
+	# ring's POSITION is the thing that must never move, proven the same way
+	# the anchors above are: the pure lookup, not his (long since dead) body.
+	check(host._calling_anchor_pos("boss-ring") == GameHost.BOSS_RING_POS, "Old Shellback's ring position is unmoved")
+
+	# --- the scarp: blocks off the Stair, but the gap itself passes ---
+	# The reef tests above TELEPORTED us south (nodes, the forge), which fires
+	# the crossing for real — no teleports exist in play, so rewind the one-shot
+	# here and let the walk below prove the honest first descent.
+	host.scarp_crossed = false
+	host.godhead.set_biomes_cleared(1)
+	host.player.position = Vector2(GameHost.STAIR_OF_HULLS_POS.x - 500.0, GameHost.SCARP_Y - 90.0)
+	Input.action_press("move_down")
+	for i in 60:
+		await get_tree().physics_frame
+	Input.action_release("move_down")
+	check(host.player.position.y < GameHost.SCARP_Y, "the scarp blocks a walk-in off the Stair (y=%.0f, scarp at %.0f)" % [host.player.position.y, GameHost.SCARP_Y])
+	check(not host.scarp_crossed, "...and a blocked attempt never counts as a crossing")
+
+	host.player.position = Vector2(GameHost.STAIR_OF_HULLS_POS.x, GameHost.SCARP_Y - 90.0)
+	Input.action_press("move_down")
+	for i in 90:
+		await get_tree().physics_frame
+	Input.action_release("move_down")
+	check(host.player.position.y > GameHost.SCARP_Y, "the Stair of Hulls itself passes (y=%.0f)" % host.player.position.y)
+
+	# --- the crossing: fires once, raises the cap, says the numbers ---
+	check(host.scarp_crossed, "walking the Stair south fires the crossing")
+	check(absf(host.godhead.cap() - 70.0) < 0.01, "Godhead's cap rose 40%% -> 70%% (%.1f%%)" % host.godhead.cap())
+	check(host.message.contains("cap 40%") and host.message.contains("70%"), "the message states the numbers (%s)" % host.message)
+	host.message = ""
+	host._check_scarp_crossing(1, host.player.position.y)
+	check(host.message == "", "the crossing fires exactly once — a second check south of the scarp is a no-op")
+
+	# --- B2 nodes need the mattock (CRAFT-AND-BUILD-SPEC Part 1 Law 2) ---
+	var reef_node := _node_of(host, "item-coralwood")
+	check(reef_node != null, "the reef grew coralwood south of the scarp")
+	if reef_node != null:
+		host.player.position = reef_node.position
+		host.message = ""
+		check(not host.intent_harvest(), "bare hands refuse a mattock-gated reef node")
+		check(host.message.contains("Bronze Mattock"), "the refusal names the tool needed (%s)" % host.message)
+		host.inventory.add(1, "item-bronze-mattock", 1)
+		check(host.intent_harvest(), "the Bronze Mattock in pack opens it")
+		check(host.inventory.count(1, "item-coralwood") >= 1, "coralwood yields, one swing in")
+
+	# --- the Reef-Forge stands; the Reef-Iron Blade forges there and equips ---
+	host.camp_center = host.player.position   # loosen the ring for this scattered build
+	host.inventory.add(1, "item-coralwood", 20)
+	host.inventory.add(1, "item-bronze-salvage", 10)
+	host.inventory.add(1, "item-rope", 10)
+	check(host.intent_build("work-reef-forge"), "the Reef-Forge stands (neutral, Law 1)")
+	host.inventory.add(1, "item-reef-iron", 10)
+	check(host.intent_craft("recipe-reef-iron-blade"), "the Reef-Iron Blade forges at the reef-forge")
+	check(host.inventory.count(1, "item-reef-iron-blade") == 1, "the blade is in hand")
+	var worn := host.equipped_item(1, "weapon")
+	if worn != "":
+		host.equip_toggle(1, worn)   # bare hands first, so the swap below is provable
+	host.equip_toggle(1, "item-reef-iron-blade")
+	check(host.equipped_item(1, "weapon") == "item-reef-iron-blade" and host.attack_damage() >= 30.0,
+		"the Reef-Iron Blade equips and hits for 30 (%.0f)" % host.attack_damage())
+
+	# --- the Pearl Votive: a Neris crave, a Vessa accept (sanctum lane) ---
+	check(host.sanctum.lane("god-neris", "item-pearl-votive") == "craves", "the Pearl Votive is a Neris crave")
+	check(host.sanctum.lane("god-vessa", "item-pearl-votive") == "accepts", "...and Vessa accepts it too")
+
+	# --- the urchin-back: drops, and the B2 kitchen cooks them ---
+	var urchin := DSEnemy.new()
+	urchin.position = host.player.position + Vector2(30, 0)
+	urchin.setup(host, "creature-urchin-back")
+	host.add_child(urchin)
+	host.enemies.append(urchin)
+	var urchin_meat_before := host.inventory.count(1, "item-urchin-meat")
+	var dye_before := host.inventory.count(1, "item-dye")
+	host._on_enemy_killed(urchin)
+	check(host.inventory.count(1, "item-urchin-meat") - urchin_meat_before == 2, "urchin-back drops urchin-meat x2")
+	check(host.inventory.count(1, "item-dye") - dye_before == 1, "...and dye x1")
+	host.inventory.add(1, "item-salt", 2)
+	check(host.intent_craft("recipe-smoked-urchin"), "Smoked Urchin cooks at the smokehouse")
+	check(host.inventory.count(1, "item-smoked-urchin") >= 1, "smoked urchin, in hand")
+
+	# --- eel-wolf reviewed against the B2 x2 damage law (data, not a code multiplier) ---
+	var hound_dmg := float(host.registry.get_entity("creature-salt-hound").get("stats", {}).get("damage", 0))
+	var wolf_dmg := float(host.registry.get_entity("creature-eel-wolf").get("stats", {}).get("damage", 0))
+	check(wolf_dmg > hound_dmg, "the eel-wolf hits harder than a hound (%.0f > %.0f)" % [wolf_dmg, hound_dmg])
+	check(is_equal_approx(wolf_dmg, hound_dmg * 2.0), "...exactly the B2 x2 band, from data")
+
+	# --- the twilight band: a pure function of position.y + time ---
+	var noon := 12 * 60
+	var north_tint := host._tint_for_minute(noon, float(GameHost.SCARP_Y) - 10.0)
+	var south_tint := host._tint_for_minute(noon, float(GameHost.SCARP_Y) + 300.0)
+	var north_sum := north_tint.r + north_tint.g + north_tint.b
+	var south_sum := south_tint.r + south_tint.g + south_tint.b
+	check(south_sum < north_sum, "a south position at noon reads darker than a north one (%.2f < %.2f)" % [south_sum, north_sum])
+
+	# --- pre-band save migration: additive, both halves present, legacy kept ---
+	host.save_game()
+	var preband_raw := SaveSystem.read_file(host.save_path)
+	(preband_raw.game as Dictionary).erase("world_size")
+	(preband_raw.game as Dictionary).erase("scarp_crossed")
+	SaveSystem.write_file("user://smoke-preband-save.json", preband_raw)
+	check(host._save_predates_band(preband_raw.game), "a save stripped of world_size reads as pre-band")
+	var host8: GameHost = load("res://scenes/main.tscn").instantiate()
+	host8.skip_autoload = true
+	host8.save_path = "user://smoke-preband-save.json"
+	add_child(host8)
+	await get_tree().physics_frame
+	host8.load_game()
+	var halor8: Node2D = null
+	for s in host8.shrines:
+		if str(s.get_meta("god_id", "")) == "god-halor":
+			halor8 = s
+	check(halor8 != null and halor8.position == Vector2(GameHost.WORLD.x * GameHost.TILE / 2.0, GameHost.TILE * 5.0),
+		"a pre-band save keeps the legacy north half exactly")
+	check(_node_of(host8, "item-coralwood") != null, "...and the south band stands too — both halves, one load")
+	host8.queue_free()
+
 	print("\nsmoke: %d checks, %d failure(s)" % [checks, failures])
 	get_tree().quit(1 if failures > 0 else 0)
 

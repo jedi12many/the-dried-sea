@@ -358,5 +358,179 @@
       "eventMaterial": "item-storm-glass"
     },
     "$comment": "B1 legend #2, the Harpoon's template applied. Verses PLACED: kneeling at Halor's shrine (the homestead god keeps the keepers' stories) / inspecting the marked beached wreck / surviving a great-storm day (granted the dawn after). Rite-craft at ANY chapel — the Lantern predates the pantheon quarrels."
+  },
+  {
+    "id": "recipe-smoked-urchin",
+    "track": "tree",
+    "output": {
+      "itemId": "item-smoked-urchin",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-urchin-meat",
+        "qty": 2
+      },
+      {
+        "itemId": "item-salt",
+        "qty": 1
+      }
+    ],
+    "stationWorkId": "work-smokehouse",
+    "unlock": {
+      "byItems": [
+        "item-urchin-meat"
+      ]
+    },
+    "$comment": "the B2 kitchen (CRAFT-AND-BUILD-SPEC Part 2) — same shape as recipe-smoked-crab, a step above in the food pass."
+  },
+  {
+    "id": "recipe-anemone-silk-wrap",
+    "track": "tree",
+    "output": {
+      "itemId": "item-anemone-silk-wrap",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-anemone-silk",
+        "qty": 5
+      },
+      {
+        "itemId": "item-rope",
+        "qty": 2
+      }
+    ],
+    "stationWorkId": "work-workbench",
+    "unlock": {
+      "byItems": [
+        "item-anemone-silk"
+      ]
+    }
+  },
+  {
+    "id": "recipe-pearl-votive",
+    "track": "tree",
+    "output": {
+      "itemId": "item-pearl-votive",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-pearl",
+        "qty": 2
+      }
+    ],
+    "stationWorkId": "work-workbench",
+    "unlock": {
+      "byItems": [
+        "item-pearl"
+      ]
+    }
+  },
+  {
+    "id": "recipe-reef-iron-blade",
+    "track": "tree",
+    "output": {
+      "itemId": "item-reef-iron-blade",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-reef-iron",
+        "qty": 6
+      },
+      {
+        "itemId": "item-coralwood",
+        "qty": 2
+      },
+      {
+        "itemId": "item-rope",
+        "qty": 1
+      }
+    ],
+    "stationWorkId": "work-reef-forge",
+    "unlock": {
+      "byItems": [
+        "item-reef-iron"
+      ]
+    }
+  },
+  {
+    "id": "recipe-reef-iron-pike",
+    "track": "tree",
+    "output": {
+      "itemId": "item-reef-iron-pike",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-reef-iron",
+        "qty": 8
+      },
+      {
+        "itemId": "item-coralwood",
+        "qty": 3
+      },
+      {
+        "itemId": "item-rope",
+        "qty": 1
+      }
+    ],
+    "stationWorkId": "work-reef-forge",
+    "unlock": {
+      "byItems": [
+        "item-reef-iron"
+      ]
+    }
+  },
+  {
+    "id": "recipe-reef-iron-mattock",
+    "track": "tree",
+    "output": {
+      "itemId": "item-reef-iron-mattock",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-reef-iron",
+        "qty": 7
+      },
+      {
+        "itemId": "item-coralwood",
+        "qty": 4
+      }
+    ],
+    "stationWorkId": "work-reef-forge",
+    "unlock": {
+      "byItems": [
+        "item-reef-iron"
+      ]
+    },
+    "$comment": "tier-3 gather gate is inert until M4 reads it on world nodes — same pattern as recipe-bronze-mattock at M2.75."
+  },
+  {
+    "id": "recipe-reef-iron-scale",
+    "track": "tree",
+    "output": {
+      "itemId": "item-reef-iron-scale",
+      "qty": 1
+    },
+    "inputs": [
+      {
+        "itemId": "item-reef-iron",
+        "qty": 8
+      },
+      {
+        "itemId": "item-coralwood",
+        "qty": 2
+      }
+    ],
+    "stationWorkId": "work-reef-forge",
+    "unlock": {
+      "byItems": [
+        "item-reef-iron"
+      ]
+    }
   }
 ]

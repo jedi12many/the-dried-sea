@@ -59,21 +59,53 @@
   "name": "Coralwood",
   "category": "material",
   "tier": 2,
-  "text": "Timber from a forest where every tree is a dead animal."
+  "text": "Timber from a forest where every tree is a dead animal.",
+  "gather": {
+   "hits": 6,
+   "tierRequired": 2
+  }
  },
  {
   "id": "item-reef-iron",
   "name": "Reef-Iron",
   "category": "material",
   "tier": 2,
-  "text": "Ore seeded through petrified coral. The Reefkin call it 'marrow' and would rather you didn't."
+  "text": "Ore seeded through petrified coral. The Reefkin call it 'marrow' and would rather you didn't.",
+  "gather": {
+   "hits": 5,
+   "tierRequired": 2
+  }
  },
  {
   "id": "item-pearl",
   "name": "Pearl",
   "category": "material",
   "tier": 2,
-  "text": "The reef's last soft thing."
+  "text": "The reef's last soft thing.",
+  "gather": {
+   "hits": 4,
+   "tierRequired": 2
+  }
+ },
+ {
+  "id": "item-anemone-silk",
+  "name": "Anemone-Silk",
+  "category": "material",
+  "tier": 2,
+  "text": "Stinging thread, milked gently. It never learns you aren't food.",
+  "gather": {
+   "hits": 3,
+   "tierRequired": 2
+  }
+ },
+ {
+  "$comment": "offeringValue 6 is invented — CRAFT-AND-BUILD-SPEC Part 2 names dye as 'cosmetic/offering' but gives no worship-rate number; set below the salt-votive (8) since it's a curiosity, not a devotional object.",
+  "id": "item-dye",
+  "name": "Reef-Dye",
+  "category": "offering",
+  "tier": 2,
+  "offeringValue": 6,
+  "text": "Colors the flats never had. A spine ground fine enough to paint with."
  },
  {
   "id": "item-tidebrass",
@@ -172,6 +204,31 @@
    "foodMinutes": 15
   },
   "text": "The reef-runners swear by it: a coil of it in the pack and the horizon gets closer."
+ },
+ {
+  "id": "item-urchin-meat",
+  "name": "Urchin Meat",
+  "category": "food",
+  "tier": 0,
+  "stats": {
+   "foodHp": 18,
+   "foodStamina": 12,
+   "foodMinutes": 8
+  },
+  "text": "Sweet under all that armor. It never saw you coming and it still won't tell you how."
+ },
+ {
+  "$comment": "the B2 kitchen (CRAFT-AND-BUILD-SPEC Part 2): 'a step above Smoked Crab' — foodHp 40 > 35, foodStamina 30 > 25, foodMinutes 18 > 15.",
+  "id": "item-smoked-urchin",
+  "name": "Smoked Urchin",
+  "category": "food",
+  "tier": 1,
+  "stats": {
+   "foodHp": 40,
+   "foodStamina": 30,
+   "foodMinutes": 18
+  },
+  "text": "Cured low and slow. The reef gives better than the flats did, once you learn to ask it right."
  },
  {
   "id": "item-remnant-shellback",
@@ -397,5 +454,73 @@
    "defense": 5
   },
   "text": "Sailcloth wound tight and knotted the way a rigger knots a line — over the arms and chest, where a claw usually lands first."
+ },
+ {
+  "id": "item-reef-iron-blade",
+  "name": "Reef-Iron Blade",
+  "category": "weapon",
+  "tier": 2,
+  "stackSize": 1,
+  "slot": "weapon",
+  "stats": {
+   "damage": 30
+  },
+  "text": "Forged at the reef-forge, from ore the Reefkin call marrow. It holds an edge better than bronze ever did."
+ },
+ {
+  "id": "item-reef-iron-pike",
+  "name": "Reef-Iron Pike",
+  "category": "weapon",
+  "tier": 2,
+  "stackSize": 1,
+  "slot": "weapon",
+  "stats": {
+   "damage": 34
+  },
+  "text": "Slow and long — the eel-wolf's answer. It keeps the pack at a distance that favors you. (Slow/reach is flavor at EA; the number carries the weapon for now.)"
+ },
+ {
+  "id": "item-reef-iron-mattock",
+  "name": "Reef-Iron Mattock",
+  "category": "tool",
+  "tier": 2,
+  "stackSize": 1,
+  "tool": {
+   "tier": 3
+  },
+  "text": "A reef-forge head on a coralwood haft. Nothing in the reef needs it yet — the Drop will."
+ },
+ {
+  "id": "item-anemone-silk-wrap",
+  "name": "Anemone-Silk Wrap",
+  "category": "armor",
+  "tier": 2,
+  "stackSize": 1,
+  "slot": "armor",
+  "stats": {
+   "defense": 10
+  },
+  "text": "Light, and it still stings a little on the inside — the anemone never quite forgets what it was for."
+ },
+ {
+  "id": "item-reef-iron-scale",
+  "name": "Reef-Iron Scale",
+  "category": "armor",
+  "tier": 2,
+  "stackSize": 1,
+  "slot": "armor",
+  "stats": {
+   "defense": 13
+  },
+  "text": "Marrow-iron plates, overlapped like the coral that grew them. Heavier than bronze, and it earns the weight."
+ },
+ {
+  "$comment": "offeringValue 15 is invented (CRAFT-AND-BUILD-SPEC Part 2 names it 'Neris craves, Vessa accepts' but gives no worship-rate number) — set above storm-glass (12) since a pearl worked into a votive is scarcer than sand the sky fused for free.",
+  "id": "item-pearl-votive",
+  "name": "Pearl Votive",
+  "category": "offering",
+  "tier": 2,
+  "offeringValue": 15,
+  "text": "A pearl set in coralwood, the way the flats used to set salt in bronze. Neris keeps it like she kept everything else — patiently, and for a long time."
  }
 ]

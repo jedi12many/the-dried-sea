@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "creature.schema.json",
-  "$comment": "v2 — the bare `tamable` flag graduates into a full `tame` block (VILLAGER-AND-GODHEAD-SPEC Part III, Beasts at Heel). $comment allowed throughout for first-guess numbers invented beyond the spec.",
+  "$comment": "v3 — adds archetype 'ambient-armored' (M3.a: urchin-back — harmless until struck, then slow pursuit; enemy.gd handles it as a stateful peaceful-until-provoked variant, no schema change needed beyond the enum). v2 added the bare `tamable` flag graduating into a full `tame` block (VILLAGER-AND-GODHEAD-SPEC Part III, Beasts at Heel). $comment allowed throughout for first-guess numbers invented beyond the spec.",
   "type": "object",
   "required": ["id", "name", "biomeId", "archetype", "stats", "text"],
   "additionalProperties": false,
@@ -11,7 +11,7 @@
     "name": { "type": "string" },
     "workingName": { "type": "boolean" },
     "biomeId": { "type": "string" },
-    "archetype": { "enum": ["pack-hunter", "ambusher", "brute", "lure", "swarm", "the-drowned", "raider-human", "ambient", "boss"] },
+    "archetype": { "enum": ["pack-hunter", "ambusher", "brute", "lure", "swarm", "the-drowned", "raider-human", "ambient", "ambient-armored", "boss"] },
     "nightOnly": { "type": "boolean", "default": false },
     "stats": { "type": "object", "additionalProperties": { "type": "number" } },
     "drops": { "$ref": "common.schema.json#/$defs/cost" },
