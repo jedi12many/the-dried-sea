@@ -92,6 +92,14 @@ var shrines: Array[Node2D] = []
 var survivor: DSVillager               # Anna, the first (kept for compat + tutorial)
 var villagers: Array[DSVillager] = []  # additional rescued/stranded survivors
 var beasts: Array[DSBeast] = []        # the tamed roster's bodies (VILLAGER-AND-GODHEAD-SPEC Part III)
+# THE SHEPHERD'S WAY, offered (Part III §2): ground bait drops. A plain Node2D
+# per drop (not a resource_nodes Area2D — bait isn't hit-harvestable by the
+# player, and keeping it out of resource_nodes keeps a porter crab's own
+# hoovering loop from vacuuming a hound's dinner). meta carries item_id,
+# dropper_pid (feed_wild's owner), day_dropped (dawn spoilage), bait_id (its
+# own stable id, mirrored to clients the same way beast_system's own ids are).
+var baits: Array[Node2D] = []
+var _next_bait_id := 1
 var village_stock: Dictionary = {}     # the shared storehouse: item_id -> qty
 var village_panel: Label
 var village_panel_open := false
@@ -614,6 +622,10 @@ func save_game() -> void:
 		"callings": callings.duplicate(true),
 		"callings_done": callings_done.duplicate(true),
 		"respawn_bind": respawn_bind.duplicate(),
+		"baits": baits.map(func(n: Node2D) -> Dictionary:
+			return {"id": int(n.get_meta("bait_id")), "item": str(n.get_meta("item_id")),
+				"x": n.position.x, "y": n.position.y, "pid": int(n.get_meta("dropper_pid")),
+				"day": int(n.get_meta("day_dropped"))}),
 		"node_left": _node_left_dict(),
 		"sanctum": sanctum.to_save(),
 		"message": message,
@@ -791,6 +803,13 @@ func load_game() -> void:
 		b.downed = bool(bpd.get("downed", false))
 		b.downed_until = float(bpd.get("downed_until", 0.0))
 		b._refresh_label()
+	# bait (Part III §2, the Shepherd's Way): ground drops persist across a
+	# save/load, same "clear then restore" shape as the beast bodies above.
+	for n in baits.duplicate():
+		baits.erase(n)
+		n.queue_free()
+	for btd: Dictionary in g.get("baits", []):
+		_spawn_bait_node(str(btd.item), Vector2(float(btd.x), float(btd.y)), int(btd.pid), int(btd.day), int(btd.id))
 	_refresh_hud()
 
 ## Where the first instance of a work stands (villager duty posts).
@@ -1188,6 +1207,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			rpc_id(1, "srv_intent", "give_food", [])
 		else:
 			intent_give_food()
+	elif event.is_action_pressed("offer_bait"):
+		intent_offer_bait()
 	elif event.is_action_pressed("save"):
 		save_game()
 		message = "The flats will remember. (saved)"
@@ -1484,6 +1505,155 @@ func intent_feed_wild(e: DSEnemy) -> bool:
 	if net_mode == "server":
 		rpc("cl_world_sync", _world_sync())
 	return true
+
+## The Shepherd's Way, AS THE SPEC NAMES IT FIRST (VILLAGER-AND-GODHEAD-SPEC
+## Part III §2): "Drop the species' craved food on the ground and stand off;
+## the beast comes, eats, and trusts." Jeff's playtest bug, and the reason
+## this exists: a hound/eel-wolf's AGGRO_RADIUS (170px, enemy.gd) outruns
+## INTERACT_RANGE (56px) — once one starts chasing you, you can never walk
+## back in close enough to hand-feed it via intent_feed_wild above. [O] sets
+## down ONE unit of whatever the NEAREST wild tameable beast within reach
+## craves — IF you're carrying it — and backs away for you; enemy.gd's own
+## AI (not this function) is what actually breaks the beast off its chase to
+## come eat it. Always resolves with a diegetic result — same UI law as
+## intent_feed_wild: say what happened, numbers and all.
+const BAIT_SCAN_RADIUS := 500.0   # "a generous radius" per the brief
+
+func intent_offer_bait() -> bool:
+	if net_mode == "client":
+		rpc_id(1, "srv_intent", "offer_bait", [])
+		return true
+	var pos := acting_pos()
+	var nearest: DSEnemy = null
+	var nearest_d := BAIT_SCAN_RADIUS
+	for e in enemies:
+		if not is_instance_valid(e):
+			continue
+		if registry.get_entity(e.creature_id).get("tame", {}).is_empty():
+			continue
+		var d := pos.distance_to(e.position)
+		if d <= nearest_d:
+			nearest_d = d
+			nearest = e
+	if nearest == null:
+		message = "Nothing here wants what you're carrying."
+		_refresh_hud()
+		return true
+	var tm: Dictionary = registry.get_entity(nearest.creature_id).get("tame", {})
+	var craved := str(tm.get("cravedFoodItemId", ""))
+	var cname_lower := str(registry.get_entity(nearest.creature_id).name).to_lower()
+	if craved == "" or inventory.count(acting_pid, craved) <= 0:
+		var want := str(registry.get_entity(craved).get("name", "something")).to_lower() if craved != "" else "anything"
+		message = "You have nothing a %s would cross the flats for. It wants %s." % [cname_lower, want]
+		_refresh_hud()
+		return true
+	inventory.pay(acting_pid, [{"itemId": craved, "qty": 1}])
+	_spawn_bait_node(craved, pos, acting_pid, clock.day)
+	sfx("ui")
+	var item_name := str(registry.get_entity(craved).name).to_lower()
+	message = "You set down %s — a %s might come for it." % [item_name, cname_lower]
+	_refresh_hud()
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+	return true
+
+## A ground bait node: NOT added to resource_nodes (it isn't hit-harvestable
+## and a porter crab's hoovering loop must not vacuum it). forced_id lets a
+## client mirror (cl_world_sync) or a save/load restore reuse the SERVER's
+## stable id instead of minting a fresh local one — same reasoning as
+## _spawn_beast's bid parameter.
+func _spawn_bait_node(item_id: String, pos: Vector2, dropper_pid: int, day: int, forced_id: int = -1) -> Node2D:
+	var bid := forced_id
+	if bid < 0:
+		bid = _next_bait_id
+		_next_bait_id += 1
+	elif bid >= _next_bait_id:
+		_next_bait_id = bid + 1
+	var n := Node2D.new()
+	n.position = pos
+	n.set_meta("bait_id", bid)
+	n.set_meta("item_id", item_id)
+	n.set_meta("dropper_pid", dropper_pid)
+	n.set_meta("day_dropped", day)
+	var visual := SpriteKit.sprite(NODE_SPRITES.get(item_id, "none"), Vector2(12, 12), ITEM_COLORS.get(item_id, Color("c9a648")))
+	n.add_child(visual)
+	add_child(n)
+	baits.append(n)
+	return n
+
+## enemy.gd's own bait-seeking AI reads this: the nearest bait matching a
+## given creature's craved food, within `radius` of `pos`. A hound never
+## notices a crab's smoked-crab bait and vice versa — bait only draws the
+## species it was actually dropped for.
+func nearest_bait_for(pos: Vector2, item_id: String, radius: float) -> Node2D:
+	var best: Node2D = null
+	var best_d := radius
+	for n in baits:
+		if not is_instance_valid(n) or str(n.get_meta("item_id", "")) != item_id:
+			continue
+		var d := pos.distance_to(n.position)
+		if d <= best_d:
+			best_d = d
+			best = n
+	return best
+
+## Called by enemy.gd when a bait-seeking beast reaches its bait (~eatRadius).
+## The bait is consumed EITHER WAY — an under-WILD dropper's bait still costs
+## the food and teaches the gate (can_tame gates the OUTCOME of eating, never
+## whether bait gets dropped or eaten at all — see intent_offer_bait, which
+## never checks WILD). A qualified dropper's meal runs through the EXACT SAME
+## beast.feed_wild the hand-feed path (intent_feed_wild above) uses, so a full
+## trust completes the tame identically either way. Either way the beast
+## calms briefly afterward (pacify, tuning/beasts.json bait.calmSeconds) —
+## the loop should read as trust, not a feeding-frenzy exploit.
+func beast_eat_bait(e: DSEnemy, bait_node: Node2D) -> void:
+	if not is_instance_valid(bait_node):
+		return
+	var dropper_pid := int(bait_node.get_meta("dropper_pid", -1))
+	var cname := str(registry.get_entity(e.creature_id).name)
+	var calm_seconds: float = float(beast.tune.get("bait", {}).get("calmSeconds", 8))
+	baits.erase(bait_node)
+	bait_node.queue_free()
+	var wild := abilities.score(dropper_pid, "virtue-wild")
+	if not beast.can_tame(wild, e.creature_id):
+		e.pacify(calm_seconds)
+		_message_to(dropper_pid, "%s takes the food and pads off, still wild — it isn't yours to keep yet." % cname)
+		if net_mode == "server":
+			rpc("cl_world_sync", _world_sync())
+		return
+	var nid := _enemy_nid(e)
+	var ghal_rank := int(devotion.state.get(dropper_pid, {}).get("god-ghal", {}).get("rank", 0))
+	var post_boost := 2 if _near_taming_post(bait_node.position) else 1   # the Taming-Post doubles a baited meal too
+	var result := beast.feed_wild(nid, e.creature_id, dropper_pid, clock.day, ghal_rank, post_boost)
+	sfx("ui", e.position)
+	if bool(result.tamed):
+		var bid := int(result.id)
+		var pos := e.position
+		stats.unregister(e)
+		enemies.erase(e)
+		e.queue_free()
+		_spawn_beast(bid, pos, true)
+		_message_to(dropper_pid, "%s — TAMED. It falls in at your heel." % str(beast.beasts.get(bid, {}).get("name", "Beast")))
+	else:
+		e.pacify(calm_seconds)
+		_message_to(dropper_pid, "%s — trust %d/%d." % [cname, int(result.trust), int(result.needed)])
+	if net_mode == "server":
+		rpc("cl_world_sync", _world_sync())
+
+## Bait spoils at dawn if uneaten (tuning/beasts.json bait.spoilAtDawn) — a
+## day_dropped stamp older than today's clock.day means it sat through a full
+## night with nobody home for dinner. Own step, same "testable in isolation"
+## shape as _dawn_drill_training/_beast_dawn_feeding.
+func _bait_spoil_dawn() -> Array[String]:
+	var notes: Array[String] = []
+	if not bool(beast.tune.get("bait", {}).get("spoilAtDawn", true)):
+		return notes
+	for n in baits.duplicate():
+		if is_instance_valid(n) and int(n.get_meta("day_dropped", clock.day)) < clock.day:
+			baits.erase(n)
+			n.queue_free()
+			notes.append("Yesterday's bait spoiled, untouched.")
+	return notes
 
 ## Your own tamed beast: revive if downed; else a full porter bag empties to
 ## your pack first (a second press that same visit toggles heel/stay); else
@@ -4908,6 +5078,9 @@ func _village_dawn() -> void:
 	# 1d. THE KENNEL (Part III): its own step (like _dawn_drill_training), so a
 	# test can exercise it in isolation from the rest of the village economy.
 	dawn_notes.append_array(_beast_dawn_feeding())
+	# 1e. BAIT (Part III §2): uneaten drops spoil at dawn — its own step, same
+	# reasoning as 1d above.
+	dawn_notes.append_array(_bait_spoil_dawn())
 	# 2. EAT + MOOD: each villager eats from the stores; hunger and neglect sour them
 	var deserters: Array[DSVillager] = []
 	var discovery_notes: Array[String] = []
@@ -6281,6 +6454,10 @@ static func _setup_input() -> void:
 		# rather than overloading it).
 		"cast_5": [KEY_H], "cast_6": [KEY_K], "cast_7": [KEY_U], "cast_8": [KEY_L],
 		"rename_beast": [KEY_M],
+		# Part III §2, the Shepherd's Way offered: [O] for "offer" — checked
+		# against every bound action above (WASD/E/SPACE/Q/R/Z/N/H/K/U/L/M/C/B/
+		# V/J/I/T/F/G/X/F5), the next free, mnemonic key.
+		"offer_bait": [KEY_O],
 	}
 	for action: String in keys:
 		if InputMap.has_action(action):
@@ -6448,6 +6625,7 @@ func srv_intent(kind: String, args: Array) -> void:
 		"dismiss": _net_villager_intent(int(args[0]), "dismiss")
 		"revive": _net_villager_intent(int(args[0]), "revive")
 		"feed_beast": intent_feed_wild(_enemy_by_nid(int(args[0])))
+		"offer_bait": intent_offer_bait()
 		"beast_interact": intent_beast_interact(_beast_by_id(int(args[0])))
 		"beast_revive": intent_revive_beast(_beast_by_id(int(args[0])))
 		"rename_beast": intent_rename_beast(int(args[0]), int(args[1]))
@@ -6497,6 +6675,12 @@ func srv_intent(kind: String, args: Array) -> void:
 		# does, so a wire test can reach rank 2 (Undertow) without modeling a
 		# cross-map walk to Vessa's/Ghal's shrine over the wire.
 		"test_attune": devotion.attune(acting_pid, str(args[0]))
+		# test hook (net_smoke.gd): grants Temper directly, the same "seed
+		# state minimally, then exercise the real path" shape as
+		# test_grant_item — a wire test proving bait's WILD-6 hound gate over
+		# the network shouldn't also have to prove several sim-days of
+		# ordinary Temper accrual to afford the allocation.
+		"test_grant_temper": abilities.earn(acting_pid, int(args[0]))
 	rpc_id(peer_id, "cl_player_state", _player_state(acting_pid))
 	rpc("cl_world_sync", _world_sync())
 
@@ -6614,6 +6798,10 @@ func _world_sync() -> Dictionary:
 				"mood": str(beast.beasts.get(b.beast_id, {}).get("mood", "keen")),
 				"downed": b.downed, "level": beast.beast_level(b.beast_id),
 				"instincts": beast.instincts_ignited(b.beast_id).size()}),
+		"baits": baits.map(func(n: Node2D) -> Dictionary:
+			return {"id": int(n.get_meta("bait_id")), "item": str(n.get_meta("item_id")),
+				"x": n.position.x, "y": n.position.y, "pid": int(n.get_meta("dropper_pid")),
+				"day": int(n.get_meta("day_dropped"))}),
 		"node_left": _node_left_dict(),
 		"sanctum": sanctum.to_save(),
 		# Godhead (Part II §7): world-level, so a light mirror — value + consumed
@@ -6875,6 +7063,23 @@ func cl_world_sync(w: Dictionary) -> void:
 		if not seen_beasts.has(b.beast_id):
 			beasts.erase(b)
 			b.queue_free()
+	# bait (Part III §2, the Shepherd's Way): mirrored by its own stable id —
+	# same "no separate net-id counter" reasoning as beasts above.
+	var seen_baits := {}
+	for btd: Dictionary in w.get("baits", []):
+		var bait_id := int(btd.id)
+		seen_baits[bait_id] = true
+		var have_it := false
+		for n in baits:
+			if is_instance_valid(n) and int(n.get_meta("bait_id", -1)) == bait_id:
+				have_it = true
+				break
+		if not have_it:
+			_spawn_bait_node(str(btd.item), Vector2(float(btd.x), float(btd.y)), int(btd.pid), int(btd.day), bait_id)
+	for n in baits.duplicate():
+		if not seen_baits.has(int(n.get_meta("bait_id", -1))):
+			baits.erase(n)
+			n.queue_free()
 	if village_panel_open:
 		_toggle_village(true)
 	# the altars: client mirrors the sanctum state; refresh the open Offertory

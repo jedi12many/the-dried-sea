@@ -138,19 +138,55 @@ func _physics_process(delta: float) -> void:
 		return   # dormant by day — her lure is the arena's only light; that IS the fight
 	if peaceful or surrendered:
 		return   # crabs have nowhere to be; a surrendered raider waits
+	if _stun > 0.0:
+		_stun -= delta
+		velocity = Vector2.ZERO
+		return   # knocked flat by the squall — physically incapacitated, bait or no bait
+	# THE SHEPHERD'S WAY (VILLAGER-AND-GODHEAD-SPEC Part III §2): a wild
+	# TAMEABLE beast (tameable_tier > 0 — a hound/eel-wolf; crabs are
+	# `peaceful` and already returned above, they never reach here) notices
+	# dropped bait before anything else and breaks off to eat it. This
+	# OVERRIDES the chase/attack branch below ENTIRELY, not merely when idle —
+	# that's the whole point of the fix: Jeff's playtest bug was that
+	# AGGRO_RADIUS (170px) outruns INTERACT_RANGE (56px), so a hound that
+	# started chasing could never be walked back in close enough to
+	# hand-feed. Bait lets the player retreat, drop it, and have the beast
+	# come to THEM instead. It doesn't attack while bait-seeking (this whole
+	# block returns before the attack-range check further down).
+	# CHECKED BEFORE `_pacify_seconds` below on purpose: pacify means "calmed,
+	# not hostile," not "inert" — a beast Ghal's Shepherd's Voice just calmed
+	# (or one this SAME function just pacified after its last meal, see
+	# host.beast_eat_bait's calmSeconds) should still notice a fresh piece of
+	# bait sitting right in front of it rather than ignore it for up to 8
+	# real seconds. `_stun` above is different: that's genuine physical
+	# incapacitation (knocked flat by the squall), so it still gates bait too.
+	if tameable_tier > 0:
+		var craved := str(host.registry.get_entity(creature_id).get("tame", {}).get("cravedFoodItemId", ""))
+		if craved != "":
+			var notice_radius: float = float(host.beast.tune.get("bait", {}).get("noticeRadius", 400))
+			var bait_node := host.nearest_bait_for(position, craved, notice_radius)
+			if bait_node != null:
+				_chasing = false
+				var eat_radius: float = float(host.beast.tune.get("bait", {}).get("eatRadius", 30))
+				var to_bait: Vector2 = (bait_node as Node2D).position - position
+				if to_bait.length() <= eat_radius:
+					velocity = Vector2.ZERO
+					move_and_slide()
+					host.beast_eat_bait(self, bait_node)
+					return
+				var bold_travel := host.clock.is_night() or host.is_storm_day()
+				velocity = to_bait.normalized() * speed * (1.35 if bold_travel else 1.0)
+				move_and_slide()
+				return
 	if _pacify_seconds > 0.0:
 		_pacify_seconds = maxf(_pacify_seconds - delta, 0.0)
 		velocity = Vector2.ZERO
 		move_and_slide()
 		if _pacify_seconds == 0.0 and _visual != null:
 			_visual.modulate = Color.WHITE   # the calm passes; back to itself
-		return   # Ghal's Shepherd's Voice: calmed, not chasing, for its duration
+		return   # Ghal's Shepherd's Voice (or a just-eaten meal): calmed, not chasing, for its duration
 	if ambient_armored and not provoked:
 		return   # the urchin-back: harmless until struck (REEF-FOREST-SPEC §4)
-	if _stun > 0.0:
-		_stun -= delta
-		velocity = Vector2.ZERO
-		return   # knocked flat by the squall
 	_cooldown = maxf(_cooldown - delta, 0.0)
 	# night belongs to the hounds — and the storm belongs to no one
 	var threat := host.nearest_threat(position)

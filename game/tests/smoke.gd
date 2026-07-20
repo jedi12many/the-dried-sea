@@ -2059,6 +2059,196 @@ func _ready() -> void:
 			"the beast answers to its new name (%s -> %s)" % [old_wolf_name, new_wolf_beast.display_name])
 
 	# ============================================================
+	# BAIT: the Shepherd's Way, offered (VILLAGER-AND-GODHEAD-SPEC Part III
+	# §2) — Jeff's playtest bug, fixed: "the wild dogs chase you so it's
+	# going to be hard to feed them." AGGRO_RADIUS (170px) outruns
+	# INTERACT_RANGE (56px), so a chasing hound could never be hand-fed. [O]
+	# drops the craved food and steps back; enemy.gd's own AI breaks the
+	# beast off its chase to come eat it instead.
+	# ============================================================
+	host.devotion.state[1]["god-ghal"].rank = 0
+	host.player.position = Vector2(7600, 7600)
+	host.inventory.inventories[1] = {}   # a clean pack
+
+	# nothing craved, nothing tameable nearby at all: the generic refusal
+	check(host.intent_offer_bait() and host.message.contains("Nothing here wants what you're carrying") and host.baits.is_empty(),
+		"the [O]-offer verb always resolves; with nothing nameable nearby, the generic diegetic refusal (%s)" % host.message)
+
+	# a wild hound stands close enough to notice — genuinely chasing, since
+	# it's well inside AGGRO_RADIUS (170px daytime): this IS Jeff's bug,
+	# reproduced, before bait ever enters the picture.
+	var bait_hound := DSEnemy.new()
+	bait_hound.position = host.player.position + Vector2(140, 0)
+	bait_hound.setup(host, "creature-salt-hound")
+	host.add_child(bait_hound); host.enemies.append(bait_hound)
+	for i in 15:
+		await get_tree().physics_frame
+	check(bait_hound.position.distance_to(host.player.position) < 140.0,
+		"the hound is already chasing — the exact bug: it will outrun any attempt to walk in and hand-feed it")
+
+	# nearby but you don't hold what it craves: names the species AND the food
+	check(host.intent_offer_bait() and host.message.contains("salt-hound") and host.message.contains("crab meat") and host.baits.is_empty(),
+		"named-craving refusal — a tameable species is near, but you're not carrying its food (%s)" % host.message)
+
+	# holding the food: a bait node drops right where you stand, debited from the pack
+	host.inventory.add(1, "item-crab-meat", 5)
+	var bait_drop_pos := host.player.position
+	check(host.intent_offer_bait() and host.message.contains("set down") and host.message.contains("crab meat") and host.message.contains("salt-hound"),
+		"the offer succeeds — says what you set down and what it's for, the UI law (%s)" % host.message)
+	check(host.baits.size() == 1 and str(host.baits[0].get_meta("item_id")) == "item-crab-meat", "a bait node stands, holding the hound's own craved food")
+	check(host.inventory.count(1, "item-crab-meat") == 4, "one unit debited from the pack")
+
+	# THE FIX ITSELF: stand off (drop, then retreat WELL past AGGRO_RADIUS —
+	# out to where ordinary chase AI would have no target at all and simply
+	# go idle). A hound with no bait-seeking would stand there motionless
+	# (player out of range = nothing to chase); watching it move and close on
+	# the bait ANYWAY is the unambiguous proof this is bait-seeking, not
+	# coincidental geometry (an earlier draft of this test placed the
+	# retreat point beyond the bait on the SAME line, so "closing on bait"
+	# and "closing on the old chase target" were indistinguishable — fixed
+	# by making the player irrelevant to any possible normal chase instead).
+	var d_bait0 := bait_hound.position.distance_to(bait_drop_pos)
+	var hound_pos_before_retreat := bait_hound.position
+	host.player.position = bait_drop_pos + Vector2(2000, 2000)   # far past AGGRO_RADIUS and BAIT_SCAN_RADIUS both
+	for i in 60:
+		await get_tree().physics_frame
+	check(bait_hound.position.distance_to(hound_pos_before_retreat) > 4.0,
+		"the hound MOVES even though the player just vanished over the horizon — ordinary chase AI would have gone idle out there")
+	check(bait_hound.position.distance_to(bait_drop_pos) < d_bait0,
+		"...and specifically closes on the BAIT — Jeff's bug (chase outran interact range) is fixed (%.0f -> %.0f)" % [d_bait0, bait_hound.position.distance_to(bait_drop_pos)])
+
+	# it arrives and eats: the node is consumed, the numbers-shown trust
+	# message reaches the dropper, no ADDITIONAL food is spent (already paid
+	# at the drop), and the fed-but-not-tamed beast stays calm a while.
+	for i in 120:
+		await get_tree().physics_frame
+		if host.baits.is_empty():
+			break
+	check(host.baits.is_empty(), "the hound reaches the bait and eats it — the node is consumed")
+	var trust_msg_1 := host.message
+	check(trust_msg_1.contains("trust") and host.inventory.count(1, "item-crab-meat") == 4,
+		"the numbers show, Shepherd's-Way style, and eating costs no EXTRA food (%s)" % trust_msg_1)
+	check(bait_hound.is_pacified(), "a fed-but-not-yet-tamed beast stays calm briefly — trust, not a feeding-frenzy exploit")
+
+	# a same-day repeat bait is still eaten (costs its own food, paid at drop)
+	# but does NOT advance trust twice — beast_system's own one-meal-per-day
+	# ledger (feed_wild's own $comment), respected here exactly as
+	# intent_feed_wild respects it above.
+	host.inventory.add(1, "item-crab-meat", 2)
+	host.player.position = bait_hound.position
+	check(host.intent_offer_bait() and host.baits.size() == 1, "a second same-day offer still resolves and drops")
+	var meat_before_2nd_eat := host.inventory.count(1, "item-crab-meat")
+	for i in 30:
+		await get_tree().physics_frame
+		if host.baits.is_empty():
+			break
+	check(host.baits.is_empty() and host.message == trust_msg_1 and host.inventory.count(1, "item-crab-meat") == meat_before_2nd_eat,
+		"DECISION: a same-day repeat is still eaten (not refused), but trust does NOT advance a second time, and eating spends no further food (%s)" % host.message)
+
+	# day 2 and day 3 complete the hound's 3-meal tier-2 trust — via bait,
+	# not hand-feeding — proving beast.feed_wild runs identically either way.
+	host.clock.day += 1
+	host.inventory.add(1, "item-crab-meat", 2)
+	host.player.position = bait_hound.position
+	check(host.intent_offer_bait(), "day 2's offer")
+	for i in 30:
+		await get_tree().physics_frame
+		if host.baits.is_empty():
+			break
+	check(host.message.contains("trust 2/3"), "day 2's bait advances trust (%s)" % host.message)
+
+	host.clock.day += 1
+	host.inventory.add(1, "item-crab-meat", 2)
+	host.player.position = bait_hound.position
+	var beasts_before_tame := host.beasts.size()
+	check(host.intent_offer_bait(), "day 3's offer — the final meal")
+	for i in 30:
+		await get_tree().physics_frame
+		if host.beasts.size() > beasts_before_tame:
+			break
+	check(host.beasts.size() == beasts_before_tame + 1, "trust fills through BAIT — the SAME tame path as hand-feeding runs: a new DSBeast joins the roster")
+	var bait_tamed_beast: DSBeast = host.beasts[host.beasts.size() - 1]
+	check(bait_tamed_beast.creature_id == "creature-salt-hound" and bait_tamed_beast.display_name != "", "the new tame is the hound, named from its species pool")
+	# CLAUDE.md gotcha: Array.has() is type-strict AND validates the object —
+	# calling it on an already-freed instance errors. bait_hound was queue_free()'d
+	# inside beast_eat_bait's tame branch; is_instance_valid is the safe check.
+	check(not is_instance_valid(bait_hound), "the wild body is gone — replaced by the tamed one")
+
+	# an under-WILD player's bait is eaten but grants no trust: can_tame gates
+	# the OUTCOME of eating, never whether bait can be dropped or eaten at
+	# all (intent_offer_bait never checks WILD) — "costing the food, teaching
+	# the gate," same law as intent_feed_wild's own WILD refusal above.
+	for i in 3:
+		host.abilities.deallocate(1, "virtue-wild")
+	check(host.abilities.score(1, "virtue-wild") == 3, "WILD dropped back under the hound's tier-2 gate (crab-friend needs 6)")
+	var under_wild_hound := DSEnemy.new()
+	under_wild_hound.position = Vector2(7900, 7900)
+	under_wild_hound.setup(host, "creature-salt-hound")
+	host.add_child(under_wild_hound); host.enemies.append(under_wild_hound)
+	host.player.position = under_wild_hound.position
+	host.inventory.add(1, "item-crab-meat", 2)
+	check(host.intent_offer_bait(), "an under-WILD player can still OFFER bait — the gate isn't at the drop")
+	var beasts_before_underwild := host.beasts.size()
+	for i in 30:
+		await get_tree().physics_frame
+		if host.baits.is_empty():
+			break
+	check(host.baits.is_empty() and host.message.contains("still wild") and host.beasts.size() == beasts_before_underwild and host.enemies.has(under_wild_hound),
+		"the hound still eats the food (the meal isn't refused), but WILD gates the tame outcome — it remains wild (%s)" % host.message)
+	for i in 3:
+		host.abilities.allocate(1, "virtue-wild")   # restore WILD 6 — hygiene, nothing later needs the drop
+	check(host.abilities.score(1, "virtue-wild") == 6, "WILD restored")
+
+	# the Taming-Post doubles a BAITED meal's trust too, same as hand-feeding
+	# (the post was raised earlier in this file, still standing at camp_center).
+	# CLEANUP FIRST: that earlier test ("feed within earshot of the
+	# Taming-Post") fed its own wild hound by hand exactly once and never
+	# removed it — it's STILL standing, wild, ~40px from camp_center. Left in
+	# place it either steals this bait itself (stomping the meal-count
+	# assertion below) or, once the bait's gone, is close enough to bite the
+	# player and overwrite host.message via a wholly unrelated Tide-Shell
+	# absorb line. Clear any leftover wild hound near the post before testing.
+	for old_e in host.enemies.duplicate():
+		if is_instance_valid(old_e) and old_e.creature_id == "creature-salt-hound" and host.camp_center.distance_to(old_e.position) < 200.0:
+			host.stats.unregister(old_e)
+			host.enemies.erase(old_e)
+			old_e.queue_free()
+	# queue_free() defers actual destruction — the freed node still runs ONE
+	# more _physics_process on the very next frame before Godot's cleanup
+	# pass catches up. A frame here lets it actually go before it can race a
+	# freshly-dropped bait against the hound this test is about to spawn.
+	await get_tree().physics_frame
+	host.player.position = host.camp_center + Vector2(20, 0)
+	var post_bait_hound := DSEnemy.new()
+	post_bait_hound.position = host.player.position
+	post_bait_hound.setup(host, "creature-salt-hound")
+	host.add_child(post_bait_hound); host.enemies.append(post_bait_hound)
+	host.clock.day += 1
+	host.inventory.add(1, "item-crab-meat", 2)
+	check(host.intent_offer_bait(), "offer within the Taming-Post's earshot")
+	for i in 30:
+		await get_tree().physics_frame
+		if host.baits.is_empty():
+			break
+	check(host.message.contains("trust 2/3"), "the post doubles a BAITED meal's trust too — 2, not 1, on the FIRST feed (%s)" % host.message)
+	host.stats.unregister(post_bait_hound); host.enemies.erase(post_bait_hound); post_bait_hound.queue_free()
+
+	# bait spoils at dawn if uneaten
+	host.player.position = Vector2(8200, 8200)
+	host.inventory.add(1, "item-crab-meat", 2)
+	var spoil_hound := DSEnemy.new()
+	spoil_hound.position = host.player.position + Vector2(80, 0)
+	spoil_hound.setup(host, "creature-salt-hound")
+	host.add_child(spoil_hound); host.enemies.append(spoil_hound)
+	check(host.intent_offer_bait() and host.baits.size() == 1, "bait dropped, standing uneaten")
+	host._bait_spoil_dawn()
+	check(host.baits.size() == 1, "not yet spoiled — dropped today, no dawn has turned over since")
+	host.clock.day += 1
+	host._bait_spoil_dawn()
+	check(host.baits.is_empty(), "a full night uneaten — the bait spoils at dawn")
+	host.stats.unregister(spoil_hound); host.enemies.erase(spoil_hound); spoil_hound.queue_free()
+
+	# ============================================================
 	# M3.c — the Dark and the Mother (REEF-FOREST-SPEC §2/§4/§6)
 	# ============================================================
 	var m3c_day0 := host.clock.day

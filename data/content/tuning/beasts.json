@@ -7,6 +7,13 @@
   "unfedMoodDays": 1,
   "porterDayXp": 6,
   "trustDecayDays": 3,
+  "bait": {
+    "$comment": "the Shepherd's Way, as VILLAGER-AND-GODHEAD-SPEC Part III §2 actually names it first: 'drop the species' craved food on the ground and stand off; the beast comes, eats, and trusts.' What shipped before this block was hand-feed-only ([E] with food in pack) — impossible for a chasing hound/eel-wolf, since AGGRO_RADIUS (170px, enemy.gd) outruns INTERACT_RANGE (56px, main.gd): you can never walk back in close enough to hand-feed something still hunting you. noticeRadius: how far a wild TAMEABLE beast (creature.tame non-empty) notices a matching dropped bait and breaks off whatever it was doing (chasing, attacking) to path to it instead — enemy.gd's own $comment marks exactly where this overrides the chase branch. eatRadius: how close it must close to actually eat (consumes the bait, calls beast_system.feed_wild for the dropper). calmSeconds: reuses enemy.gd's existing pacify() so a fed-but-not-yet-tamed beast doesn't instantly resume the chase — the loop should read as trust, not a feeding-frenzy exploit. spoilAtDawn: uneaten bait vanishes at the next dawn (main.gd's own dawn step, same shape as beast_dawn_feeding) rather than littering the flats forever.",
+    "noticeRadius": 400,
+    "eatRadius": 30,
+    "calmSeconds": 8,
+    "spoilAtDawn": true
+  },
   "xp": {
     "$comment": "the curve is villagers.json xp — one growth system, three wearers (player virtues / villager Arms / beast levels). beast_system.gd reads tuning/villagers.json's xp.curveConstant + xp.maxLevel directly; nothing is duplicated here."
   }

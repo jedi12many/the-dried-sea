@@ -326,4 +326,70 @@ func _ready() -> void:
 	check(host.godhead.godhead("god-vessa") > vessa_godhead0 + 7.0,
 		"a client's keystone dedication mirrors home: Vessa's Godhead rose ~8%% (%.1f%% -> %.1f%%)" % [vessa_godhead0, host.godhead.godhead("god-vessa")])
 
+	# 15. BAIT (VILLAGER-AND-GODHEAD-SPEC Part III §2, the Shepherd's Way)
+	# over the wire: dropping bait mirrors as a ground node, and a wild
+	# beast that eats its way to full trust mirrors home as a proper tame —
+	# the SAME world_sync/cl_world_sync path every other enemy/beast mirror
+	# already rides. WILD 6 (the hound's crab-friend gate) needs 3 more
+	# allocations past the WILD 3 spent in test 10 above — test_grant_temper
+	# tops up Temper first (the same "seed state minimally, then exercise
+	# the real path" shape as test_grant_item elsewhere in this file).
+	host.rpc_id(1, "srv_intent", "test_grant_temper", [10])
+	waited = 0.0
+	while host.abilities.available(host.my_pid) < 3 and waited < 6.0:
+		await get_tree().create_timer(0.2).timeout
+		waited += 0.2
+	for i in 3:
+		host.rpc_id(1, "srv_intent", "allocate", ["virtue-wild"])
+		await get_tree().create_timer(0.15).timeout
+	check(host.abilities.score(host.my_pid, "virtue-wild") >= 6, "WILD 6 across the wire (crab-friend, the hound's tame-tier gate)")
+
+	# Ghal rank 2 (test_attune, same trick as test 11's Vessa rank) discounts
+	# the hound's 3-meal tier-2 requirement down to its tuning floor of 1 —
+	# no wire test should sit through several sim-days of real feeding.
+	host.rpc_id(1, "srv_intent", "test_attune", ["god-ghal"])
+	await get_tree().create_timer(0.2).timeout
+	host.rpc_id(1, "srv_intent", "test_attune", ["god-ghal"])
+	waited = 0.0
+	while int(host.devotion.state.get(host.my_pid, {}).get("god-ghal", {}).get("rank", 0)) < 2 and waited < 6.0:
+		await get_tree().create_timer(0.2).timeout
+		waited += 0.2
+	check(int(host.devotion.state.get(host.my_pid, {}).get("god-ghal", {}).get("rank", 0)) == 2, "Ghal rank 2 across the wire")
+
+	var wild_hound: DSEnemy = null
+	for e in host.enemies:
+		if is_instance_valid(e) and e.creature_id == "creature-salt-hound" and not e.surrendered:
+			wild_hound = e
+			break
+	check(wild_hound != null, "a wild hound is mirrored here to bait")
+	if wild_hound != null:
+		host.rpc_id(1, "srv_intent", "test_grant_item", ["item-crab-meat", 2])
+		waited = 0.0
+		while host.inventory.count(host.my_pid, "item-crab-meat") == 0 and waited < 6.0:
+			await get_tree().create_timer(0.2).timeout
+			waited += 0.2
+		# 300px separation (inside BAIT_SCAN_RADIUS 500 and noticeRadius 400,
+		# so the offer still targets this hound and it still notices the
+		# bait) — deliberately far enough that closing the gap takes several
+		# real seconds, giving a reliable window to observe the MIRRORED
+		# bait node before Ghal rank 2 (below) lets it complete the tame in
+		# a single meal. Too close and the whole drop-travel-eat cycle can
+		# finish inside one world_sync interval, and the transient "bait
+		# exists" mirror state is never actually observed.
+		host.player.position = wild_hound.position + Vector2(300, 0)
+		await get_tree().create_timer(0.6).timeout   # position stream reaches the server
+		var baits_before := host.baits.size()
+		host.intent_offer_bait()                     # relays to the server
+		waited = 0.0
+		while host.baits.size() <= baits_before and waited < 4.0:
+			await get_tree().create_timer(0.2).timeout
+			waited += 0.2
+		check(host.baits.size() > baits_before, "a client's dropped bait mirrors here as a ground node (%s)" % host.message)
+		waited = 0.0
+		while not host.beasts.any(func(b: DSBeast) -> bool: return b.creature_id == "creature-salt-hound") and waited < 10.0:
+			await get_tree().create_timer(0.2).timeout
+			waited += 0.2
+		check(host.beasts.any(func(b: DSBeast) -> bool: return b.creature_id == "creature-salt-hound"),
+			"the resulting tame mirrors home — a hound joins the client's beast roster after eating its way to full trust")
+
 	_finish()
